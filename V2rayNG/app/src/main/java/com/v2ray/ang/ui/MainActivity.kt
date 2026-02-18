@@ -9,6 +9,8 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
+import android.view.View
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -67,6 +69,44 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
+        
+        // ---------------------------------------------------------------
+        // START EDIT: ضبط أحجام الشاشات للسحب (Code By Gemini)
+        // ---------------------------------------------------------------
+        // نحصل على عرض الشاشة الحالية
+        val displayMetrics = resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+
+        // نجبر الواجهة الأصلية أن تأخذ عرض الشاشة بالكامل
+        binding.homeContentContainer.layoutParams.width = screenWidth
+        
+        // نجبر الواجهة الخضراء أن تأخذ عرض الشاشة بالكامل
+        binding.greenScreenContainer.layoutParams.width = screenWidth
+
+        // إضافة منطق بسيط لإجبار السكرول أن يقف عند الصفحة تماماً (Snap Effect بسيط)
+        binding.mainScrollView.setOnTouchListener { v, event ->
+            if (event.action == MotionEvent.ACTION_UP) {
+                val scrollX = binding.mainScrollView.scrollX
+                val halfScreen = screenWidth / 2
+                if (scrollX > halfScreen) {
+                    // الذهاب للواجهة الخضراء
+                    binding.mainScrollView.post {
+                        binding.mainScrollView.smoothScrollTo(screenWidth, 0)
+                    }
+                } else {
+                    // العودة للواجهة الرئيسية
+                    binding.mainScrollView.post {
+                        binding.mainScrollView.smoothScrollTo(0, 0)
+                    }
+                }
+                return@setOnTouchListener true
+            }
+            false
+        }
+        // ---------------------------------------------------------------
+        // END EDIT
+        // ---------------------------------------------------------------
+
         setupToolbar(binding.toolbar, false, getString(R.string.title_server))
 
         // setup viewpager and tablayout
@@ -86,9 +126,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
-                    isEnabled = true
+                    // إذا كان المستخدم في الواجهة الخضراء وضغط رجوع، نعيده للواجهة الرئيسية
+                    if (binding.mainScrollView.scrollX > 0) {
+                         binding.mainScrollView.smoothScrollTo(0, 0)
+                    } else {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                        isEnabled = true
+                    }
                 }
             }
         })
