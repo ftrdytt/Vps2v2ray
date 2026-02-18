@@ -11,6 +11,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.graphics.Color
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -70,51 +71,39 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
         
-        // ---------------------------------------------------------------
-        // START EDIT: ضبط أحجام الشاشات للسحب (Code By Gemini)
-        // ---------------------------------------------------------------
-        // نحصل على عرض الشاشة الحالية
+        // --- ضبط أحجام الشاشات للسحب ---
         val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
-
-        // نجبر الواجهة الأصلية أن تأخذ عرض الشاشة بالكامل
         binding.homeContentContainer.layoutParams.width = screenWidth
-        
-        // نجبر الواجهة الخضراء أن تأخذ عرض الشاشة بالكامل
         binding.greenScreenContainer.layoutParams.width = screenWidth
 
-        // إضافة منطق بسيط لإجبار السكرول أن يقف عند الصفحة تماماً (Snap Effect بسيط)
+        // --- برمجة زر الاتصال في الواجهة الخضراء ---
+        // عند الضغط عليه، يقوم بنفس وظيفة زر التشغيل الأصلي
+        binding.btnGreenConnect.setOnClickListener {
+            handleFabAction()
+        }
+
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
                 val halfScreen = screenWidth / 2
                 if (scrollX > halfScreen) {
-                    // الذهاب للواجهة الخضراء
-                    binding.mainScrollView.post {
-                        binding.mainScrollView.smoothScrollTo(screenWidth, 0)
-                    }
+                    binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(screenWidth, 0) }
                 } else {
-                    // العودة للواجهة الرئيسية
-                    binding.mainScrollView.post {
-                        binding.mainScrollView.smoothScrollTo(0, 0)
-                    }
+                    binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(0, 0) }
                 }
                 return@setOnTouchListener true
             }
             false
         }
-        // ---------------------------------------------------------------
-        // END EDIT
-        // ---------------------------------------------------------------
+        // ------------------------------------
 
         setupToolbar(binding.toolbar, false, getString(R.string.title_server))
 
-        // setup viewpager and tablayout
         groupPagerAdapter = GroupPagerAdapter(this, emptyList())
         binding.viewPager.adapter = groupPagerAdapter
         binding.viewPager.isUserInputEnabled = true
 
-        // setup navigation drawer
         val toggle = ActionBarDrawerToggle(
             this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close
         )
@@ -126,7 +115,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 } else {
-                    // إذا كان المستخدم في الواجهة الخضراء وضغط رجوع، نعيده للواجهة الرئيسية
                     if (binding.mainScrollView.scrollX > 0) {
                          binding.mainScrollView.smoothScrollTo(0, 0)
                     } else {
@@ -197,8 +185,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         if (mainViewModel.isRunning.value == true) {
             setTestState(getString(R.string.connection_test_testing))
             mainViewModel.testCurrentServerRealPing()
-        } else {
-            // service not running: keep existing no-op (could show a message if desired)
         }
     }
 
@@ -227,21 +213,33 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private  fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         if (isLoading) {
             binding.fab.setImageResource(R.drawable.ic_fab_check)
+            binding.btnGreenConnect.text = "جاري التحميل..."
             return
         }
 
         if (isRunning) {
+            // حالة الاتصال: تغيير أيقونة الزر الأصلي وتغيير نص الزر الجديد
             binding.fab.setImageResource(R.drawable.ic_stop_24dp)
             binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
             binding.fab.contentDescription = getString(R.string.action_stop_service)
             setTestState(getString(R.string.connection_connected))
             binding.layoutTest.isFocusable = true
+            
+            // تحديث الزر في الواجهة الخضراء
+            binding.btnGreenConnect.text = "قطع الاتصال"
+            binding.btnGreenConnect.backgroundTintList = ColorStateList.valueOf(Color.RED)
         } else {
+            // حالة عدم الاتصال
             binding.fab.setImageResource(R.drawable.ic_play_24dp)
             binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
             binding.fab.contentDescription = getString(R.string.tasker_start_service)
             setTestState(getString(R.string.connection_not_connected))
             binding.layoutTest.isFocusable = false
+
+            // تحديث الزر في الواجهة الخضراء
+            binding.btnGreenConnect.text = "اتصال"
+            // لون أخضر غامق للاتصال
+            binding.btnGreenConnect.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2E7D32")) 
         }
     }
 
@@ -277,220 +275,91 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
-        R.id.import_qrcode -> {
-            importQRcode()
-            true
-        }
-
-        R.id.import_clipboard -> {
-            importClipboard()
-            true
-        }
-
-        R.id.import_local -> {
-            importConfigLocal()
-            true
-        }
-
-        R.id.import_manually_policy_group -> {
-            importManually(EConfigType.POLICYGROUP.value)
-            true
-        }
-
-        R.id.import_manually_vmess -> {
-            importManually(EConfigType.VMESS.value)
-            true
-        }
-
-        R.id.import_manually_vless -> {
-            importManually(EConfigType.VLESS.value)
-            true
-        }
-
-        R.id.import_manually_ss -> {
-            importManually(EConfigType.SHADOWSOCKS.value)
-            true
-        }
-
-        R.id.import_manually_socks -> {
-            importManually(EConfigType.SOCKS.value)
-            true
-        }
-
-        R.id.import_manually_http -> {
-            importManually(EConfigType.HTTP.value)
-            true
-        }
-
-        R.id.import_manually_trojan -> {
-            importManually(EConfigType.TROJAN.value)
-            true
-        }
-
-        R.id.import_manually_wireguard -> {
-            importManually(EConfigType.WIREGUARD.value)
-            true
-        }
-
-        R.id.import_manually_hysteria2 -> {
-            importManually(EConfigType.HYSTERIA2.value)
-            true
-        }
-
-        R.id.export_all -> {
-            exportAll()
-            true
-        }
-
+        R.id.import_qrcode -> { importQRcode(); true }
+        R.id.import_clipboard -> { importClipboard(); true }
+        R.id.import_local -> { importConfigLocal(); true }
+        R.id.import_manually_policy_group -> { importManually(EConfigType.POLICYGROUP.value); true }
+        R.id.import_manually_vmess -> { importManually(EConfigType.VMESS.value); true }
+        R.id.import_manually_vless -> { importManually(EConfigType.VLESS.value); true }
+        R.id.import_manually_ss -> { importManually(EConfigType.SHADOWSOCKS.value); true }
+        R.id.import_manually_socks -> { importManually(EConfigType.SOCKS.value); true }
+        R.id.import_manually_http -> { importManually(EConfigType.HTTP.value); true }
+        R.id.import_manually_trojan -> { importManually(EConfigType.TROJAN.value); true }
+        R.id.import_manually_wireguard -> { importManually(EConfigType.WIREGUARD.value); true }
+        R.id.import_manually_hysteria2 -> { importManually(EConfigType.HYSTERIA2.value); true }
+        R.id.export_all -> { exportAll(); true }
         R.id.ping_all -> {
             toast(getString(R.string.connection_test_testing_count, mainViewModel.serversCache.count()))
             mainViewModel.testAllTcping()
             true
         }
-
         R.id.real_ping_all -> {
             toast(getString(R.string.connection_test_testing_count, mainViewModel.serversCache.count()))
             mainViewModel.testAllRealPing()
             true
         }
-
-        R.id.service_restart -> {
-            restartV2Ray()
-            true
-        }
-
-        R.id.del_all_config -> {
-            delAllConfig()
-            true
-        }
-
-        R.id.del_duplicate_config -> {
-            delDuplicateConfig()
-            true
-        }
-
-        R.id.del_invalid_config -> {
-            delInvalidConfig()
-            true
-        }
-
-        R.id.sort_by_test_results -> {
-            sortByTestResults()
-            true
-        }
-
-        R.id.sub_update -> {
-            importConfigViaSub()
-            true
-        }
-
-
+        R.id.service_restart -> { restartV2Ray(); true }
+        R.id.del_all_config -> { delAllConfig(); true }
+        R.id.del_duplicate_config -> { delDuplicateConfig(); true }
+        R.id.del_invalid_config -> { delInvalidConfig(); true }
+        R.id.sort_by_test_results -> { sortByTestResults(); true }
+        R.id.sub_update -> { importConfigViaSub(); true }
         else -> super.onOptionsItemSelected(item)
     }
 
     private fun importManually(createConfigType: Int) {
         if (createConfigType == EConfigType.POLICYGROUP.value) {
-            startActivity(
-                Intent()
-                    .putExtra("subscriptionId", mainViewModel.subscriptionId)
-                    .setClass(this, ServerGroupActivity::class.java)
-            )
+            startActivity(Intent().putExtra("subscriptionId", mainViewModel.subscriptionId).setClass(this, ServerGroupActivity::class.java))
         } else {
-            startActivity(
-                Intent()
-                    .putExtra("createConfigType", createConfigType)
-                    .putExtra("subscriptionId", mainViewModel.subscriptionId)
-                    .setClass(this, ServerActivity::class.java)
-            )
+            startActivity(Intent().putExtra("createConfigType", createConfigType).putExtra("subscriptionId", mainViewModel.subscriptionId).setClass(this, ServerActivity::class.java))
         }
     }
 
-    /**
-     * import config from qrcode
-     */
     private fun importQRcode(): Boolean {
-        launchQRCodeScanner { scanResult ->
-            if (scanResult != null) {
-                importBatchConfig(scanResult)
-            }
-        }
+        launchQRCodeScanner { scanResult -> if (scanResult != null) importBatchConfig(scanResult) }
         return true
     }
 
-    /**
-     * import config from clipboard
-     */
-    private fun importClipboard()
-            : Boolean {
-        try {
-            val clipboard = Utils.getClipboard(this)
-            importBatchConfig(clipboard)
-        } catch (e: Exception) {
-            Log.e(AppConfig.TAG, "Failed to import config from clipboard", e)
-            return false
-        }
+    private fun importClipboard(): Boolean {
+        try { importBatchConfig(Utils.getClipboard(this)) } 
+        catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to import config from clipboard", e); return false }
         return true
     }
 
     private fun importBatchConfig(server: String?) {
         showLoading()
-
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val (count, countSub) = AngConfigManager.importBatchConfig(server, mainViewModel.subscriptionId, true)
                 delay(500L)
                 withContext(Dispatchers.Main) {
                     when {
-                        count > 0 -> {
-                            toast(getString(R.string.title_import_config_count, count))
-                            mainViewModel.reloadServerList()
-                        }
-
+                        count > 0 -> { toast(getString(R.string.title_import_config_count, count)); mainViewModel.reloadServerList() }
                         countSub > 0 -> setupGroupTab()
                         else -> toastError(R.string.toast_failure)
                     }
                     hideLoading()
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    toastError(R.string.toast_failure)
-                    hideLoading()
-                }
+                withContext(Dispatchers.Main) { toastError(R.string.toast_failure); hideLoading() }
                 Log.e(AppConfig.TAG, "Failed to import batch config", e)
             }
         }
     }
 
-    /**
-     * import config from local config file
-     */
     private fun importConfigLocal(): Boolean {
-        try {
-            showFileChooser()
-        } catch (e: Exception) {
-            Log.e(AppConfig.TAG, "Failed to import config from local file", e)
-            return false
-        }
+        try { showFileChooser() } catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to import config from local file", e); return false }
         return true
     }
 
-
-    /**
-     * import config from sub
-     */
     private fun importConfigViaSub(): Boolean {
         showLoading()
-
         lifecycleScope.launch(Dispatchers.IO) {
             val count = mainViewModel.updateConfigViaSubAll()
             delay(500L)
             launch(Dispatchers.Main) {
-                if (count > 0) {
-                    toast(getString(R.string.title_update_config_count, count))
-                    mainViewModel.reloadServerList()
-                } else {
-                    toastError(R.string.toast_failure)
-                }
+                if (count > 0) { toast(getString(R.string.title_update_config_count, count)); mainViewModel.reloadServerList() } 
+                else { toastError(R.string.toast_failure) }
                 hideLoading()
             }
         }
@@ -502,10 +371,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         lifecycleScope.launch(Dispatchers.IO) {
             val ret = mainViewModel.exportAllServer()
             launch(Dispatchers.Main) {
-                if (ret > 0)
-                    toast(getString(R.string.title_export_config_count, ret))
-                else
-                    toastError(R.string.toast_failure)
+                if (ret > 0) toast(getString(R.string.title_export_config_count, ret)) else toastError(R.string.toast_failure)
                 hideLoading()
             }
         }
@@ -517,17 +383,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 showLoading()
                 lifecycleScope.launch(Dispatchers.IO) {
                     val ret = mainViewModel.removeAllServer()
-                    launch(Dispatchers.Main) {
-                        mainViewModel.reloadServerList()
-                        toast(getString(R.string.title_del_config_count, ret))
-                        hideLoading()
-                    }
+                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_config_count, ret)); hideLoading() }
                 }
             }
-            .setNegativeButton(android.R.string.cancel) { _, _ ->
-                //do noting
-            }
-            .show()
+            .setNegativeButton(android.R.string.cancel, null).show()
     }
 
     private fun delDuplicateConfig() {
@@ -536,17 +395,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 showLoading()
                 lifecycleScope.launch(Dispatchers.IO) {
                     val ret = mainViewModel.removeDuplicateServer()
-                    launch(Dispatchers.Main) {
-                        mainViewModel.reloadServerList()
-                        toast(getString(R.string.title_del_duplicate_config_count, ret))
-                        hideLoading()
-                    }
+                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_duplicate_config_count, ret)); hideLoading() }
                 }
             }
-            .setNegativeButton(android.R.string.cancel) { _, _ ->
-                //do noting
-            }
-            .show()
+            .setNegativeButton(android.R.string.cancel, null).show()
     }
 
     private fun delInvalidConfig() {
@@ -555,67 +407,35 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 showLoading()
                 lifecycleScope.launch(Dispatchers.IO) {
                     val ret = mainViewModel.removeInvalidServer()
-                    launch(Dispatchers.Main) {
-                        mainViewModel.reloadServerList()
-                        toast(getString(R.string.title_del_config_count, ret))
-                        hideLoading()
-                    }
+                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_config_count, ret)); hideLoading() }
                 }
             }
-            .setNegativeButton(android.R.string.cancel) { _, _ ->
-                //do noting
-            }
-            .show()
+            .setNegativeButton(android.R.string.cancel, null).show()
     }
 
     private fun sortByTestResults() {
         showLoading()
         lifecycleScope.launch(Dispatchers.IO) {
             mainViewModel.sortByTestResults()
-            launch(Dispatchers.Main) {
-                mainViewModel.reloadServerList()
-                hideLoading()
-            }
+            launch(Dispatchers.Main) { mainViewModel.reloadServerList(); hideLoading() }
         }
     }
 
-    /**
-     * show file chooser
-     */
     private fun showFileChooser() {
-        launchFileChooser { uri ->
-            if (uri == null) {
-                return@launchFileChooser
-            }
-
-            readContentFromUri(uri)
-        }
+        launchFileChooser { uri -> if (uri != null) readContentFromUri(uri) }
     }
 
-    /**
-     * read content from uri
-     */
     private fun readContentFromUri(uri: Uri) {
-        try {
-            contentResolver.openInputStream(uri).use { input ->
-                importBatchConfig(input?.bufferedReader()?.readText())
-            }
-        } catch (e: Exception) {
-            Log.e(AppConfig.TAG, "Failed to read content from URI", e)
-        }
+        try { contentResolver.openInputStream(uri).use { input -> importBatchConfig(input?.bufferedReader()?.readText()) } } 
+        catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to read content from URI", e) }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_BUTTON_B) {
-            moveTaskToBack(false)
-            return true
-        }
+        if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_BUTTON_B) { moveTaskToBack(false); return true }
         return super.onKeyDown(keyCode, event)
     }
 
-
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
-        // Handle navigation view item clicks here.
         when (item.itemId) {
             R.id.sub_setting -> requestActivityLauncher.launch(Intent(this, SubSettingActivity::class.java))
             R.id.per_app_proxy_settings -> requestActivityLauncher.launch(Intent(this, PerAppProxyActivity::class.java))
@@ -628,7 +448,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             R.id.backup_restore -> requestActivityLauncher.launch(Intent(this, BackupActivity::class.java))
             R.id.about -> startActivity(Intent(this, AboutActivity::class.java))
         }
-
         binding.drawerLayout.closeDrawer(GravityCompat.START)
         return true
     }
