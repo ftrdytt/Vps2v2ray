@@ -1,5 +1,6 @@
 package com.v2ray.ang.ui
 
+import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.net.Uri
@@ -86,7 +87,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
         
-        // --- التقاط الملفات القادمة من التلكرام أو الواتساب أو مدير الملفات ---
         handleIntent(intent)
 
         // --- ضبط أحجام الشاشات للسحب ---
@@ -154,8 +154,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
     
-    // --- دالة لمعالجة فتح التطبيق من خلال ملف (.ashor) ---
-    // تم تصحيح الخطأ هنا (إزالة علامة الاستفهام من Intent)
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
@@ -327,12 +325,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
         R.id.import_qrcode -> { importQRcode(); true }
         R.id.import_clipboard -> { importClipboard(); true }
-        
         R.id.import_clipboard_encrypted -> { importClipboardEncrypted(); true }
-        
-        // --- تمت إضافة خيار استيراد ملف مشفر من مدير الملفات ---
         R.id.import_encrypted_file -> { importEncryptedFile(); true }
-
         R.id.import_local -> { importConfigLocal(); true }
         R.id.import_manually_policy_group -> { importManually(EConfigType.POLICYGROUP.value); true }
         R.id.import_manually_vmess -> { importManually(EConfigType.VMESS.value); true }
@@ -394,7 +388,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 toast("الكود المشفر غير صالح أو غير مدعوم!")
                 return false
             }
-            importBatchConfig(decrypted)
+            // استدعاء دالة الاستيراد الخاصة بنا التي تحفظ السيرفر كـ "مشفر"
+            importEncryptedBatchConfig(decrypted)
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to import encrypted config from clipboard", e)
             return false
@@ -402,17 +397,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         return true
     }
     
-    // --- دالة اختيار الملف المشفر من الجهاز ---
     private fun importEncryptedFile() {
         try {
-            // فتح مدير الملفات لاختيار أي ملف (أو ملفات .ashor إن أمكن)
             openEncryptedFileLauncher.launch(arrayOf("*/*"))
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to open file picker", e)
         }
     }
     
-    // --- دالة قراءة الملف المشفر وفك تشفيره ---
     private fun readEncryptedContentFromUri(uri: Uri) {
         try {
             val inputStream = contentResolver.openInputStream(uri)
@@ -431,13 +423,53 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 return
             }
             
-            // إضافة السيرفر بعد الفك
-            importBatchConfig(decrypted)
+            // استدعاء دالة الاستيراد الخاصة بنا التي تحفظ السيرفر كـ "مشفر"
+            importEncryptedBatchConfig(decrypted)
             toast("تم استيراد الملف بنجاح!")
             
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to read encrypted content from URI", e)
             toast("حدث خطأ أثناء قراءة الملف.")
+        }
+    }
+
+    // --- الدالة الذكية الجديدة لاصطياد السيرفرات المشفرة وحفظها في القائمة السرية ---
+    private fun importEncryptedBatchConfig(server: String?) {
+        showLoading()
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // 1. أخذ لقطة لمعرفات السيرفرات الموجودة حالياً
+                val beforeGuids = mainViewModel.serversCache.map { it.guid }.toSet()
+
+                // 2. استيراد السيرفر الجديد
+                val (count, countSub) = AngConfigManager.importBatchConfig(server, mainViewModel.subscriptionId, true)
+                delay(500L)
+
+                withContext(Dispatchers.Main) {
+                    if (count > 0) { 
+                        mainViewModel.reloadServerList()
+                        toast(getString(R.string.title_import_config_count, count))
+                        
+                        // 3. صيد السيرفرات الجديدة وحفظها
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            delay(1500L) // ننتظر قليلاً حتى تتحدث القائمة
+                            val afterGuids = mainViewModel.serversCache.map { it.guid }.toSet()
+                            val newGuids = afterGuids - beforeGuids
+                            if (newGuids.isNotEmpty()) {
+                                V2rayCrypt.addProtectedGuids(this@MainActivity, newGuids)
+                            }
+                        }
+                    } else if (countSub > 0) {
+                        setupGroupTab()
+                    } else {
+                        toastError(R.string.toast_failure)
+                    }
+                    hideLoading()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { toastError(R.string.toast_failure); hideLoading() }
+                Log.e(AppConfig.TAG, "Failed to import encrypted batch config", e)
+            }
         }
     }
 
@@ -575,10 +607,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 }
 
 // =======================================================
-// خوارزمية التشفير (AES) الخاصة بتطبيقك (Code By Gemini)
+// خوارزمية التشفير والقائمة السرية لحماية السيرفرات 
 // =======================================================
 object V2rayCrypt {
     private const val SECRET_KEY = "DarkTunlKey12345" 
+    private const val PREFS_NAME = "V2rayProtectedConfigs"
+    private const val KEY_GUIDS = "ProtectedGuids"
 
     fun encrypt(data: String): String {
         return try {
@@ -604,5 +638,20 @@ object V2rayCrypt {
         } catch (e: Exception) {
             ""
         }
+    }
+
+    // إضافة معرفات السيرفرات المشفرة للقائمة السرية
+    fun addProtectedGuids(context: Context, newGuids: Set<String>) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(KEY_GUIDS, mutableSetOf()) ?: mutableSetOf()
+        val updated = current.toMutableSet().apply { addAll(newGuids) }
+        prefs.edit().putStringSet(KEY_GUIDS, updated).apply()
+    }
+
+    // التحقق مما إذا كان السيرفر محمي أم لا
+    fun isProtected(context: Context, guid: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(KEY_GUIDS, emptySet()) ?: emptySet()
+        return current.contains(guid)
     }
 }
