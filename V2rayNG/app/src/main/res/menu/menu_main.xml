@@ -20,6 +20,12 @@
                 android:id="@+id/import_clipboard"
                 android:title="@string/menu_item_import_config_clipboard"
                 app:showAsAction="never" />
+            
+            <item
+                android:id="@+id/import_clipboard_encrypted"
+                android:title="استيراد التكوين من الحافظة المشفرة"
+                app:showAsAction="never" />
+
             <item
                 android:id="@+id/import_local"
                 android:title="@string/menu_item_import_config_local"
