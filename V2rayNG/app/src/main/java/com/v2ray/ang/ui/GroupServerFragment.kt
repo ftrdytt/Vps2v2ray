@@ -1,5 +1,8 @@
 package com.v2ray.ang.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -72,11 +75,8 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             if (mainViewModel.subscriptionId != subId) {
                 return@observe
             }
-            // Log.d(TAG, "GroupServerFragment updateListAction subId=$subId")
             adapter.setData(mainViewModel.serversCache, index)
         }
-
-        // Log.d(TAG, "GroupServerFragment onViewCreated: subId=$subId")
     }
 
     override fun onResume() {
@@ -87,22 +87,38 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
     /**
      * Shares server configuration
      * Displays a dialog with sharing options and executes the selected action
-     * @param guid The server unique identifier
-     * @param profile The server configuration
-     * @param position The position in the list
-     * @param shareOptions The list of share options
-     * @param skip The number of options to skip
      */
-    private fun shareServer(guid: String, profile: ProfileItem, position: Int, shareOptions: List<String>, skip: Int) {
-        AlertDialog.Builder(ownerActivity).setItems(shareOptions.toTypedArray()) { _, i ->
+    private fun shareServer(guid: String, profile: ProfileItem, position: Int, baseOptions: List<String>, skip: Int) {
+        // إضافة خيار التشفير الجديد إلى القائمة
+        val shareOptions = baseOptions.toMutableList()
+        val encryptedOptionName = "تصدير إلى الحافظة مشفر"
+        
+        // لا نظهر خيار التشفير للملفات المخصصة (Custom) لأنها لا تدعم الروابط عادة
+        if (profile.configType != EConfigType.CUSTOM && profile.configType != EConfigType.POLICYGROUP) {
+            shareOptions.add(1, encryptedOptionName) // نضعه بعد خيار QR Code مباشرة
+        }
+
+        AlertDialog.Builder(ownerActivity).setItems(shareOptions.toTypedArray()) { _, index ->
             try {
-                when (i + skip) {
-                    0 -> showQRCode(guid)
-                    1 -> share2Clipboard(guid)
-                    2 -> shareFullContent(guid)
-                    3 -> editServer(guid, profile)
-                    4 -> removeServer(guid, position)
-                    else -> ownerActivity.toast("else")
+                val selectedItem = shareOptions[index]
+                if (selectedItem == encryptedOptionName) {
+                    shareEncryptedClipboard(guid)
+                } else {
+                    // منطق الخيارات الأصلية مع تعديل بسيط للفهرس (Index) بسبب إضافة عنصر جديد
+                    val originalIndex = if (index > shareOptions.indexOf(encryptedOptionName) && shareOptions.contains(encryptedOptionName)) {
+                        index - 1
+                    } else {
+                        index
+                    }
+
+                    when (originalIndex + skip) {
+                        0 -> showQRCode(guid)
+                        1 -> share2Clipboard(guid)
+                        2 -> shareFullContent(guid)
+                        3 -> editServer(guid, profile)
+                        4 -> removeServer(guid, position)
+                        else -> ownerActivity.toast("else")
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(AppConfig.TAG, "Error when sharing server", e)
@@ -110,9 +126,33 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }.show()
     }
 
+    // --- الدالة الجديدة الخاصة بنسخ الكونفج بعد تشفيره ---
+    private fun shareEncryptedClipboard(guid: String) {
+        val conf = AngConfigManager.share2String(guid)
+        if (conf.isNullOrEmpty()) {
+            ownerActivity.toastError(R.string.toast_failure)
+            return
+        }
+        
+        try {
+            // تشفير الكونفج باستخدام الكلاس الموجود في MainActivity
+            val encryptedConf = V2rayCrypt.encrypt(conf)
+            if (encryptedConf.isNotEmpty()) {
+                val clipboard = ownerActivity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("Encrypted V2ray Config", encryptedConf)
+                clipboard.setPrimaryClip(clip)
+                ownerActivity.toast("تم نسخ التكوين المشفر بنجاح!")
+            } else {
+                ownerActivity.toastError(R.string.toast_failure)
+            }
+        } catch (e: Exception) {
+            ownerActivity.toastError(R.string.toast_failure)
+            Log.e(AppConfig.TAG, "Error encrypting server", e)
+        }
+    }
+
     /**
      * Displays QR code for the server configuration
-     * @param guid The server unique identifier
      */
     private fun showQRCode(guid: String) {
         val ivBinding = ItemQrcodeBinding.inflate(LayoutInflater.from(ownerActivity))
@@ -127,7 +167,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
 
     /**
      * Shares server configuration to clipboard
-     * @param guid The server unique identifier
      */
     private fun share2Clipboard(guid: String) {
         if (AngConfigManager.share2Clipboard(ownerActivity, guid) == 0) {
@@ -139,7 +178,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
 
     /**
      * Shares full server configuration content to clipboard
-     * @param guid The server unique identifier
      */
     private fun shareFullContent(guid: String) {
         ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
@@ -156,9 +194,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
 
     /**
      * Edits server configuration
-     * Opens appropriate editing interface based on configuration type
-     * @param guid The server unique identifier
-     * @param profile The server configuration
      */
     private fun editServer(guid: String, profile: ProfileItem) {
         val intent = Intent().putExtra("guid", guid)
@@ -181,9 +216,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
 
     /**
      * Removes server configuration
-     * Handles confirmation dialog and related checks
-     * @param guid The server unique identifier
-     * @param position The position in the list
      */
     private fun removeServer(guid: String, position: Int) {
         if (guid == MmkvManager.getSelectServer()) {
@@ -205,21 +237,11 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }
     }
 
-    /**
-     * Executes the actual server removal process
-     * @param guid The server unique identifier
-     * @param position The position in the list
-     */
     private fun removeServerSub(guid: String, position: Int) {
         ownerActivity.mainViewModel.removeServer(guid)
         adapter.removeServerSub(guid, position)
     }
 
-    /**
-     * Sets the selected server
-     * Updates UI and restarts service if needed
-     * @param guid The server unique identifier to select
-     */
     private fun setSelectServer(guid: String) {
         val selected = MmkvManager.getSelectServer()
         if (guid != selected) {
