@@ -4,12 +4,13 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -31,7 +32,6 @@ import com.v2ray.ang.helper.SimpleItemTouchHelperCallback
 import com.v2ray.ang.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.io.File
 
 class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
     private val ownerActivity: MainActivity
@@ -40,6 +40,30 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
     private lateinit var adapter: MainRecyclerAdapter
     private var itemTouchHelper: ItemTouchHelper? = null
     private val subId: String by lazy { arguments?.getString(ARG_SUB_ID).orEmpty() }
+
+    // متغير لحفظ النص المشفر مؤقتاً حتى يختار المستخدم مكان الحفظ
+    private var pendingEncryptedConfigToSave: String? = null
+
+    // نافذة حفظ الملف (تفتح مدير الملفات ليختار المستخدم المكان)
+    private val saveEncryptedFileLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val content = pendingEncryptedConfigToSave
+                if (!content.isNullOrEmpty()) {
+                    ownerActivity.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                        outputStream.write(content.toByteArray())
+                    }
+                    ownerActivity.toast("تم حفظ الملف بنجاح!")
+                } else {
+                    ownerActivity.toastError(R.string.toast_failure)
+                }
+            } catch (e: Exception) {
+                ownerActivity.toastError(R.string.toast_failure)
+                Log.e(AppConfig.TAG, "Failed to write file", e)
+            }
+        }
+        pendingEncryptedConfigToSave = null // تفريغ المتغير بعد الانتهاء
+    }
 
     private val share_method: Array<out String> by lazy {
         ownerActivity.resources.getStringArray(R.array.share_method)
@@ -105,7 +129,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             try {
                 val selectedItem = shareOptions[index]
                 
-                // توجيه الأوامر بناءً على اختيار المستخدم
                 when (selectedItem) {
                     encryptedFileOptionName -> exportEncryptedFile(guid)
                     encryptedOptionName -> shareEncryptedClipboard(guid)
@@ -127,7 +150,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }.show()
     }
 
-    // --- دالة تصدير الكونفج إلى ملف (.ashor) ---
+    // --- دالة تصدير الكونفج إلى ملف (.ashor) مع فتح مدير الملفات ---
     private fun exportEncryptedFile(guid: String) {
         if (AngConfigManager.share2Clipboard(ownerActivity, guid) != 0) {
             ownerActivity.toastError(R.string.toast_failure)
@@ -147,18 +170,14 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             val encryptedConf = V2rayCrypt.encrypt(conf)
             
             if (encryptedConf.isNotEmpty()) {
-                // حفظ الملف في مجلد التنزيلات (Downloads)
-                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                if (!downloadsDir.exists()) {
-                    downloadsDir.mkdirs()
-                }
+                // حفظ النص المشفر في المتغير
+                pendingEncryptedConfigToSave = encryptedConf
                 
-                // إنشاء اسم فريد للملف
+                // تحديد اسم الملف الافتراضي
                 val fileName = "Config_${System.currentTimeMillis()}.ashor"
-                val file = File(downloadsDir, fileName)
                 
-                file.writeText(encryptedConf)
-                ownerActivity.toast("تم حفظ الملف في التنزيلات (Downloads)\nباسم: $fileName")
+                // فتح نافذة اختيار مكان الحفظ
+                saveEncryptedFileLauncher.launch(fileName)
             } else {
                 ownerActivity.toastError(R.string.toast_failure)
             }
