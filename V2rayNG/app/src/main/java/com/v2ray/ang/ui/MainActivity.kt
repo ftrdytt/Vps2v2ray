@@ -155,7 +155,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
     
     // --- دالة لمعالجة فتح التطبيق من خلال ملف (.ashor) ---
-    override fun onNewIntent(intent: Intent?) {
+    // تم تصحيح الخطأ هنا (إزالة علامة الاستفهام من Intent)
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
     }
