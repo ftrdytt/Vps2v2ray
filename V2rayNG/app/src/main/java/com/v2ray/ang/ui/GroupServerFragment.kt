@@ -126,19 +126,29 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }.show()
     }
 
-    // --- الدالة الجديدة الخاصة بنسخ الكونفج بعد تشفيره ---
+    // --- الدالة المحدثة: تستخدم حيلة النسخ للحافظة ثم التشفير ---
     private fun shareEncryptedClipboard(guid: String) {
-        val conf = AngConfigManager.share2String(guid)
-        if (conf.isNullOrEmpty()) {
+        // 1. نسخ الكونفج العادي للحافظة باستخدام دالة التطبيق الأصلية
+        if (AngConfigManager.share2Clipboard(ownerActivity, guid) != 0) {
             ownerActivity.toastError(R.string.toast_failure)
             return
         }
         
         try {
-            // تشفير الكونفج باستخدام الكلاس الموجود في MainActivity
+            // 2. قراءة الكونفج العادي الذي تم نسخه للتو من الحافظة
+            val clipboard = ownerActivity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val conf = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+            
+            if (conf.isNullOrEmpty()) {
+                ownerActivity.toastError(R.string.toast_failure)
+                return
+            }
+            
+            // 3. تشفير الكونفج
             val encryptedConf = V2rayCrypt.encrypt(conf)
+            
+            // 4. وضع الكونفج المشفر في الحافظة بدلاً من العادي
             if (encryptedConf.isNotEmpty()) {
-                val clipboard = ownerActivity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 val clip = ClipData.newPlainText("Encrypted V2ray Config", encryptedConf)
                 clipboard.setPrimaryClip(clip)
                 ownerActivity.toast("تم نسخ التكوين المشفر بنجاح!")
