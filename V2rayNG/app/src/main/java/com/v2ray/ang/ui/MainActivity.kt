@@ -12,6 +12,7 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.graphics.Color
+import android.util.Base64
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -43,6 +44,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
 
 class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener {
     private val binding by lazy {
@@ -210,10 +213,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun setTestState(content: String?) {
-        // تحديث النص في الواجهة الأصلية
         binding.tvTestState.text = content
         
-        // تحديث البنق في الواجهة الخضراء بشكل أنيق
         if (content != null) {
             if (content.contains("ms", ignoreCase = true)) {
                 binding.tvGreenPing.text = content
@@ -234,39 +235,33 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
 
         if (isRunning) {
-            // حالة الاتصال
             binding.fab.setImageResource(R.drawable.ic_stop_24dp)
             binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
             binding.fab.contentDescription = getString(R.string.action_stop_service)
             setTestState(getString(R.string.connection_connected))
             binding.layoutTest.isFocusable = true
             
-            // تحديث الواجهة الخضراء
             binding.btnGreenConnect.text = "قطع الاتصال"
             binding.btnGreenConnect.backgroundTintList = ColorStateList.valueOf(Color.RED)
             
-            // تشغيل مؤقت البنق ليعمل كل ثانية
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
                 while (true) {
                     mainViewModel.testCurrentServerRealPing()
-                    delay(1000) // انتظار 1 ثانية
+                    delay(1000)
                 }
             }
             
         } else {
-            // حالة عدم الاتصال
             binding.fab.setImageResource(R.drawable.ic_play_24dp)
             binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
             binding.fab.contentDescription = getString(R.string.tasker_start_service)
             setTestState(getString(R.string.connection_not_connected))
             binding.layoutTest.isFocusable = false
 
-            // تحديث الواجهة الخضراء
             binding.btnGreenConnect.text = "اتصال"
             binding.btnGreenConnect.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2E7D32")) 
             
-            // إيقاف مؤقت البنق
             pingJob?.cancel()
             binding.tvGreenPing.text = "--- ms"
         }
@@ -306,6 +301,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
         R.id.import_qrcode -> { importQRcode(); true }
         R.id.import_clipboard -> { importClipboard(); true }
+        
+        // --- تمت إضافة خيار استيراد الحافظة المشفرة هنا ---
+        R.id.import_clipboard_encrypted -> { importClipboardEncrypted(); true }
+
         R.id.import_local -> { importConfigLocal(); true }
         R.id.import_manually_policy_group -> { importManually(EConfigType.POLICYGROUP.value); true }
         R.id.import_manually_vmess -> { importManually(EConfigType.VMESS.value); true }
@@ -352,6 +351,29 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun importClipboard(): Boolean {
         try { importBatchConfig(Utils.getClipboard(this)) } 
         catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to import config from clipboard", e); return false }
+        return true
+    }
+
+    // --- الدالة الجديدة الخاصة بالاستيراد المشفر وفك التشفير ---
+    private fun importClipboardEncrypted(): Boolean {
+        try {
+            val clipboard = Utils.getClipboard(this)
+            if (clipboard.isNullOrEmpty()) {
+                toast("الحافظة فارغة!")
+                return false
+            }
+            // محاولة فك التشفير باستخدام الكلاس الجديد بالأسفل
+            val decrypted = V2rayCrypt.decrypt(clipboard)
+            if (decrypted.isEmpty()) {
+                toast("الكود المشفر غير صالح أو غير مدعوم!")
+                return false
+            }
+            // إضافة السيرفر بعد فك التشفير بنجاح
+            importBatchConfig(decrypted)
+        } catch (e: Exception) {
+            Log.e(AppConfig.TAG, "Failed to import encrypted config from clipboard", e)
+            return false
+        }
         return true
     }
 
@@ -483,7 +505,49 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     override fun onDestroy() {
         tabMediator?.detach()
-        pingJob?.cancel() // لتفادي مشاكل الذاكرة عند إغلاق التطبيق
+        pingJob?.cancel() 
         super.onDestroy()
+    }
+}
+
+// =======================================================
+// خوارزمية التشفير (AES) الخاصة بتطبيقك (Code By Gemini)
+// =======================================================
+object V2rayCrypt {
+    // المفتاح السري (يجب أن يكون حصرياً لتطبيقك)
+    // يتكون من 16 حرف (16 Bytes) ليعمل مع نظام AES بشكل صحيح
+    private const val SECRET_KEY = "DarkTunlKey12345" 
+
+    // دالة التشفير (نستخدمها عند التصدير)
+    fun encrypt(data: String): String {
+        return try {
+            val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
+            val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec)
+            val encryptedBytes = cipher.doFinal(data.toByteArray())
+            // إضافة كلمة مميزة في البداية لنتعرف على أكوادنا بسهولة
+            "ENC://" + Base64.encodeToString(encryptedBytes, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    // دالة فك التشفير (نستخدمها عند الاستيراد)
+    fun decrypt(data: String): String {
+        return try {
+            // نتحقق إذا كان الكود مسروقاً أو لا يحتوي على رمزنا
+            if (!data.startsWith("ENC://")) return ""
+            
+            // نزيل الرمز المميز قبل فك التشفير
+            val actualData = data.replace("ENC://", "")
+            
+            val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
+            val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
+            cipher.init(Cipher.DECRYPT_MODE, keySpec)
+            val decryptedBytes = cipher.doFinal(Base64.decode(actualData, Base64.NO_WRAP))
+            String(decryptedBytes)
+        } catch (e: Exception) {
+            ""
+        }
     }
 }
