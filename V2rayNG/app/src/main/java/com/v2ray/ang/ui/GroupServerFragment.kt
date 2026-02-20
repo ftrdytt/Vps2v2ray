@@ -115,15 +115,28 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
      * Displays a dialog with sharing options and executes the selected action
      */
     private fun shareServer(guid: String, profile: ProfileItem, position: Int, baseOptions: List<String>, skip: Int) {
-        val shareOptions = baseOptions.toMutableList()
         val encryptedFileOptionName = "تصدير إلى ملف مشفر (.ashor)"
         val encryptedOptionName = "تصدير إلى الحافظة مشفر"
         
-        // لا نظهر خيارات التشفير للملفات المخصصة (Custom)
-        if (profile.configType != EConfigType.CUSTOM && profile.configType != EConfigType.POLICYGROUP) {
-            shareOptions.add(1, encryptedFileOptionName)
-            shareOptions.add(2, encryptedOptionName)
+        // ========================================================
+        // فحص هل السيرفر محمي أم لا
+        // ========================================================
+        val isProtected = V2rayCrypt.isProtected(requireContext(), guid)
+
+        val shareOptions: MutableList<String>
+        
+        if (isProtected) {
+            // إذا كان محمياً: إظهار خيارات التشفير فقط
+            shareOptions = mutableListOf(encryptedFileOptionName, encryptedOptionName)
+        } else {
+            // إذا كان عادياً: إظهار كل الخيارات
+            shareOptions = baseOptions.toMutableList()
+            if (profile.configType != EConfigType.CUSTOM && profile.configType != EConfigType.POLICYGROUP) {
+                shareOptions.add(1, encryptedFileOptionName)
+                shareOptions.add(2, encryptedOptionName)
+            }
         }
+        // ========================================================
 
         AlertDialog.Builder(ownerActivity).setItems(shareOptions.toTypedArray()) { _, index ->
             try {
@@ -133,6 +146,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                     encryptedFileOptionName -> exportEncryptedFile(guid)
                     encryptedOptionName -> shareEncryptedClipboard(guid)
                     else -> {
+                        // يتم تنفيذ هذا الجزء فقط إذا كان السيرفر غير محمي (عادي)
                         val originalIndex = baseOptions.indexOf(selectedItem)
                         when (originalIndex + skip) {
                             0 -> showQRCode(guid)
