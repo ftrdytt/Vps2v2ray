@@ -44,6 +44,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 
@@ -73,11 +75,20 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    // --- استقبال الملف المشفر من مدير الملفات ---
+    private val openEncryptedFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            readEncryptedContentFromUri(uri)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
         
+        // --- التقاط الملفات القادمة من التلكرام أو الواتساب أو مدير الملفات ---
+        handleIntent(intent)
+
         // --- ضبط أحجام الشاشات للسحب ---
         val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
@@ -140,6 +151,20 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         mainViewModel.reloadServerList()
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {
+        }
+    }
+    
+    // --- دالة لمعالجة فتح التطبيق من خلال ملف (.ashor) ---
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_VIEW) {
+            intent.data?.let { uri ->
+                readEncryptedContentFromUri(uri)
+            }
         }
     }
 
@@ -302,8 +327,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         R.id.import_qrcode -> { importQRcode(); true }
         R.id.import_clipboard -> { importClipboard(); true }
         
-        // --- تمت إضافة خيار استيراد الحافظة المشفرة هنا ---
         R.id.import_clipboard_encrypted -> { importClipboardEncrypted(); true }
+        
+        // --- تمت إضافة خيار استيراد ملف مشفر من مدير الملفات ---
+        R.id.import_encrypted_file -> { importEncryptedFile(); true }
 
         R.id.import_local -> { importConfigLocal(); true }
         R.id.import_manually_policy_group -> { importManually(EConfigType.POLICYGROUP.value); true }
@@ -354,7 +381,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         return true
     }
 
-    // --- الدالة الجديدة الخاصة بالاستيراد المشفر وفك التشفير ---
     private fun importClipboardEncrypted(): Boolean {
         try {
             val clipboard = Utils.getClipboard(this)
@@ -362,19 +388,56 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 toast("الحافظة فارغة!")
                 return false
             }
-            // محاولة فك التشفير باستخدام الكلاس الجديد بالأسفل
             val decrypted = V2rayCrypt.decrypt(clipboard)
             if (decrypted.isEmpty()) {
                 toast("الكود المشفر غير صالح أو غير مدعوم!")
                 return false
             }
-            // إضافة السيرفر بعد فك التشفير بنجاح
             importBatchConfig(decrypted)
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to import encrypted config from clipboard", e)
             return false
         }
         return true
+    }
+    
+    // --- دالة اختيار الملف المشفر من الجهاز ---
+    private fun importEncryptedFile() {
+        try {
+            // فتح مدير الملفات لاختيار أي ملف (أو ملفات .ashor إن أمكن)
+            openEncryptedFileLauncher.launch(arrayOf("*/*"))
+        } catch (e: Exception) {
+            Log.e(AppConfig.TAG, "Failed to open file picker", e)
+        }
+    }
+    
+    // --- دالة قراءة الملف المشفر وفك تشفيره ---
+    private fun readEncryptedContentFromUri(uri: Uri) {
+        try {
+            val inputStream = contentResolver.openInputStream(uri)
+            val reader = BufferedReader(InputStreamReader(inputStream))
+            val fileContent = reader.readText()
+            reader.close()
+            
+            if (fileContent.isEmpty()) {
+                toast("الملف فارغ!")
+                return
+            }
+            
+            val decrypted = V2rayCrypt.decrypt(fileContent)
+            if (decrypted.isEmpty()) {
+                toast("الملف غير صالح أو ليس ملف .ashor صحيح!")
+                return
+            }
+            
+            // إضافة السيرفر بعد الفك
+            importBatchConfig(decrypted)
+            toast("تم استيراد الملف بنجاح!")
+            
+        } catch (e: Exception) {
+            Log.e(AppConfig.TAG, "Failed to read encrypted content from URI", e)
+            toast("حدث خطأ أثناء قراءة الملف.")
+        }
     }
 
     private fun importBatchConfig(server: String?) {
@@ -514,33 +577,24 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 // خوارزمية التشفير (AES) الخاصة بتطبيقك (Code By Gemini)
 // =======================================================
 object V2rayCrypt {
-    // المفتاح السري (يجب أن يكون حصرياً لتطبيقك)
-    // يتكون من 16 حرف (16 Bytes) ليعمل مع نظام AES بشكل صحيح
     private const val SECRET_KEY = "DarkTunlKey12345" 
 
-    // دالة التشفير (نستخدمها عند التصدير)
     fun encrypt(data: String): String {
         return try {
             val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
             val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
             cipher.init(Cipher.ENCRYPT_MODE, keySpec)
             val encryptedBytes = cipher.doFinal(data.toByteArray())
-            // إضافة كلمة مميزة في البداية لنتعرف على أكوادنا بسهولة
             "ENC://" + Base64.encodeToString(encryptedBytes, Base64.NO_WRAP)
         } catch (e: Exception) {
             ""
         }
     }
 
-    // دالة فك التشفير (نستخدمها عند الاستيراد)
     fun decrypt(data: String): String {
         return try {
-            // نتحقق إذا كان الكود مسروقاً أو لا يحتوي على رمزنا
             if (!data.startsWith("ENC://")) return ""
-            
-            // نزيل الرمز المميز قبل فك التشفير
             val actualData = data.replace("ENC://", "")
-            
             val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
             val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
             cipher.init(Cipher.DECRYPT_MODE, keySpec)
