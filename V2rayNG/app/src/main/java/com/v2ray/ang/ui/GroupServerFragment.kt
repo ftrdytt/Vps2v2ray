@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Environment
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -30,6 +31,7 @@ import com.v2ray.ang.helper.SimpleItemTouchHelperCallback
 import com.v2ray.ang.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
 
 class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
     private val ownerActivity: MainActivity
@@ -89,35 +91,34 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
      * Displays a dialog with sharing options and executes the selected action
      */
     private fun shareServer(guid: String, profile: ProfileItem, position: Int, baseOptions: List<String>, skip: Int) {
-        // إضافة خيار التشفير الجديد إلى القائمة
         val shareOptions = baseOptions.toMutableList()
+        val encryptedFileOptionName = "تصدير إلى ملف مشفر (.ashor)"
         val encryptedOptionName = "تصدير إلى الحافظة مشفر"
         
-        // لا نظهر خيار التشفير للملفات المخصصة (Custom) لأنها لا تدعم الروابط عادة
+        // لا نظهر خيارات التشفير للملفات المخصصة (Custom)
         if (profile.configType != EConfigType.CUSTOM && profile.configType != EConfigType.POLICYGROUP) {
-            shareOptions.add(1, encryptedOptionName) // نضعه بعد خيار QR Code مباشرة
+            shareOptions.add(1, encryptedFileOptionName)
+            shareOptions.add(2, encryptedOptionName)
         }
 
         AlertDialog.Builder(ownerActivity).setItems(shareOptions.toTypedArray()) { _, index ->
             try {
                 val selectedItem = shareOptions[index]
-                if (selectedItem == encryptedOptionName) {
-                    shareEncryptedClipboard(guid)
-                } else {
-                    // منطق الخيارات الأصلية مع تعديل بسيط للفهرس (Index) بسبب إضافة عنصر جديد
-                    val originalIndex = if (index > shareOptions.indexOf(encryptedOptionName) && shareOptions.contains(encryptedOptionName)) {
-                        index - 1
-                    } else {
-                        index
-                    }
-
-                    when (originalIndex + skip) {
-                        0 -> showQRCode(guid)
-                        1 -> share2Clipboard(guid)
-                        2 -> shareFullContent(guid)
-                        3 -> editServer(guid, profile)
-                        4 -> removeServer(guid, position)
-                        else -> ownerActivity.toast("else")
+                
+                // توجيه الأوامر بناءً على اختيار المستخدم
+                when (selectedItem) {
+                    encryptedFileOptionName -> exportEncryptedFile(guid)
+                    encryptedOptionName -> shareEncryptedClipboard(guid)
+                    else -> {
+                        val originalIndex = baseOptions.indexOf(selectedItem)
+                        when (originalIndex + skip) {
+                            0 -> showQRCode(guid)
+                            1 -> share2Clipboard(guid)
+                            2 -> shareFullContent(guid)
+                            3 -> editServer(guid, profile)
+                            4 -> removeServer(guid, position)
+                            else -> ownerActivity.toast("else")
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -126,16 +127,14 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }.show()
     }
 
-    // --- الدالة المحدثة: تستخدم حيلة النسخ للحافظة ثم التشفير ---
-    private fun shareEncryptedClipboard(guid: String) {
-        // 1. نسخ الكونفج العادي للحافظة باستخدام دالة التطبيق الأصلية
+    // --- دالة تصدير الكونفج إلى ملف (.ashor) ---
+    private fun exportEncryptedFile(guid: String) {
         if (AngConfigManager.share2Clipboard(ownerActivity, guid) != 0) {
             ownerActivity.toastError(R.string.toast_failure)
             return
         }
         
         try {
-            // 2. قراءة الكونفج العادي الذي تم نسخه للتو من الحافظة
             val clipboard = ownerActivity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val conf = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
             
@@ -144,10 +143,49 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 return
             }
             
-            // 3. تشفير الكونفج
+            // تشفير الكونفج
             val encryptedConf = V2rayCrypt.encrypt(conf)
             
-            // 4. وضع الكونفج المشفر في الحافظة بدلاً من العادي
+            if (encryptedConf.isNotEmpty()) {
+                // حفظ الملف في مجلد التنزيلات (Downloads)
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (!downloadsDir.exists()) {
+                    downloadsDir.mkdirs()
+                }
+                
+                // إنشاء اسم فريد للملف
+                val fileName = "Config_${System.currentTimeMillis()}.ashor"
+                val file = File(downloadsDir, fileName)
+                
+                file.writeText(encryptedConf)
+                ownerActivity.toast("تم حفظ الملف في التنزيلات (Downloads)\nباسم: $fileName")
+            } else {
+                ownerActivity.toastError(R.string.toast_failure)
+            }
+        } catch (e: Exception) {
+            ownerActivity.toastError(R.string.toast_failure)
+            Log.e(AppConfig.TAG, "Error exporting encrypted file", e)
+        }
+    }
+
+    // --- دالة نسخ الكونفج المشفر للحافظة ---
+    private fun shareEncryptedClipboard(guid: String) {
+        if (AngConfigManager.share2Clipboard(ownerActivity, guid) != 0) {
+            ownerActivity.toastError(R.string.toast_failure)
+            return
+        }
+        
+        try {
+            val clipboard = ownerActivity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val conf = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
+            
+            if (conf.isNullOrEmpty()) {
+                ownerActivity.toastError(R.string.toast_failure)
+                return
+            }
+            
+            val encryptedConf = V2rayCrypt.encrypt(conf)
+            
             if (encryptedConf.isNotEmpty()) {
                 val clip = ClipData.newPlainText("Encrypted V2ray Config", encryptedConf)
                 clipboard.setPrimaryClip(clip)
