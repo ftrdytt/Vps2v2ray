@@ -39,6 +39,7 @@ import com.v2ray.ang.handler.V2RayServiceManager
 import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -51,6 +52,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     val mainViewModel: MainViewModel by viewModels()
     private lateinit var groupPagerAdapter: GroupPagerAdapter
     private var tabMediator: TabLayoutMediator? = null
+    
+    // متغير للتحكم في تحديث البنق كل ثانية
+    private var pingJob: Job? = null
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == RESULT_OK) {
@@ -78,7 +82,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         binding.greenScreenContainer.layoutParams.width = screenWidth
 
         // --- برمجة زر الاتصال في الواجهة الخضراء ---
-        // عند الضغط عليه، يقوم بنفس وظيفة زر التشغيل الأصلي
         binding.btnGreenConnect.setOnClickListener {
             handleFabAction()
         }
@@ -207,27 +210,50 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun setTestState(content: String?) {
+        // تحديث النص في الواجهة الأصلية
         binding.tvTestState.text = content
+        
+        // تحديث البنق في الواجهة الخضراء بشكل أنيق
+        if (content != null) {
+            if (content.contains("ms", ignoreCase = true)) {
+                binding.tvGreenPing.text = content
+            } else if (content == getString(R.string.connection_connected)) {
+                binding.tvGreenPing.text = "متصل..."
+            }
+        } else {
+            binding.tvGreenPing.text = "--- ms"
+        }
     }
 
     private  fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         if (isLoading) {
             binding.fab.setImageResource(R.drawable.ic_fab_check)
             binding.btnGreenConnect.text = "جاري التحميل..."
+            binding.tvGreenPing.text = "--- ms"
             return
         }
 
         if (isRunning) {
-            // حالة الاتصال: تغيير أيقونة الزر الأصلي وتغيير نص الزر الجديد
+            // حالة الاتصال
             binding.fab.setImageResource(R.drawable.ic_stop_24dp)
             binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
             binding.fab.contentDescription = getString(R.string.action_stop_service)
             setTestState(getString(R.string.connection_connected))
             binding.layoutTest.isFocusable = true
             
-            // تحديث الزر في الواجهة الخضراء
+            // تحديث الواجهة الخضراء
             binding.btnGreenConnect.text = "قطع الاتصال"
             binding.btnGreenConnect.backgroundTintList = ColorStateList.valueOf(Color.RED)
+            
+            // تشغيل مؤقت البنق ليعمل كل ثانية
+            pingJob?.cancel()
+            pingJob = lifecycleScope.launch {
+                while (true) {
+                    mainViewModel.testCurrentServerRealPing()
+                    delay(1000) // انتظار 1 ثانية
+                }
+            }
+            
         } else {
             // حالة عدم الاتصال
             binding.fab.setImageResource(R.drawable.ic_play_24dp)
@@ -236,10 +262,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             setTestState(getString(R.string.connection_not_connected))
             binding.layoutTest.isFocusable = false
 
-            // تحديث الزر في الواجهة الخضراء
+            // تحديث الواجهة الخضراء
             binding.btnGreenConnect.text = "اتصال"
-            // لون أخضر غامق للاتصال
             binding.btnGreenConnect.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2E7D32")) 
+            
+            // إيقاف مؤقت البنق
+            pingJob?.cancel()
+            binding.tvGreenPing.text = "--- ms"
         }
     }
 
@@ -454,6 +483,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     override fun onDestroy() {
         tabMediator?.detach()
+        pingJob?.cancel() // لتفادي مشاكل الذاكرة عند إغلاق التطبيق
         super.onDestroy()
     }
 }
