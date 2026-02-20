@@ -388,7 +388,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 toast("الكود المشفر غير صالح أو غير مدعوم!")
                 return false
             }
-            // استدعاء دالة الاستيراد الخاصة بنا التي تحفظ السيرفر كـ "مشفر"
             importEncryptedBatchConfig(decrypted)
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to import encrypted config from clipboard", e)
@@ -423,9 +422,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 return
             }
             
-            // استدعاء دالة الاستيراد الخاصة بنا التي تحفظ السيرفر كـ "مشفر"
             importEncryptedBatchConfig(decrypted)
-            toast("تم استيراد الملف بنجاح!")
             
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to read encrypted content from URI", e)
@@ -433,41 +430,51 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // --- الدالة الذكية الجديدة لاصطياد السيرفرات المشفرة وحفظها في القائمة السرية ---
+    // =========================================================================
+    // تم التعديل هنا: حفظ السيرفر في القائمة السرية أولاً، ثم تحديث الشاشة فوراً
+    // =========================================================================
     private fun importEncryptedBatchConfig(server: String?) {
         showLoading()
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // 1. أخذ لقطة لمعرفات السيرفرات الموجودة حالياً
-                val beforeGuids = mainViewModel.serversCache.map { it.guid }.toSet()
+                // 1. أخذ لقطة لمعرفات السيرفرات الموجودة حالياً من قاعدة البيانات مباشرة
+                val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
 
                 // 2. استيراد السيرفر الجديد
                 val (count, countSub) = AngConfigManager.importBatchConfig(server, mainViewModel.subscriptionId, true)
-                delay(500L)
 
-                withContext(Dispatchers.Main) {
-                    if (count > 0) { 
-                        mainViewModel.reloadServerList()
-                        toast(getString(R.string.title_import_config_count, count))
-                        
-                        // 3. صيد السيرفرات الجديدة وحفظها
-                        lifecycleScope.launch(Dispatchers.IO) {
-                            delay(1500L) // ننتظر قليلاً حتى تتحدث القائمة
-                            val afterGuids = mainViewModel.serversCache.map { it.guid }.toSet()
-                            val newGuids = afterGuids - beforeGuids
-                            if (newGuids.isNotEmpty()) {
-                                V2rayCrypt.addProtectedGuids(this@MainActivity, newGuids)
-                            }
-                        }
-                    } else if (countSub > 0) {
-                        setupGroupTab()
-                    } else {
-                        toastError(R.string.toast_failure)
+                if (count > 0) { 
+                    // 3. أخذ لقطة للقاعدة بعد الإضافة لاصطياد السيرفرات الجديدة
+                    val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
+                    val newGuids = afterGuids - beforeGuids
+                    
+                    // 4. حفظها في القائمة السرية فوراً
+                    if (newGuids.isNotEmpty()) {
+                        V2rayCrypt.addProtectedGuids(this@MainActivity, newGuids)
                     }
-                    hideLoading()
+
+                    // 5. بعد أن تم الحفظ السري بنجاح، نأمر الشاشة بالتحديث
+                    withContext(Dispatchers.Main) {
+                        mainViewModel.reloadServerList() // هنا الشاشة ستتحدث وستجد السيرفر محمياً
+                        toast("تم استيراد الملف بنجاح!")
+                        hideLoading()
+                    }
+                } else if (countSub > 0) {
+                    withContext(Dispatchers.Main) {
+                        setupGroupTab()
+                        hideLoading()
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        toastError(R.string.toast_failure)
+                        hideLoading()
+                    }
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { toastError(R.string.toast_failure); hideLoading() }
+                withContext(Dispatchers.Main) { 
+                    toastError(R.string.toast_failure)
+                    hideLoading() 
+                }
                 Log.e(AppConfig.TAG, "Failed to import encrypted batch config", e)
             }
         }
