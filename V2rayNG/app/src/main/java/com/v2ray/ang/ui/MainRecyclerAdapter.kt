@@ -55,12 +55,27 @@ class MainRecyclerAdapter(
 
             holder.itemView.setBackgroundColor(Color.TRANSPARENT)
 
-            //Name address
+            // Name
             holder.itemMainBinding.tvName.text = profile.remarks
-            holder.itemMainBinding.tvStatistics.text = getAddress(profile)
-            holder.itemMainBinding.tvType.text = profile.configType.name
+            
+            // ================================================================
+            // فحص هل السيرفر محمي أم لا باستخدام القائمة السرية
+            // ================================================================
+            val isProtected = V2rayCrypt.isProtected(context, guid)
 
-            //TestResult
+            if (isProtected) {
+                // إذا كان محمياً: إخفاء التفاصيل
+                holder.itemMainBinding.tvStatistics.visibility = View.GONE
+                holder.itemMainBinding.tvType.text = "Secure Config" // تغيير نوع السيرفر لكلمة محمية
+            } else {
+                // إذا لم يكن محمياً: إظهار التفاصيل العادية
+                holder.itemMainBinding.tvStatistics.visibility = View.VISIBLE
+                holder.itemMainBinding.tvStatistics.text = getAddress(profile)
+                holder.itemMainBinding.tvType.text = profile.configType.name
+            }
+            // ================================================================
+
+            // TestResult
             val aff = MmkvManager.decodeServerAffiliationInfo(guid)
             holder.itemMainBinding.tvTestResult.text = aff?.getTestDelayString().orEmpty()
             if ((aff?.testDelayMillis ?: 0L) < 0L) {
@@ -69,19 +84,19 @@ class MainRecyclerAdapter(
                 holder.itemMainBinding.tvTestResult.setTextColor(ContextCompat.getColor(context, R.color.colorPing))
             }
 
-            //layoutIndicator
+            // layoutIndicator
             if (guid == MmkvManager.getSelectServer()) {
                 holder.itemMainBinding.layoutIndicator.setBackgroundResource(R.color.colorIndicator)
             } else {
                 holder.itemMainBinding.layoutIndicator.setBackgroundResource(0)
             }
 
-            //subscription remarks
+            // subscription remarks
             val subRemarks = getSubscriptionRemarks(profile)
             holder.itemMainBinding.tvSubscription.text = subRemarks
             holder.itemMainBinding.layoutSubscription.visibility = if (subRemarks.isEmpty()) View.GONE else View.VISIBLE
 
-            //layout
+            // layout (أزرار التحكم)
             if (doubleColumnDisplay) {
                 holder.itemMainBinding.layoutShare.visibility = View.GONE
                 holder.itemMainBinding.layoutEdit.visibility = View.GONE
@@ -93,16 +108,27 @@ class MainRecyclerAdapter(
                 }
             } else {
                 holder.itemMainBinding.layoutShare.visibility = View.VISIBLE
-                holder.itemMainBinding.layoutEdit.visibility = View.VISIBLE
                 holder.itemMainBinding.layoutRemove.visibility = View.VISIBLE
                 holder.itemMainBinding.layoutMore.visibility = View.GONE
+
+                // ================================================================
+                // إذا كان محمياً: إخفاء زر التعديل لمنع السرقة
+                // ================================================================
+                if (isProtected) {
+                    holder.itemMainBinding.layoutEdit.visibility = View.GONE
+                } else {
+                    holder.itemMainBinding.layoutEdit.visibility = View.VISIBLE
+                }
 
                 holder.itemMainBinding.layoutShare.setOnClickListener {
                     adapterListener?.onShare(guid, profile, position, false)
                 }
 
                 holder.itemMainBinding.layoutEdit.setOnClickListener {
-                    adapterListener?.onEdit(guid, position, profile)
+                    // حماية إضافية: في حال تمكن بطريقة ما من الضغط عليه لا يفتح
+                    if (!isProtected) {
+                        adapterListener?.onEdit(guid, position, profile)
+                    }
                 }
                 holder.itemMainBinding.layoutRemove.setOnClickListener {
                     adapterListener?.onRemove(guid, position)
@@ -113,7 +139,6 @@ class MainRecyclerAdapter(
                 adapterListener?.onSelectServer(guid)
             }
         }
- 
     }
 
     /**
