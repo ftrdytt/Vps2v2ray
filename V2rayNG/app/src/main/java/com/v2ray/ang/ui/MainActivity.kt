@@ -154,10 +154,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
         
         // =========================================================
-        // جعل الواجهة الخضراء (واجهة الاتصال) هي الأولى عند الفتح
+        // جعل الواجهة الخضراء هي الأولى بطريقة مضمونة
         // =========================================================
-        binding.mainScrollView.post {
-            binding.mainScrollView.smoothScrollTo(screenWidth, 0)
+        lifecycleScope.launch(Dispatchers.Main) {
+            delay(50) // انتظار قصير جداً لضمان رسم الواجهة
+            binding.mainScrollView.scrollTo(screenWidth, 0)
         }
     }
     
