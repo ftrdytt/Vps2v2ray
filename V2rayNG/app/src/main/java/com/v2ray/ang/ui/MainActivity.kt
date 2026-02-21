@@ -12,6 +12,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewTreeObserver
 import android.graphics.Color
 import android.util.Base64
 import androidx.activity.OnBackPressedCallback
@@ -154,12 +155,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
         
         // =========================================================
-        // جعل الواجهة الخضراء هي الأولى بطريقة مضمونة
+        // الحل الجذري: القفز للواجهة الخضراء فور اكتمال رسم الشاشة
         // =========================================================
-        lifecycleScope.launch(Dispatchers.Main) {
-            delay(50) // انتظار قصير جداً لضمان رسم الواجهة
-            binding.mainScrollView.scrollTo(screenWidth, 0)
-        }
+        binding.mainScrollView.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                // إزالة المستمع حتى لا يتكرر الكود
+                binding.mainScrollView.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                // قفزة فورية (scrollTo) وليس سحب بطيء، لتبدو وكأنها الشاشة الرئيسية
+                binding.mainScrollView.scrollTo(screenWidth, 0)
+            }
+        })
     }
     
     override fun onNewIntent(intent: Intent) {
@@ -646,7 +651,6 @@ object V2rayCrypt {
         }
     }
 
-    // إضافة معرفات السيرفرات المشفرة للقائمة السرية
     fun addProtectedGuids(context: Context, newGuids: Set<String>) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val current = prefs.getStringSet(KEY_GUIDS, mutableSetOf()) ?: mutableSetOf()
@@ -654,7 +658,6 @@ object V2rayCrypt {
         prefs.edit().putStringSet(KEY_GUIDS, updated).apply()
     }
 
-    // التحقق مما إذا كان السيرفر محمي أم لا
     fun isProtected(context: Context, guid: String): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val current = prefs.getStringSet(KEY_GUIDS, emptySet()) ?: emptySet()
