@@ -152,6 +152,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {
         }
+        
+        // =========================================================
+        // جعل الواجهة الخضراء (واجهة الاتصال) هي الأولى عند الفتح
+        // =========================================================
+        binding.mainScrollView.post {
+            binding.mainScrollView.smoothScrollTo(screenWidth, 0)
+        }
     }
     
     override fun onNewIntent(intent: Intent) {
@@ -430,32 +437,23 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // =========================================================================
-    // تم التعديل هنا: حفظ السيرفر في القائمة السرية أولاً، ثم تحديث الشاشة فوراً
-    // =========================================================================
     private fun importEncryptedBatchConfig(server: String?) {
         showLoading()
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // 1. أخذ لقطة لمعرفات السيرفرات الموجودة حالياً من قاعدة البيانات مباشرة
                 val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
-
-                // 2. استيراد السيرفر الجديد
                 val (count, countSub) = AngConfigManager.importBatchConfig(server, mainViewModel.subscriptionId, true)
 
                 if (count > 0) { 
-                    // 3. أخذ لقطة للقاعدة بعد الإضافة لاصطياد السيرفرات الجديدة
                     val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
                     val newGuids = afterGuids - beforeGuids
                     
-                    // 4. حفظها في القائمة السرية فوراً
                     if (newGuids.isNotEmpty()) {
                         V2rayCrypt.addProtectedGuids(this@MainActivity, newGuids)
                     }
 
-                    // 5. بعد أن تم الحفظ السري بنجاح، نأمر الشاشة بالتحديث
                     withContext(Dispatchers.Main) {
-                        mainViewModel.reloadServerList() // هنا الشاشة ستتحدث وستجد السيرفر محمياً
+                        mainViewModel.reloadServerList()
                         toast("تم استيراد الملف بنجاح!")
                         hideLoading()
                     }
