@@ -35,6 +35,70 @@
                 android:layout_height="match_parent"
                 android:orientation="horizontal">
 
+                <FrameLayout
+                    android:id="@+id/green_screen_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#4CAF50">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:gravity="center"
+                        android:orientation="vertical">
+
+                        <Button
+                            android:id="@+id/btn_green_connect"
+                            style="@style/Widget.AppCompat.Button.Colored"
+                            android:layout_width="200dp"
+                            android:layout_height="200dp"
+                            android:backgroundTint="#2E7D32"
+                            android:gravity="center"
+                            android:text="اتصال"
+                            android:textColor="#FFFFFF"
+                            android:textSize="24sp"
+                            android:textStyle="bold" />
+
+                        <androidx.cardview.widget.CardView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="30dp"
+                            app:cardBackgroundColor="#33000000"
+                            app:cardCornerRadius="20dp"
+                            app:cardElevation="0dp">
+
+                            <LinearLayout
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:paddingHorizontal="24dp"
+                                android:paddingVertical="12dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Ping: "
+                                    android:textColor="#E0E0E0"
+                                    android:textSize="16sp"
+                                    android:textStyle="bold" />
+
+                                <TextView
+                                    android:id="@+id/tv_green_ping"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="--- ms"
+                                    android:textColor="#FFFFFF"
+                                    android:textSize="18sp"
+                                    android:textStyle="bold" />
+
+                            </LinearLayout>
+                        </androidx.cardview.widget.CardView>
+
+                    </LinearLayout>
+                </FrameLayout>
+
                 <RelativeLayout
                     android:id="@+id/home_content_container"
                     android:layout_width="match_parent"
@@ -126,70 +190,6 @@
                         </FrameLayout>
                     </androidx.coordinatorlayout.widget.CoordinatorLayout>
                 </RelativeLayout>
-
-                <FrameLayout
-                    android:id="@+id/green_screen_container"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:background="#4CAF50">
-
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center"
-                        android:gravity="center"
-                        android:orientation="vertical">
-
-                        <Button
-                            android:id="@+id/btn_green_connect"
-                            style="@style/Widget.AppCompat.Button.Colored"
-                            android:layout_width="200dp"
-                            android:layout_height="200dp"
-                            android:backgroundTint="#2E7D32"
-                            android:gravity="center"
-                            android:text="اتصال"
-                            android:textColor="#FFFFFF"
-                            android:textSize="24sp"
-                            android:textStyle="bold" />
-
-                        <androidx.cardview.widget.CardView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="30dp"
-                            app:cardBackgroundColor="#33000000"
-                            app:cardCornerRadius="20dp"
-                            app:cardElevation="0dp">
-
-                            <LinearLayout
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:gravity="center_vertical"
-                                android:orientation="horizontal"
-                                android:paddingHorizontal="24dp"
-                                android:paddingVertical="12dp">
-
-                                <TextView
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="Ping: "
-                                    android:textColor="#E0E0E0"
-                                    android:textSize="16sp"
-                                    android:textStyle="bold" />
-
-                                <TextView
-                                    android:id="@+id/tv_green_ping"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:text="--- ms"
-                                    android:textColor="#FFFFFF"
-                                    android:textSize="18sp"
-                                    android:textStyle="bold" />
-
-                            </LinearLayout>
-                        </androidx.cardview.widget.CardView>
-
-                    </LinearLayout>
-                </FrameLayout>
 
             </LinearLayout>
         </HorizontalScrollView>
