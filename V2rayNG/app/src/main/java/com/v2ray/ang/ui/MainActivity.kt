@@ -13,7 +13,6 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewTreeObserver
 import android.graphics.Color
 import android.util.Base64
 import androidx.activity.OnBackPressedCallback
@@ -63,6 +62,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     
     // متغير للتحكم في تحديث البنق كل ثانية
     private var pingJob: Job? = null
+    
+    // متغير لضمان القفز للواجهة الخضراء مرة واحدة فقط عند فتح التطبيق
+    private var isFirstLaunch = true
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == RESULT_OK) {
@@ -78,7 +80,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // --- استقبال الملف المشفر من مدير الملفات ---
     private val openEncryptedFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             readEncryptedContentFromUri(uri)
@@ -97,33 +98,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         binding.homeContentContainer.layoutParams.width = screenWidth
         binding.greenScreenContainer.layoutParams.width = screenWidth
 
-        // =========================================================
-        // الحل الجذري والمضمون 100% لفتح الواجهة الخضراء أولاً
-        // =========================================================
-        
-        // 1. منع قائمة السيرفرات من سرقة الشاشة عند تحميل البيانات
+        // قفل تركيز القائمة مؤقتاً لمنعها من سحب الشاشة
         binding.homeContentContainer.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-        
-        // 2. إعطاء التركيز الكامل للواجهة الخضراء لتكون هي الأساسية
-        binding.greenScreenContainer.isFocusable = true
-        binding.greenScreenContainer.isFocusableInTouchMode = true
-        binding.greenScreenContainer.requestFocus()
-
-        // 3. القفز للواجهة الخضراء قبل أن تُرسم الشاشة (بدون أن يلاحظ المستخدم)
-        binding.mainScrollView.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                binding.mainScrollView.viewTreeObserver.removeOnPreDrawListener(this)
-                binding.mainScrollView.scrollTo(screenWidth, 0)
-                return true
-            }
-        })
-
-        // 4. تأكيد إضافي بعد ثانية لضمان الاستقرار، ثم إعادة تفعيل التركيز للقائمة
-        binding.mainScrollView.postDelayed({
-            binding.mainScrollView.scrollTo(screenWidth, 0)
-            binding.homeContentContainer.descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
-        }, 100)
-        // =========================================================
 
         // --- برمجة زر الاتصال في الواجهة الخضراء ---
         binding.btnGreenConnect.setOnClickListener {
@@ -181,6 +157,23 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         mainViewModel.reloadServerList()
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {
+        }
+    }
+    
+    // =========================================================
+    // الحل النهائي والمضمون: النقل بعد اكتمال ظهور الشاشة تماماً
+    // =========================================================
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && isFirstLaunch) {
+            isFirstLaunch = false
+            val screenWidth = resources.displayMetrics.widthPixels
+            
+            // قفز فوري وبدون أنيميشن
+            binding.mainScrollView.scrollTo(screenWidth, 0)
+            
+            // إرجاع الصلاحية للقائمة لتعمل بشكل طبيعي بعد القفز
+            binding.homeContentContainer.descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
         }
     }
     
