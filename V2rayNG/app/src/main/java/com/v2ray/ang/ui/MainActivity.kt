@@ -12,6 +12,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.graphics.Color
 import android.util.Base64
@@ -96,6 +97,34 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         binding.homeContentContainer.layoutParams.width = screenWidth
         binding.greenScreenContainer.layoutParams.width = screenWidth
 
+        // =========================================================
+        // الحل الجذري والمضمون 100% لفتح الواجهة الخضراء أولاً
+        // =========================================================
+        
+        // 1. منع قائمة السيرفرات من سرقة الشاشة عند تحميل البيانات
+        binding.homeContentContainer.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        
+        // 2. إعطاء التركيز الكامل للواجهة الخضراء لتكون هي الأساسية
+        binding.greenScreenContainer.isFocusable = true
+        binding.greenScreenContainer.isFocusableInTouchMode = true
+        binding.greenScreenContainer.requestFocus()
+
+        // 3. القفز للواجهة الخضراء قبل أن تُرسم الشاشة (بدون أن يلاحظ المستخدم)
+        binding.mainScrollView.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                binding.mainScrollView.viewTreeObserver.removeOnPreDrawListener(this)
+                binding.mainScrollView.scrollTo(screenWidth, 0)
+                return true
+            }
+        })
+
+        // 4. تأكيد إضافي بعد ثانية لضمان الاستقرار، ثم إعادة تفعيل التركيز للقائمة
+        binding.mainScrollView.postDelayed({
+            binding.mainScrollView.scrollTo(screenWidth, 0)
+            binding.homeContentContainer.descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
+        }, 100)
+        // =========================================================
+
         // --- برمجة زر الاتصال في الواجهة الخضراء ---
         binding.btnGreenConnect.setOnClickListener {
             handleFabAction()
@@ -153,18 +182,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {
         }
-        
-        // =========================================================
-        // الحل الجذري: القفز للواجهة الخضراء فور اكتمال رسم الشاشة
-        // =========================================================
-        binding.mainScrollView.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
-            override fun onGlobalLayout() {
-                // إزالة المستمع حتى لا يتكرر الكود
-                binding.mainScrollView.viewTreeObserver.removeOnGlobalLayoutListener(this)
-                // قفزة فورية (scrollTo) وليس سحب بطيء، لتبدو وكأنها الشاشة الرئيسية
-                binding.mainScrollView.scrollTo(screenWidth, 0)
-            }
-        })
     }
     
     override fun onNewIntent(intent: Intent) {
