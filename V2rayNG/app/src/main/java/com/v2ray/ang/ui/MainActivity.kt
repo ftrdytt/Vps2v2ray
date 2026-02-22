@@ -62,9 +62,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     
     // متغير للتحكم في تحديث البنق كل ثانية
     private var pingJob: Job? = null
-    
-    // متغير لضمان القفز للواجهة الخضراء مرة واحدة فقط عند فتح التطبيق
-    private var isFirstLaunch = true
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == RESULT_OK) {
@@ -98,14 +95,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         binding.homeContentContainer.layoutParams.width = screenWidth
         binding.greenScreenContainer.layoutParams.width = screenWidth
 
-        // قفل تركيز القائمة مؤقتاً لمنعها من سحب الشاشة
-        binding.homeContentContainer.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-
         // --- برمجة زر الاتصال في الواجهة الخضراء ---
         binding.btnGreenConnect.setOnClickListener {
             handleFabAction()
         }
 
+        // برمجة السحب (تغيرت لتناسب الترتيب الجديد: الشاشة الخضراء يسار والسيرفرات يمين)
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
@@ -133,11 +128,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         binding.drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
         binding.navView.setNavigationItemSelectedListener(this)
+        
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 } else {
+                    // إذا كنت في قائمة السيرفرات (مسحوب لليمين)، زر الرجوع يعيدك للواجهة الخضراء
                     if (binding.mainScrollView.scrollX > 0) {
                          binding.mainScrollView.smoothScrollTo(0, 0)
                     } else {
@@ -157,23 +154,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         mainViewModel.reloadServerList()
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {
-        }
-    }
-    
-    // =========================================================
-    // الحل النهائي والمضمون: النقل بعد اكتمال ظهور الشاشة تماماً
-    // =========================================================
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && isFirstLaunch) {
-            isFirstLaunch = false
-            val screenWidth = resources.displayMetrics.widthPixels
-            
-            // قفز فوري وبدون أنيميشن
-            binding.mainScrollView.scrollTo(screenWidth, 0)
-            
-            // إرجاع الصلاحية للقائمة لتعمل بشكل طبيعي بعد القفز
-            binding.homeContentContainer.descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
         }
     }
     
