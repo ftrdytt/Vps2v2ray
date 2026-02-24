@@ -12,7 +12,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.graphics.Color
 import android.util.Base64
 import androidx.activity.OnBackPressedCallback
@@ -25,6 +24,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.tabs.TabLayoutMediator
 import com.v2ray.ang.AppConfig
@@ -50,6 +50,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
+import com.airbnb.lottie.LottieAnimationView
 
 class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener {
     private val binding by lazy {
@@ -60,7 +61,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private lateinit var groupPagerAdapter: GroupPagerAdapter
     private var tabMediator: TabLayoutMediator? = null
     
-    // متغير للتحكم في تحديث البنق كل ثانية
     private var pingJob: Job? = null
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -89,18 +89,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         
         handleIntent(intent)
 
-        // --- ضبط أحجام الشاشات للسحب ---
         val displayMetrics = resources.displayMetrics
         val screenWidth = displayMetrics.widthPixels
         binding.homeContentContainer.layoutParams.width = screenWidth
         binding.greenScreenContainer.layoutParams.width = screenWidth
 
-        // --- برمجة زر الاتصال في الواجهة الخضراء ---
-        binding.btnGreenConnect.setOnClickListener {
+        val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
+        btnGreenConnect?.setOnClickListener {
             handleFabAction()
         }
 
-        // برمجة السحب (تغيرت لتناسب الترتيب الجديد: الشاشة الخضراء يسار والسيرفرات يمين)
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
@@ -114,7 +112,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
             false
         }
-        // ------------------------------------
 
         setupToolbar(binding.toolbar, false, getString(R.string.title_server))
 
@@ -134,7 +131,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 } else {
-                    // إذا كنت في قائمة السيرفرات (مسحوب لليمين)، زر الرجوع يعيدك للواجهة الخضراء
                     if (binding.mainScrollView.scrollX > 0) {
                          binding.mainScrollView.smoothScrollTo(0, 0)
                     } else {
@@ -240,24 +236,33 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun setTestState(content: String?) {
+        val tvGreenPing = binding.root.findViewById<android.widget.TextView>(R.id.tv_green_ping)
         binding.tvTestState.text = content
         
         if (content != null) {
             if (content.contains("ms", ignoreCase = true)) {
-                binding.tvGreenPing.text = content
+                tvGreenPing?.text = content
             } else if (content == getString(R.string.connection_connected)) {
-                binding.tvGreenPing.text = "متصل..."
+                tvGreenPing?.text = "متصل..."
             }
         } else {
-            binding.tvGreenPing.text = "--- ms"
+            tvGreenPing?.text = "--- ms"
         }
     }
 
-    private  fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
+    private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
+        val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
+        val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
+        val tvGreenPing = binding.root.findViewById<android.widget.TextView>(R.id.tv_green_ping)
+
         if (isLoading) {
             binding.fab.setImageResource(R.drawable.ic_fab_check)
-            binding.btnGreenConnect.text = "جاري التحميل..."
-            binding.tvGreenPing.text = "--- ms"
+            btnGreenConnect?.text = "جاري تشغيل المحرك..."
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00")) // برتقالي
+            tvGreenPing?.text = "--- ms"
+            
+            // تشغيل المحرك (بدء الاهتزاز والدخان)
+            lottieEngine?.playAnimation()
             return
         }
 
@@ -268,8 +273,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             setTestState(getString(R.string.connection_connected))
             binding.layoutTest.isFocusable = true
             
-            binding.btnGreenConnect.text = "قطع الاتصال"
-            binding.btnGreenConnect.backgroundTintList = ColorStateList.valueOf(Color.RED)
+            btnGreenConnect?.text = "إيقاف المحرك"
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F")) // أحمر
+            
+            // التأكد أن المحرك مستمر بالعمل
+            lottieEngine?.playAnimation()
             
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
@@ -286,11 +294,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             setTestState(getString(R.string.connection_not_connected))
             binding.layoutTest.isFocusable = false
 
-            binding.btnGreenConnect.text = "اتصال"
-            binding.btnGreenConnect.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2E7D32")) 
+            btnGreenConnect?.text = "تشغيل المحرك"
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C")) // أخضر
+            
+            // إيقاف اهتزاز المحرك وإرجاعه للوضع الثابت
+            lottieEngine?.cancelAnimation()
+            lottieEngine?.progress = 0f
             
             pingJob?.cancel()
-            binding.tvGreenPing.text = "--- ms"
+            tvGreenPing?.text = "--- ms"
         }
     }
 
