@@ -38,7 +38,7 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:padding="4dp"
-                android:src="@drawable/ic_close_24dp"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
                 app:tint="#BDBDBD" />
         </RelativeLayout>
 
