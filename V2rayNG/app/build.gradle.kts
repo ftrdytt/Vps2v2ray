@@ -156,6 +156,11 @@ dependencies {
     implementation(libs.toasty)
     implementation(libs.editorkit)
     implementation(libs.flexbox)
+    
+    // ==========================================
+    // تم إضافة مكتبة Lottie للرسوم المتحركة هنا
+    // ==========================================
+    implementation("com.airbnb.android:lottie:6.4.0")
 
     // Data and Storage Libraries
     implementation(libs.mmkv.static)
