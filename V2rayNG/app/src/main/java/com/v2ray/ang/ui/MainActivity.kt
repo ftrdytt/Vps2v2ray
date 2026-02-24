@@ -1,29 +1,37 @@
 package com.v2ray.ang.ui
 
+import android.app.Dialog
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
-import android.graphics.Color
-import android.util.Base64
+import android.view.ViewGroup
+import android.view.Window
+import android.widget.ImageView
+import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
+import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import com.airbnb.lottie.LottieAnimationView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.tabs.TabLayoutMediator
@@ -48,9 +56,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
-import com.airbnb.lottie.LottieAnimationView
 
 class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener {
     private val binding by lazy {
@@ -62,6 +70,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var tabMediator: TabLayoutMediator? = null
     
     private var pingJob: Job? = null
+    // ============================================
+    // جوب مخصص لتحديث عداد البيانات كل ثانية
+    // ============================================
+    private var trafficJob: Job? = null
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == RESULT_OK) {
@@ -98,6 +110,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         btnGreenConnect?.setOnClickListener {
             handleFabAction()
         }
+
+        // ============================================
+        // برمجة زر عرض تفاصيل الاستهلاك (النافذة المنبثقة)
+        // ============================================
+        val cardTrafficMeter = binding.root.findViewById<CardView>(R.id.card_traffic_meter)
+        cardTrafficMeter?.setOnClickListener {
+            showTrafficDetailsDialog()
+        }
+        
+        // عرض الاستهلاك الحالي عند فتح التطبيق
+        updateTrafficDisplay()
 
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
@@ -153,6 +176,81 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
     
+    // =========================================================================
+    // دوال احتساب وتحديث وعرض البيانات (Traffic Meter)
+    // =========================================================================
+    private fun formatTraffic(bytes: Long): String {
+        if (bytes < 1024) return "$bytes B"
+        val kb = bytes / 1024.0
+        if (kb < 1024) return String.format(Locale.ENGLISH, "%.2f KB", kb)
+        val mb = kb / 1024.0
+        if (mb < 1024) return String.format(Locale.ENGLISH, "%.2f MB", mb)
+        val gb = mb / 1024.0
+        return String.format(Locale.ENGLISH, "%.2f GB", gb)
+    }
+
+    private fun updateTrafficDisplay() {
+        val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
+        val rx = prefs.getLong("rx", 0L)
+        val tx = prefs.getLong("tx", 0L)
+        val total = rx + tx
+        val tvTotalTraffic = binding.root.findViewById<TextView>(R.id.tv_total_traffic)
+        tvTotalTraffic?.text = formatTraffic(total)
+    }
+
+    private fun startTrafficMonitor() {
+        trafficJob?.cancel()
+        trafficJob = lifecycleScope.launch {
+            while (true) {
+                updateTrafficDisplay()
+                delay(1000)
+            }
+        }
+    }
+
+    private fun stopTrafficMonitor() {
+        trafficJob?.cancel()
+    }
+
+    private fun showTrafficDetailsDialog() {
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.setContentView(R.layout.dialog_traffic_stats)
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+
+        val tvDownload = dialog.findViewById<TextView>(R.id.tv_download_stat)
+        val tvUpload = dialog.findViewById<TextView>(R.id.tv_upload_stat)
+        val btnClose = dialog.findViewById<ImageView>(R.id.btn_close_dialog)
+        val btnReset = dialog.findViewById<MaterialButton>(R.id.btn_reset_stats)
+
+        // جلب البيانات من الذاكرة
+        val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
+        
+        fun refreshDialogData() {
+            val rx = prefs.getLong("rx", 0L)
+            val tx = prefs.getLong("tx", 0L)
+            tvDownload.text = formatTraffic(rx)
+            tvUpload.text = formatTraffic(tx)
+        }
+        
+        refreshDialogData()
+
+        btnClose.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        btnReset.setOnClickListener {
+            prefs.edit().putLong("rx", 0L).putLong("tx", 0L).apply()
+            refreshDialogData()
+            updateTrafficDisplay()
+            toast("تم تصفير الاستهلاك بنجاح!")
+        }
+
+        dialog.show()
+    }
+    // =========================================================================
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
@@ -236,7 +334,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun setTestState(content: String?) {
-        val tvGreenPing = binding.root.findViewById<android.widget.TextView>(R.id.tv_green_ping)
+        val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
         binding.tvTestState.text = content
         
         if (content != null) {
@@ -253,15 +351,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
-        val tvGreenPing = binding.root.findViewById<android.widget.TextView>(R.id.tv_green_ping)
+        val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
 
         if (isLoading) {
             binding.fab.setImageResource(R.drawable.ic_fab_check)
             btnGreenConnect?.text = "جاري تشغيل المحرك..."
-            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00")) // برتقالي
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
             tvGreenPing?.text = "--- ms"
-            
-            // تشغيل المحرك (بدء الاهتزاز والدخان)
             lottieEngine?.playAnimation()
             return
         }
@@ -274,10 +370,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             binding.layoutTest.isFocusable = true
             
             btnGreenConnect?.text = "إيقاف المحرك"
-            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F")) // أحمر
-            
-            // التأكد أن المحرك مستمر بالعمل
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F"))
             lottieEngine?.playAnimation()
+            
+            // تشغيل مراقب البيانات والبنق
+            startTrafficMonitor()
             
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
@@ -295,11 +392,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             binding.layoutTest.isFocusable = false
 
             btnGreenConnect?.text = "تشغيل المحرك"
-            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C")) // أخضر
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
             
-            // إيقاف اهتزاز المحرك وإرجاعه للوضع الثابت
             lottieEngine?.cancelAnimation()
             lottieEngine?.progress = 0f
+            
+            // إيقاف مراقب البيانات والبنق
+            stopTrafficMonitor()
             
             pingJob?.cancel()
             tvGreenPing?.text = "--- ms"
@@ -308,10 +407,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     override fun onResume() {
         super.onResume()
+        if (mainViewModel.isRunning.value == true) {
+            startTrafficMonitor()
+        } else {
+            updateTrafficDisplay()
+        }
     }
 
     override fun onPause() {
         super.onPause()
+        stopTrafficMonitor()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -615,6 +720,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onDestroy() {
         tabMediator?.detach()
         pingJob?.cancel() 
+        trafficJob?.cancel()
         super.onDestroy()
     }
 }
