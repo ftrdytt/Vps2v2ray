@@ -369,19 +369,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // =========================================================================
-    // تم التعديل هنا: دالة تحديث حالة البنق لترسل الرقم إلى العداد الدائري (الكيج)
-    // =========================================================================
     private fun setTestState(content: String?) {
-        val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
         
         binding.tvTestState.text = content
         
         if (content != null) {
             if (content.contains("ms", ignoreCase = true)) {
-                tvGreenPing?.text = content
-                
                 // استخراج الرقم من النص (مثلاً: "150ms" -> 150)
                 try {
                     val pingNumberStr = content.replace(Regex("[^0-9]"), "")
@@ -392,13 +386,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 } catch (e: Exception) {
                     Log.e(AppConfig.TAG, "Error parsing ping value", e)
                 }
-                
             } else if (content == getString(R.string.connection_connected)) {
-                tvGreenPing?.text = "متصل..."
                 gaugePing?.setPing(0f)
             }
         } else {
-            tvGreenPing?.text = "--- ms"
             gaugePing?.setPing(0f)
         }
     }
@@ -406,14 +397,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
-        val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
 
         if (isLoading) {
             binding.fab.setImageResource(R.drawable.ic_fab_check)
             btnGreenConnect?.text = "جاري تشغيل المحرك..."
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
-            tvGreenPing?.text = "--- ms"
             gaugePing?.setPing(0f)
             lottieEngine?.playAnimation()
             return
@@ -456,8 +445,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             stopTrafficMonitor()
             
             pingJob?.cancel()
-            tvGreenPing?.text = "--- ms"
-            gaugePing?.setPing(0f) // تصفير العداد عند الإيقاف
+            gaugePing?.setPing(0f) 
         }
     }
 
