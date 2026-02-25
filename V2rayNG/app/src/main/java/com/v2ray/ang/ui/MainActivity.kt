@@ -369,6 +369,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    // =========================================================================
+    // التعديل السحري: استخراج رقم البنق فقط بدقة وتجاهل الأرقام الأخرى!
+    // =========================================================================
     private fun setTestState(content: String?) {
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
         
@@ -377,18 +380,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         if (content != null) {
             if (content.contains("ms", ignoreCase = true)) {
                 try {
-                    // استخراج الأرقام فقط وتجاهل أي نصوص أخرى
-                    val pingNumberStr = content.replace(Regex("[^0-9]"), "")
-                    if (pingNumberStr.isNotEmpty()) {
-                        val pingValue = pingNumberStr.toFloat()
+                    // Regex دقيق جداً يصطاد الرقم الذي يسبق كلمة ms مباشرة فقط (مثال: يصطاد 80 من جملة HTTP 200 80ms)
+                    val match = Regex("([0-9]+)\\s*ms").find(content)
+                    if (match != null) {
+                        val pingValue = match.groupValues[1].toFloat()
                         gaugePing?.setPing(pingValue) 
                     }
                 } catch (e: Exception) {
                     Log.e(AppConfig.TAG, "Error parsing ping value", e)
                 }
             } else if (content.contains("Timeout", ignoreCase = true) || content.contains("Failed", ignoreCase = true)) {
-                // إذا فشل البنق، ارفع الإبرة للحد الأقصى للتنبيه
-                gaugePing?.setPing(500f)
+                gaugePing?.setPing(500f) // إذا فصل النت ترتفع الإبرة للون الأحمر
             } else if (content == getString(R.string.connection_connected)) {
                 gaugePing?.setPing(0f)
             }
@@ -428,8 +430,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             pingJob = lifecycleScope.launch {
                 while (true) {
                     mainViewModel.testCurrentServerRealPing()
-                    // تم تقليل وقت التحديث إلى 400 ملي ثانية لكي تتراقص الإبرة باستمرار وبشكل حي!
-                    delay(400) 
+                    // تم إرجاعها إلى ثانية (1000) لكي لا يحصل ضغط وخنق للاتصال فتتوقف الإبرة
+                    delay(1000) 
                 }
             }
             
