@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.net.TrafficStats
 import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
@@ -70,10 +71,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var tabMediator: TabLayoutMediator? = null
     
     private var pingJob: Job? = null
+    
     // ============================================
-    // جوب مخصص لتحديث عداد البيانات كل ثانية
+    // متغيرات لحساب استهلاك البيانات (TrafficStats)
     // ============================================
     private var trafficJob: Job? = null
+    private var startRxBytes: Long = 0L
+    private var startTxBytes: Long = 0L
+    private var isFirstTrafficRead: Boolean = true
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == RESULT_OK) {
@@ -111,15 +116,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             handleFabAction()
         }
 
-        // ============================================
-        // برمجة زر عرض تفاصيل الاستهلاك (النافذة المنبثقة)
-        // ============================================
         val cardTrafficMeter = binding.root.findViewById<CardView>(R.id.card_traffic_meter)
         cardTrafficMeter?.setOnClickListener {
             showTrafficDetailsDialog()
         }
         
-        // عرض الاستهلاك الحالي عند فتح التطبيق
         updateTrafficDisplay()
 
         binding.mainScrollView.setOnTouchListener { v, event ->
@@ -177,9 +178,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
     
     // =========================================================================
-    // دوال احتساب وتحديث وعرض البيانات (Traffic Meter)
+    // دوال حساب الاستهلاك الفعلي وتحديث العداد
     // =========================================================================
     private fun formatTraffic(bytes: Long): String {
+        if (bytes <= 0) return "0.00 B"
         if (bytes < 1024) return "$bytes B"
         val kb = bytes / 1024.0
         if (kb < 1024) return String.format(Locale.ENGLISH, "%.2f KB", kb)
@@ -191,25 +193,64 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     private fun updateTrafficDisplay() {
         val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
-        val rx = prefs.getLong("rx", 0L)
-        val tx = prefs.getLong("tx", 0L)
-        val total = rx + tx
+        val savedRx = prefs.getLong("rx", 0L)
+        val savedTx = prefs.getLong("tx", 0L)
+        val total = savedRx + savedTx
+        
         val tvTotalTraffic = binding.root.findViewById<TextView>(R.id.tv_total_traffic)
         tvTotalTraffic?.text = formatTraffic(total)
     }
 
     private fun startTrafficMonitor() {
+        isFirstTrafficRead = true
         trafficJob?.cancel()
-        trafficJob = lifecycleScope.launch {
+        
+        trafficJob = lifecycleScope.launch(Dispatchers.IO) {
             while (true) {
-                updateTrafficDisplay()
-                delay(1000)
+                // جلب إجمالي بيانات الجهاز الحالية
+                val currentRxBytes = TrafficStats.getTotalRxBytes()
+                val currentTxBytes = TrafficStats.getTotalTxBytes()
+
+                if (currentRxBytes == TrafficStats.UNSUPPORTED.toLong() || currentTxBytes == TrafficStats.UNSUPPORTED.toLong()) {
+                    delay(1000)
+                    continue
+                }
+
+                if (isFirstTrafficRead) {
+                    startRxBytes = currentRxBytes
+                    startTxBytes = currentTxBytes
+                    isFirstTrafficRead = false
+                } else {
+                    val diffRx = currentRxBytes - startRxBytes
+                    val diffTx = currentTxBytes - startTxBytes
+                    
+                    if (diffRx > 0 || diffTx > 0) {
+                        val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
+                        val oldRx = prefs.getLong("rx", 0L)
+                        val oldTx = prefs.getLong("tx", 0L)
+                        
+                        prefs.edit()
+                            .putLong("rx", oldRx + diffRx)
+                            .putLong("tx", oldTx + diffTx)
+                            .apply()
+                            
+                        // تحديث نقطة البداية للمرة القادمة
+                        startRxBytes = currentRxBytes
+                        startTxBytes = currentTxBytes
+
+                        withContext(Dispatchers.Main) {
+                            updateTrafficDisplay()
+                        }
+                    }
+                }
+                delay(1000) // التحديث كل ثانية
             }
         }
     }
 
     private fun stopTrafficMonitor() {
         trafficJob?.cancel()
+        isFirstTrafficRead = true
     }
 
     private fun showTrafficDetailsDialog() {
@@ -224,7 +265,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val btnClose = dialog.findViewById<ImageView>(R.id.btn_close_dialog)
         val btnReset = dialog.findViewById<MaterialButton>(R.id.btn_reset_stats)
 
-        // جلب البيانات من الذاكرة
         val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
         
         fun refreshDialogData() {
@@ -242,6 +282,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         btnReset.setOnClickListener {
             prefs.edit().putLong("rx", 0L).putLong("tx", 0L).apply()
+            
+            // عند التصفير، نحدث نقطة البداية لتجنب إضافة الاستهلاك القديم فجأة
+            if (mainViewModel.isRunning.value == true) {
+                startRxBytes = TrafficStats.getTotalRxBytes()
+                startTxBytes = TrafficStats.getTotalTxBytes()
+            }
+            
             refreshDialogData()
             updateTrafficDisplay()
             toast("تم تصفير الاستهلاك بنجاح!")
@@ -373,7 +420,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F"))
             lottieEngine?.playAnimation()
             
-            // تشغيل مراقب البيانات والبنق
+            // بدء قراءة البيانات
             startTrafficMonitor()
             
             pingJob?.cancel()
@@ -397,7 +444,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.cancelAnimation()
             lottieEngine?.progress = 0f
             
-            // إيقاف مراقب البيانات والبنق
+            // إيقاف قراءة البيانات
             stopTrafficMonitor()
             
             pingJob?.cancel()
