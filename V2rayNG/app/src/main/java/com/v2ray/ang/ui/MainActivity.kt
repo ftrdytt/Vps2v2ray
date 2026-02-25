@@ -200,39 +200,43 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         
         trafficJob = lifecycleScope.launch(Dispatchers.IO) {
             while (true) {
-                val currentRxBytes = TrafficStats.getTotalRxBytes()
-                val currentTxBytes = TrafficStats.getTotalTxBytes()
+                try {
+                    val currentRxBytes = TrafficStats.getTotalRxBytes()
+                    val currentTxBytes = TrafficStats.getTotalTxBytes()
 
-                if (currentRxBytes == TrafficStats.UNSUPPORTED.toLong() || currentTxBytes == TrafficStats.UNSUPPORTED.toLong()) {
-                    delay(1000)
-                    continue
-                }
+                    if (currentRxBytes == TrafficStats.UNSUPPORTED.toLong() || currentTxBytes == TrafficStats.UNSUPPORTED.toLong()) {
+                        delay(1000)
+                        continue
+                    }
 
-                if (isFirstTrafficRead) {
-                    startRxBytes = currentRxBytes
-                    startTxBytes = currentTxBytes
-                    isFirstTrafficRead = false
-                } else {
-                    val diffRx = currentRxBytes - startRxBytes
-                    val diffTx = currentTxBytes - startTxBytes
-                    
-                    if (diffRx > 0 || diffTx > 0) {
-                        val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
-                        val oldRx = prefs.getLong("rx", 0L)
-                        val oldTx = prefs.getLong("tx", 0L)
-                        
-                        prefs.edit()
-                            .putLong("rx", oldRx + diffRx)
-                            .putLong("tx", oldTx + diffTx)
-                            .apply()
-                            
+                    if (isFirstTrafficRead) {
                         startRxBytes = currentRxBytes
                         startTxBytes = currentTxBytes
+                        isFirstTrafficRead = false
+                    } else {
+                        val diffRx = currentRxBytes - startRxBytes
+                        val diffTx = currentTxBytes - startTxBytes
+                        
+                        if (diffRx > 0 || diffTx > 0) {
+                            val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
+                            val oldRx = prefs.getLong("rx", 0L)
+                            val oldTx = prefs.getLong("tx", 0L)
+                            
+                            prefs.edit()
+                                .putLong("rx", oldRx + diffRx)
+                                .putLong("tx", oldTx + diffTx)
+                                .apply()
+                                
+                            startRxBytes = currentRxBytes
+                            startTxBytes = currentTxBytes
 
-                        withContext(Dispatchers.Main) {
-                            updateTrafficDisplay()
+                            withContext(Dispatchers.Main) {
+                                updateTrafficDisplay()
+                            }
                         }
                     }
+                } catch (e: Exception) {
+                    Log.e(AppConfig.TAG, "Traffic monitor error", e)
                 }
                 delay(1000)
             }
@@ -370,38 +374,46 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     // =========================================================================
-    // التعديل الجديد: صائد الأرقام الذكي لضمان استجابة عداد الـ Ping
+    // صائد أرقام متطور ومضاد للأخطاء (Crash-Proof)
     // =========================================================================
     private fun setTestState(content: String?) {
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
         
         binding.tvTestState.text = content
         
-        if (content != null) {
-            // صائد الأرقام الذكي: يبحث عن كل الأرقام في النص، ويأخذ "الرقم الأخير" فقط
-            // هذا يحل مشكلة اللغات المختلفة ومشاكل دمج الأرقام مثل "HTTP 200: 80ms" فيأخذ 80 فقط.
-            val lastNumberMatch = Regex("(\\d+)").findAll(content).lastOrNull()
-            
-            if (lastNumberMatch != null) {
-                // وجدنا رقم البنق بنجاح!
-                val pingValue = lastNumberMatch.value.toFloat()
-                gaugePing?.setPing(pingValue) 
-            } 
-            else if (content.contains("Timeout", ignoreCase = true) || 
-                     content.contains("Failed", ignoreCase = true) ||
-                     content.contains("فشل", ignoreCase = true)) {
-                // في حالة فشل الاتصال، تصعد الإبرة للون الأحمر
-                gaugePing?.setPing(500f)
-            } 
-            else {
-                // نصوص أخرى لا تحتوي على أرقام (مثل: "جاري الاتصال" أو "Testing...")
+        if (content.isNullOrEmpty()) {
+            gaugePing?.setPing(0f)
+            return
+        }
+
+        try {
+            if (content.contains("ms", ignoreCase = true)) {
+                // البحث المباشر عن الرقم بجوار ms
+                val match = Regex("(\\d+)\\s*ms", RegexOption.IGNORE_CASE).find(content)
+                if (match != null) {
+                    gaugePing?.setPing(match.groupValues[1].toFloat())
+                } else {
+                    // إذا لم يجده، يجلب آخر رقم متاح في النص
+                    val lastNum = Regex("(\\d+)").findAll(content).lastOrNull()
+                    if (lastNum != null) gaugePing?.setPing(lastNum.value.toFloat())
+                }
+            } else if (content.contains("Timeout", ignoreCase = true) || 
+                       content.contains("Failed", ignoreCase = true) ||
+                       content.contains("فشل", ignoreCase = true)) {
+                gaugePing?.setPing(500f) // إبرة حمراء عند الفشل
+            } else if (content == getString(R.string.connection_connected)) {
                 gaugePing?.setPing(0f)
+            } else {
+                // نصوص أخرى
+                val lastNum = Regex("(\\d+)").findAll(content).lastOrNull()
+                if (lastNum != null) gaugePing?.setPing(lastNum.value.toFloat())
+                else gaugePing?.setPing(0f)
             }
-        } else {
+        } catch (e: Exception) {
+            Log.e(AppConfig.TAG, "Error in setTestState", e)
             gaugePing?.setPing(0f)
         }
     }
-    // =========================================================================
 
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
@@ -432,10 +444,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
+                // 1. انتظار 2 ثانية للسماح للسيرفر بالاستقرار والاتصال بالكامل (يمنع الكراش)
+                delay(2000) 
+                
                 while (true) {
-                    mainViewModel.testCurrentServerRealPing()
-                    // تم الإبقاء على 1000 ملي ثانية لعدم خنق الاتصال
-                    delay(1000) 
+                    try {
+                        mainViewModel.testCurrentServerRealPing()
+                    } catch (e: Exception) {
+                        Log.e(AppConfig.TAG, "Ping Error", e)
+                    }
+                    // 2. تحديث البنق كل 3 ثوانٍ فقط لمنع إرهاق التطبيق وحدوث كراش
+                    delay(3000) 
                 }
             }
             
