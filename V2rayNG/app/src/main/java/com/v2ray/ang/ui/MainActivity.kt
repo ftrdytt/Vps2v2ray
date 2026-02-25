@@ -370,7 +370,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     // =========================================================================
-    // التعديل السحري: استخراج رقم البنق فقط بدقة وتجاهل الأرقام الأخرى!
+    // التعديل الجديد: صائد الأرقام الذكي لضمان استجابة عداد الـ Ping
     // =========================================================================
     private fun setTestState(content: String?) {
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
@@ -378,26 +378,30 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         binding.tvTestState.text = content
         
         if (content != null) {
-            if (content.contains("ms", ignoreCase = true)) {
-                try {
-                    // Regex دقيق جداً يصطاد الرقم الذي يسبق كلمة ms مباشرة فقط (مثال: يصطاد 80 من جملة HTTP 200 80ms)
-                    val match = Regex("([0-9]+)\\s*ms").find(content)
-                    if (match != null) {
-                        val pingValue = match.groupValues[1].toFloat()
-                        gaugePing?.setPing(pingValue) 
-                    }
-                } catch (e: Exception) {
-                    Log.e(AppConfig.TAG, "Error parsing ping value", e)
-                }
-            } else if (content.contains("Timeout", ignoreCase = true) || content.contains("Failed", ignoreCase = true)) {
-                gaugePing?.setPing(500f) // إذا فصل النت ترتفع الإبرة للون الأحمر
-            } else if (content == getString(R.string.connection_connected)) {
+            // صائد الأرقام الذكي: يبحث عن كل الأرقام في النص، ويأخذ "الرقم الأخير" فقط
+            // هذا يحل مشكلة اللغات المختلفة ومشاكل دمج الأرقام مثل "HTTP 200: 80ms" فيأخذ 80 فقط.
+            val lastNumberMatch = Regex("(\\d+)").findAll(content).lastOrNull()
+            
+            if (lastNumberMatch != null) {
+                // وجدنا رقم البنق بنجاح!
+                val pingValue = lastNumberMatch.value.toFloat()
+                gaugePing?.setPing(pingValue) 
+            } 
+            else if (content.contains("Timeout", ignoreCase = true) || 
+                     content.contains("Failed", ignoreCase = true) ||
+                     content.contains("فشل", ignoreCase = true)) {
+                // في حالة فشل الاتصال، تصعد الإبرة للون الأحمر
+                gaugePing?.setPing(500f)
+            } 
+            else {
+                // نصوص أخرى لا تحتوي على أرقام (مثل: "جاري الاتصال" أو "Testing...")
                 gaugePing?.setPing(0f)
             }
         } else {
             gaugePing?.setPing(0f)
         }
     }
+    // =========================================================================
 
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
@@ -430,7 +434,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             pingJob = lifecycleScope.launch {
                 while (true) {
                     mainViewModel.testCurrentServerRealPing()
-                    // تم إرجاعها إلى ثانية (1000) لكي لا يحصل ضغط وخنق للاتصال فتتوقف الإبرة
+                    // تم الإبقاء على 1000 ملي ثانية لعدم خنق الاتصال
                     delay(1000) 
                 }
             }
