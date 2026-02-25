@@ -376,16 +376,19 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         
         if (content != null) {
             if (content.contains("ms", ignoreCase = true)) {
-                // استخراج الرقم من النص (مثلاً: "150ms" -> 150)
                 try {
+                    // استخراج الأرقام فقط وتجاهل أي نصوص أخرى
                     val pingNumberStr = content.replace(Regex("[^0-9]"), "")
                     if (pingNumberStr.isNotEmpty()) {
                         val pingValue = pingNumberStr.toFloat()
-                        gaugePing?.setPing(pingValue) // تحريك الإبرة للرقم الجديد
+                        gaugePing?.setPing(pingValue) 
                     }
                 } catch (e: Exception) {
                     Log.e(AppConfig.TAG, "Error parsing ping value", e)
                 }
+            } else if (content.contains("Timeout", ignoreCase = true) || content.contains("Failed", ignoreCase = true)) {
+                // إذا فشل البنق، ارفع الإبرة للحد الأقصى للتنبيه
+                gaugePing?.setPing(500f)
             } else if (content == getString(R.string.connection_connected)) {
                 gaugePing?.setPing(0f)
             }
@@ -425,7 +428,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             pingJob = lifecycleScope.launch {
                 while (true) {
                     mainViewModel.testCurrentServerRealPing()
-                    delay(1000)
+                    // تم تقليل وقت التحديث إلى 400 ملي ثانية لكي تتراقص الإبرة باستمرار وبشكل حي!
+                    delay(400) 
                 }
             }
             
