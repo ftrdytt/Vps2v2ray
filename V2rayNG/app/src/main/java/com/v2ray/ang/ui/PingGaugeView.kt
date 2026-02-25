@@ -21,9 +21,8 @@ class PingGaugeView @JvmOverloads constructor(
     private val rectF = RectF()
 
     private var currentPing = 0f
-    private val maxPing = 500f // الحد الأقصى للعداد (فوق 500 سيقفل العداد)
+    private val maxPing = 500f 
     
-    // هذا المتغير هو السلاح السري لمنع الإبرة من التجميد
     private var currentAnimator: ValueAnimator? = null 
 
     init {
@@ -46,21 +45,22 @@ class PingGaugeView @JvmOverloads constructor(
     }
 
     fun setPing(ping: Float) {
-        // 1. إيقاف أي حركة سابقة فوراً حتى لا تتجمد الإبرة
+        // إذا كان الرقم الجديد نفس القديم، لا داعي لتحريك الإبرة
+        if (Math.abs(currentPing - ping) < 1f) return
+
         currentAnimator?.cancel()
 
-        // 2. ضبط حدود البنق (ألا ينزل تحت الصفر ولا يعبر 500)
         var targetPing = ping
         if (targetPing < 0f) targetPing = 0f
         if (targetPing > maxPing) targetPing = maxPing
 
-        // 3. تحريك الإبرة بمرونة إلى الرقم الجديد
+        // حركة سلسة جداً تستغرق 800 ملي ثانية لتتناسب مع التحديث الذي يحصل كل ثانية
         currentAnimator = ValueAnimator.ofFloat(currentPing, targetPing).apply {
-            duration = 350 // سرعة استجابة الإبرة (أجزاء من الثانية)
-            interpolator = DecelerateInterpolator() // حركة انسيابية كالسيارة
+            duration = 800 
+            interpolator = DecelerateInterpolator() 
             addUpdateListener { animation ->
                 currentPing = animation.animatedValue as Float
-                invalidate() // إعادة رسم العداد بالزاوية الجديدة
+                invalidate() 
             }
             start()
         }
@@ -77,31 +77,28 @@ class PingGaugeView @JvmOverloads constructor(
 
         rectF.set(cx - radius, cy - radius, cx + radius, cy + radius)
 
-        // رسم قوس العداد (أخضر ثم أصفر ثم أحمر)
-        arcPaint.color = Color.parseColor("#4CAF50") // 0-150 أخضر
+        // 0-150 أخضر
+        arcPaint.color = Color.parseColor("#4CAF50") 
         canvas.drawArc(rectF, 135f, 90f, false, arcPaint)
 
-        arcPaint.color = Color.parseColor("#FFC107") // 150-300 أصفر
+        // 150-300 أصفر
+        arcPaint.color = Color.parseColor("#FFC107") 
         canvas.drawArc(rectF, 225f, 90f, false, arcPaint)
 
-        arcPaint.color = Color.parseColor("#F44336") // 300+ أحمر
+        // 300+ أحمر
+        arcPaint.color = Color.parseColor("#F44336") 
         canvas.drawArc(rectF, 315f, 90f, false, arcPaint)
 
-        // رسم الرقم في المنتصف أسفل الإبرة
         canvas.drawText("${currentPing.toInt()} ms", cx, cy + 30f, textPaint)
 
-        // حساب زاوية الإبرة (تبدأ من 135 وتصل إلى 405)
         val angle = 135f + (currentPing / maxPing) * 270f
         val angleRad = Math.toRadians(angle.toDouble())
 
-        // رسم الإبرة
         val needleLength = radius - 35f
         val stopX = (cx + Math.cos(angleRad) * needleLength).toFloat()
         val stopY = (cy + Math.sin(angleRad) * needleLength).toFloat()
 
         canvas.drawLine(cx, cy, stopX, stopY, needlePaint)
-        
-        // رسم الدائرة البيضاء الصغيرة في مركز الإبرة
         canvas.drawCircle(cx, cy, 18f, centerPaint) 
     }
 }
