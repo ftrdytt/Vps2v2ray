@@ -71,10 +71,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var tabMediator: TabLayoutMediator? = null
     
     private var pingJob: Job? = null
-    
-    // ============================================
-    // متغيرات لحساب استهلاك البيانات (TrafficStats)
-    // ============================================
     private var trafficJob: Job? = null
     private var startRxBytes: Long = 0L
     private var startTxBytes: Long = 0L
@@ -177,9 +173,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
     
-    // =========================================================================
-    // دوال حساب الاستهلاك الفعلي وتحديث العداد
-    // =========================================================================
     private fun formatTraffic(bytes: Long): String {
         if (bytes <= 0) return "0.00 B"
         if (bytes < 1024) return "$bytes B"
@@ -207,7 +200,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         
         trafficJob = lifecycleScope.launch(Dispatchers.IO) {
             while (true) {
-                // جلب إجمالي بيانات الجهاز الحالية
                 val currentRxBytes = TrafficStats.getTotalRxBytes()
                 val currentTxBytes = TrafficStats.getTotalTxBytes()
 
@@ -234,7 +226,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             .putLong("tx", oldTx + diffTx)
                             .apply()
                             
-                        // تحديث نقطة البداية للمرة القادمة
                         startRxBytes = currentRxBytes
                         startTxBytes = currentTxBytes
 
@@ -243,7 +234,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         }
                     }
                 }
-                delay(1000) // التحديث كل ثانية
+                delay(1000)
             }
         }
     }
@@ -283,7 +274,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         btnReset.setOnClickListener {
             prefs.edit().putLong("rx", 0L).putLong("tx", 0L).apply()
             
-            // عند التصفير، نحدث نقطة البداية لتجنب إضافة الاستهلاك القديم فجأة
             if (mainViewModel.isRunning.value == true) {
                 startRxBytes = TrafficStats.getTotalRxBytes()
                 startTxBytes = TrafficStats.getTotalTxBytes()
@@ -296,7 +286,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         dialog.show()
     }
-    // =========================================================================
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -380,18 +369,37 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    // =========================================================================
+    // تم التعديل هنا: دالة تحديث حالة البنق لترسل الرقم إلى العداد الدائري (الكيج)
+    // =========================================================================
     private fun setTestState(content: String?) {
         val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
+        val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
+        
         binding.tvTestState.text = content
         
         if (content != null) {
             if (content.contains("ms", ignoreCase = true)) {
                 tvGreenPing?.text = content
+                
+                // استخراج الرقم من النص (مثلاً: "150ms" -> 150)
+                try {
+                    val pingNumberStr = content.replace(Regex("[^0-9]"), "")
+                    if (pingNumberStr.isNotEmpty()) {
+                        val pingValue = pingNumberStr.toFloat()
+                        gaugePing?.setPing(pingValue) // تحريك الإبرة للرقم الجديد
+                    }
+                } catch (e: Exception) {
+                    Log.e(AppConfig.TAG, "Error parsing ping value", e)
+                }
+                
             } else if (content == getString(R.string.connection_connected)) {
                 tvGreenPing?.text = "متصل..."
+                gaugePing?.setPing(0f)
             }
         } else {
             tvGreenPing?.text = "--- ms"
+            gaugePing?.setPing(0f)
         }
     }
 
@@ -399,12 +407,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
         val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
+        val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
 
         if (isLoading) {
             binding.fab.setImageResource(R.drawable.ic_fab_check)
             btnGreenConnect?.text = "جاري تشغيل المحرك..."
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
             tvGreenPing?.text = "--- ms"
+            gaugePing?.setPing(0f)
             lottieEngine?.playAnimation()
             return
         }
@@ -420,7 +430,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F"))
             lottieEngine?.playAnimation()
             
-            // بدء قراءة البيانات
             startTrafficMonitor()
             
             pingJob?.cancel()
@@ -444,11 +453,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.cancelAnimation()
             lottieEngine?.progress = 0f
             
-            // إيقاف قراءة البيانات
             stopTrafficMonitor()
             
             pingJob?.cancel()
             tvGreenPing?.text = "--- ms"
+            gaugePing?.setPing(0f) // تصفير العداد عند الإيقاف
         }
     }
 
