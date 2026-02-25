@@ -8,7 +8,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
-import android.view.animation.OvershootInterpolator
+import android.view.animation.DecelerateInterpolator
 
 class PingGaugeView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
@@ -17,37 +17,53 @@ class PingGaugeView @JvmOverloads constructor(
     private val arcPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val needlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val centerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rectF = RectF()
 
     private var currentPing = 0f
-    private val maxPing = 500f // الحد الأقصى للعداد
+    private val maxPing = 500f // الحد الأقصى للعداد (فوق 500 سيقفل العداد)
+    
+    // هذا المتغير هو السلاح السري لمنع الإبرة من التجميد
+    private var currentAnimator: ValueAnimator? = null 
 
     init {
         arcPaint.style = Paint.Style.STROKE
-        arcPaint.strokeWidth = 30f
+        arcPaint.strokeWidth = 35f
         arcPaint.strokeCap = Paint.Cap.ROUND
 
         textPaint.color = Color.WHITE
-        textPaint.textSize = 40f
+        textPaint.textSize = 45f
         textPaint.textAlign = Paint.Align.CENTER
+        textPaint.isFakeBoldText = true
 
         needlePaint.color = Color.RED
         needlePaint.style = Paint.Style.FILL
-        needlePaint.strokeWidth = 8f
+        needlePaint.strokeWidth = 10f
         needlePaint.strokeCap = Paint.Cap.ROUND
+        
+        centerPaint.color = Color.WHITE
+        centerPaint.style = Paint.Style.FILL
     }
 
     fun setPing(ping: Float) {
-        val targetPing = if (ping > maxPing) maxPing else ping
-        
-        val animator = ValueAnimator.ofFloat(currentPing, targetPing)
-        animator.duration = 800
-        animator.interpolator = OvershootInterpolator(1.2f) // حركة إبرة واقعية
-        animator.addUpdateListener { animation ->
-            currentPing = animation.animatedValue as Float
-            invalidate()
+        // 1. إيقاف أي حركة سابقة فوراً حتى لا تتجمد الإبرة
+        currentAnimator?.cancel()
+
+        // 2. ضبط حدود البنق (ألا ينزل تحت الصفر ولا يعبر 500)
+        var targetPing = ping
+        if (targetPing < 0f) targetPing = 0f
+        if (targetPing > maxPing) targetPing = maxPing
+
+        // 3. تحريك الإبرة بمرونة إلى الرقم الجديد
+        currentAnimator = ValueAnimator.ofFloat(currentPing, targetPing).apply {
+            duration = 350 // سرعة استجابة الإبرة (أجزاء من الثانية)
+            interpolator = DecelerateInterpolator() // حركة انسيابية كالسيارة
+            addUpdateListener { animation ->
+                currentPing = animation.animatedValue as Float
+                invalidate() // إعادة رسم العداد بالزاوية الجديدة
+            }
+            start()
         }
-        animator.start()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -71,19 +87,21 @@ class PingGaugeView @JvmOverloads constructor(
         arcPaint.color = Color.parseColor("#F44336") // 300+ أحمر
         canvas.drawArc(rectF, 315f, 90f, false, arcPaint)
 
-        // رسم الرقم في المنتصف
-        canvas.drawText("${currentPing.toInt()} ms", cx, cy + 20f, textPaint)
+        // رسم الرقم في المنتصف أسفل الإبرة
+        canvas.drawText("${currentPing.toInt()} ms", cx, cy + 30f, textPaint)
 
         // حساب زاوية الإبرة (تبدأ من 135 وتصل إلى 405)
         val angle = 135f + (currentPing / maxPing) * 270f
         val angleRad = Math.toRadians(angle.toDouble())
 
         // رسم الإبرة
-        val needleLength = radius - 40f
+        val needleLength = radius - 35f
         val stopX = (cx + Math.cos(angleRad) * needleLength).toFloat()
         val stopY = (cy + Math.sin(angleRad) * needleLength).toFloat()
 
         canvas.drawLine(cx, cy, stopX, stopY, needlePaint)
-        canvas.drawCircle(cx, cy, 15f, needlePaint) // دائرة في المنتصف
+        
+        // رسم الدائرة البيضاء الصغيرة في مركز الإبرة
+        canvas.drawCircle(cx, cy, 18f, centerPaint) 
     }
 }
