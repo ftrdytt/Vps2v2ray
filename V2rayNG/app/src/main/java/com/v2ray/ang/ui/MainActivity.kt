@@ -72,8 +72,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     
     private var pingJob: Job? = null
     private var trafficJob: Job? = null
-    private var startRxBytes: Long = 0L
-    private var startTxBytes: Long = 0L
+    
+    // متغيرات حساب السرعة
+    private var lastRxBytes: Long = 0L
+    private var lastTxBytes: Long = 0L
     private var isFirstTrafficRead: Boolean = true
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -194,6 +196,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         tvTotalTraffic?.text = formatTraffic(total)
     }
 
+    // =========================================================================
+    // حساب السرعة الحية وتحريك إبرة العداد
+    // =========================================================================
     private fun startTrafficMonitor() {
         isFirstTrafficRead = true
         trafficJob?.cancel()
@@ -210,29 +215,38 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     }
 
                     if (isFirstTrafficRead) {
-                        startRxBytes = currentRxBytes
-                        startTxBytes = currentTxBytes
+                        lastRxBytes = currentRxBytes
+                        lastTxBytes = currentTxBytes
                         isFirstTrafficRead = false
                     } else {
-                        val diffRx = currentRxBytes - startRxBytes
-                        val diffTx = currentTxBytes - startTxBytes
+                        val speedRx = currentRxBytes - lastRxBytes
+                        val speedTx = currentTxBytes - lastTxBytes
                         
-                        if (diffRx > 0 || diffTx > 0) {
+                        val validSpeedRx = if (speedRx > 0) speedRx else 0L
+                        val validSpeedTx = if (speedTx > 0) speedTx else 0L
+
+                        val totalSpeedBytes = validSpeedRx + validSpeedTx
+                        val speedKbps = totalSpeedBytes / 1024f // تحويل السرعة إلى KB/s
+
+                        lastRxBytes = currentRxBytes
+                        lastTxBytes = currentTxBytes
+
+                        if (validSpeedRx > 0 || validSpeedTx > 0) {
                             val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
                             val oldRx = prefs.getLong("rx", 0L)
                             val oldTx = prefs.getLong("tx", 0L)
                             
                             prefs.edit()
-                                .putLong("rx", oldRx + diffRx)
-                                .putLong("tx", oldTx + diffTx)
+                                .putLong("rx", oldRx + validSpeedRx)
+                                .putLong("tx", oldTx + validSpeedTx)
                                 .apply()
-                                
-                            startRxBytes = currentRxBytes
-                            startTxBytes = currentTxBytes
+                        }
 
-                            withContext(Dispatchers.Main) {
-                                updateTrafficDisplay()
-                            }
+                        withContext(Dispatchers.Main) {
+                            updateTrafficDisplay()
+                            // إرسال السرعة الحقيقية إلى العداد ليتحرك كالمحرك!
+                            val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
+                            gaugePing?.setSpeed(speedKbps)
                         }
                     }
                 } catch (e: Exception) {
@@ -279,8 +293,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             prefs.edit().putLong("rx", 0L).putLong("tx", 0L).apply()
             
             if (mainViewModel.isRunning.value == true) {
-                startRxBytes = TrafficStats.getTotalRxBytes()
-                startTxBytes = TrafficStats.getTotalTxBytes()
+                lastRxBytes = TrafficStats.getTotalRxBytes()
+                lastTxBytes = TrafficStats.getTotalTxBytes()
             }
             
             refreshDialogData()
@@ -373,39 +387,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // =========================================================================
-    // التعديل الحاسم: صائد الأرقام الذكي الخالي من التصفير العشوائي
-    // =========================================================================
     private fun setTestState(content: String?) {
-        val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
-        
+        val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
         binding.tvTestState.text = content
         
-        if (content.isNullOrEmpty()) return
-
-        try {
-            // إذا كان النص يحتوي على كلمة ms (يعني النتيجة وصلت بنجاح)
-            if (content.contains("ms", ignoreCase = true) || content.contains("م.ث")) {
-                val match = Regex("(\\d+)").findAll(content).lastOrNull()
-                if (match != null) {
-                    gaugePing?.setPing(match.value.toFloat()) 
-                }
-            } 
-            // إذا كان هناك فشل أو انقطاع في الـ Ping
-            else if (content.contains("Timeout", ignoreCase = true) || 
-                     content.contains("Failed", ignoreCase = true) ||
-                     content.contains("Error", ignoreCase = true) ||
-                     content.contains("فشل", ignoreCase = true)) {
-                gaugePing?.setPing(500f) 
-            } 
-            // ⚠️ ملاحظة هامة: تم مسح الأمر الذي يضع العداد على صفر هنا.
-            // إذا كان النص "Testing..." أو أي شيء آخر، ستبقى الإبرة في مكانها ولن تنزل للصفر!
-            
-        } catch (e: Exception) {
-            Log.e(AppConfig.TAG, "Error parsing ping", e)
+        if (content != null) {
+            if (content.contains("ms", ignoreCase = true)) {
+                tvGreenPing?.text = content
+            } else if (content.contains("Timeout", ignoreCase = true) || content.contains("Failed", ignoreCase = true)) {
+                tvGreenPing?.text = "Timeout"
+            } else if (content == getString(R.string.connection_connected)) {
+                tvGreenPing?.text = "متصل..."
+            }
+        } else {
+            tvGreenPing?.text = "--- ms"
         }
     }
-    // =========================================================================
 
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
@@ -416,7 +413,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             binding.fab.setImageResource(R.drawable.ic_fab_check)
             btnGreenConnect?.text = "جاري تشغيل المحرك..."
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
-            gaugePing?.setPing(0f)
+            gaugePing?.setSpeed(0f)
             lottieEngine?.playAnimation()
             return
         }
@@ -432,20 +429,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F"))
             lottieEngine?.playAnimation()
             
+            // 1. تشغيل عداد السرعة (لا يسبب كراش ويجعل الإبرة تتراقص)
             startTrafficMonitor()
             
+            // 2. فحص البنق مرة واحدة فقط بعد الاتصال لتحديث النص بالأسفل
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
                 delay(2000) 
-                
-                while (true) {
-                    try {
-                        // إرسال أمر الفحص
-                        mainViewModel.testCurrentServerRealPing()
-                    } catch (e: Exception) {
-                        Log.e(AppConfig.TAG, "Ping Error", e)
-                    }
-                    delay(3000) 
+                try {
+                    mainViewModel.testCurrentServerRealPing()
+                } catch (e: Exception) {
+                    Log.e(AppConfig.TAG, "Ping Error", e)
                 }
             }
             
@@ -463,9 +457,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.progress = 0f
             
             stopTrafficMonitor()
-            
             pingJob?.cancel()
-            gaugePing?.setPing(0f) // يعود للصفر فقط عند إيقاف الاتصال
+            
+            val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
+            tvGreenPing?.text = "--- ms"
+            gaugePing?.setSpeed(0f) 
         }
     }
 
