@@ -20,9 +20,9 @@ class PingGaugeView @JvmOverloads constructor(
     private val centerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rectF = RectF()
 
-    private var currentPing = 0f
-    private val maxPing = 500f 
-    
+    private var currentValue = 0f
+    private val maxValue = 1000f // أقصى حد لسرعة العداد (1000 KB/s) لكي تتحرك الإبرة بوضوح
+
     private var currentAnimator: ValueAnimator? = null 
 
     init {
@@ -44,22 +44,21 @@ class PingGaugeView @JvmOverloads constructor(
         centerPaint.style = Paint.Style.FILL
     }
 
-    fun setPing(ping: Float) {
-        // إذا كان الرقم الجديد نفس القديم، لا داعي لتحريك الإبرة
-        if (Math.abs(currentPing - ping) < 1f) return
+    fun setSpeed(speedKbps: Float) {
+        if (Math.abs(currentValue - speedKbps) < 1f) return
 
         currentAnimator?.cancel()
 
-        var targetPing = ping
-        if (targetPing < 0f) targetPing = 0f
-        if (targetPing > maxPing) targetPing = maxPing
+        var targetValue = speedKbps
+        if (targetValue < 0f) targetValue = 0f
+        if (targetValue > maxValue) targetValue = maxValue
 
-        // حركة سلسة جداً تستغرق 800 ملي ثانية لتتناسب مع التحديث الذي يحصل كل ثانية
-        currentAnimator = ValueAnimator.ofFloat(currentPing, targetPing).apply {
+        // حركة سلسة للإبرة تستغرق 800 ملي ثانية
+        currentAnimator = ValueAnimator.ofFloat(currentValue, targetValue).apply {
             duration = 800 
             interpolator = DecelerateInterpolator() 
             addUpdateListener { animation ->
-                currentPing = animation.animatedValue as Float
+                currentValue = animation.animatedValue as Float
                 invalidate() 
             }
             start()
@@ -77,21 +76,22 @@ class PingGaugeView @JvmOverloads constructor(
 
         rectF.set(cx - radius, cy - radius, cx + radius, cy + radius)
 
-        // 0-150 أخضر
+        // 0-300 سرعة خفيفة (أخضر)
         arcPaint.color = Color.parseColor("#4CAF50") 
         canvas.drawArc(rectF, 135f, 90f, false, arcPaint)
 
-        // 150-300 أصفر
+        // 300-700 سرعة متوسطة (أصفر)
         arcPaint.color = Color.parseColor("#FFC107") 
         canvas.drawArc(rectF, 225f, 90f, false, arcPaint)
 
-        // 300+ أحمر
+        // 700+ سرعة عالية (أحمر)
         arcPaint.color = Color.parseColor("#F44336") 
         canvas.drawArc(rectF, 315f, 90f, false, arcPaint)
 
-        canvas.drawText("${currentPing.toInt()} ms", cx, cy + 30f, textPaint)
+        // كتابة وحدة القياس KB/s
+        canvas.drawText("${currentValue.toInt()} KB/s", cx, cy + 30f, textPaint)
 
-        val angle = 135f + (currentPing / maxPing) * 270f
+        val angle = 135f + (currentValue / maxValue) * 270f
         val angleRad = Math.toRadians(angle.toDouble())
 
         val needleLength = radius - 35f
