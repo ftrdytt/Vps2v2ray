@@ -374,46 +374,38 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     // =========================================================================
-    // صائد أرقام متطور ومضاد للأخطاء (Crash-Proof)
+    // التعديل الحاسم: صائد الأرقام الذكي الخالي من التصفير العشوائي
     // =========================================================================
     private fun setTestState(content: String?) {
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
         
         binding.tvTestState.text = content
         
-        if (content.isNullOrEmpty()) {
-            gaugePing?.setPing(0f)
-            return
-        }
+        if (content.isNullOrEmpty()) return
 
         try {
-            if (content.contains("ms", ignoreCase = true)) {
-                // البحث المباشر عن الرقم بجوار ms
-                val match = Regex("(\\d+)\\s*ms", RegexOption.IGNORE_CASE).find(content)
+            // إذا كان النص يحتوي على كلمة ms (يعني النتيجة وصلت بنجاح)
+            if (content.contains("ms", ignoreCase = true) || content.contains("م.ث")) {
+                val match = Regex("(\\d+)").findAll(content).lastOrNull()
                 if (match != null) {
-                    gaugePing?.setPing(match.groupValues[1].toFloat())
-                } else {
-                    // إذا لم يجده، يجلب آخر رقم متاح في النص
-                    val lastNum = Regex("(\\d+)").findAll(content).lastOrNull()
-                    if (lastNum != null) gaugePing?.setPing(lastNum.value.toFloat())
+                    gaugePing?.setPing(match.value.toFloat()) 
                 }
-            } else if (content.contains("Timeout", ignoreCase = true) || 
-                       content.contains("Failed", ignoreCase = true) ||
-                       content.contains("فشل", ignoreCase = true)) {
-                gaugePing?.setPing(500f) // إبرة حمراء عند الفشل
-            } else if (content == getString(R.string.connection_connected)) {
-                gaugePing?.setPing(0f)
-            } else {
-                // نصوص أخرى
-                val lastNum = Regex("(\\d+)").findAll(content).lastOrNull()
-                if (lastNum != null) gaugePing?.setPing(lastNum.value.toFloat())
-                else gaugePing?.setPing(0f)
-            }
+            } 
+            // إذا كان هناك فشل أو انقطاع في الـ Ping
+            else if (content.contains("Timeout", ignoreCase = true) || 
+                     content.contains("Failed", ignoreCase = true) ||
+                     content.contains("Error", ignoreCase = true) ||
+                     content.contains("فشل", ignoreCase = true)) {
+                gaugePing?.setPing(500f) 
+            } 
+            // ⚠️ ملاحظة هامة: تم مسح الأمر الذي يضع العداد على صفر هنا.
+            // إذا كان النص "Testing..." أو أي شيء آخر، ستبقى الإبرة في مكانها ولن تنزل للصفر!
+            
         } catch (e: Exception) {
-            Log.e(AppConfig.TAG, "Error in setTestState", e)
-            gaugePing?.setPing(0f)
+            Log.e(AppConfig.TAG, "Error parsing ping", e)
         }
     }
+    // =========================================================================
 
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
@@ -444,16 +436,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
-                // 1. انتظار 2 ثانية للسماح للسيرفر بالاستقرار والاتصال بالكامل (يمنع الكراش)
                 delay(2000) 
                 
                 while (true) {
                     try {
+                        // إرسال أمر الفحص
                         mainViewModel.testCurrentServerRealPing()
                     } catch (e: Exception) {
                         Log.e(AppConfig.TAG, "Ping Error", e)
                     }
-                    // 2. تحديث البنق كل 3 ثوانٍ فقط لمنع إرهاق التطبيق وحدوث كراش
                     delay(3000) 
                 }
             }
@@ -474,7 +465,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             stopTrafficMonitor()
             
             pingJob?.cancel()
-            gaugePing?.setPing(0f) 
+            gaugePing?.setPing(0f) // يعود للصفر فقط عند إيقاف الاتصال
         }
     }
 
