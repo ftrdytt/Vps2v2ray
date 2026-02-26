@@ -73,7 +73,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var pingJob: Job? = null
     private var trafficJob: Job? = null
     
-    // متغيرات حساب البيانات الكلية (المربع العلوي)
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
     private var isFirstTrafficRead: Boolean = true
@@ -216,28 +215,25 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         lastTxBytes = currentTxBytes
                         isFirstTrafficRead = false
                     } else {
-                        val speedRx = currentRxBytes - lastRxBytes
-                        val speedTx = currentTxBytes - lastTxBytes
+                        val diffRx = currentRxBytes - lastRxBytes
+                        val diffTx = currentTxBytes - lastTxBytes
                         
-                        val validSpeedRx = if (speedRx > 0) speedRx else 0L
-                        val validSpeedTx = if (speedTx > 0) speedTx else 0L
-
-                        lastRxBytes = currentRxBytes
-                        lastTxBytes = currentTxBytes
-
-                        if (validSpeedRx > 0 || validSpeedTx > 0) {
+                        if (diffRx > 0 || diffTx > 0) {
                             val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
                             val oldRx = prefs.getLong("rx", 0L)
                             val oldTx = prefs.getLong("tx", 0L)
                             
                             prefs.edit()
-                                .putLong("rx", oldRx + validSpeedRx)
-                                .putLong("tx", oldTx + validSpeedTx)
+                                .putLong("rx", oldRx + diffRx)
+                                .putLong("tx", oldTx + diffTx)
                                 .apply()
-                        }
+                                
+                            lastRxBytes = currentRxBytes
+                            lastTxBytes = currentTxBytes
 
-                        withContext(Dispatchers.Main) {
-                            updateTrafficDisplay()
+                            withContext(Dispatchers.Main) {
+                                updateTrafficDisplay()
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -379,34 +375,57 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     // =========================================================================
-    // التعديل السحري: استخراج البنق من النص وتحديث العداد (Ping ms)
+    // التعديل الخرافي: الفلتر الذكي لقراءة البنق (Ping) من أي نص معقد!
     // =========================================================================
     private fun setTestState(content: String?) {
-        // تحديث النص الطبيعي أسفل الشاشة
+        // 1. تحديث النص أسفل الشاشة (مثل: نجاح: استغرق اتصال 141ms HTTP)
         binding.tvTestState.text = content
         
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
         
-        if (content != null) {
-            if (content.contains("ms", ignoreCase = true)) {
-                try {
-                    // يقوم بالبحث عن الأرقام التي تسبق كلمة ms مباشرة (مثل 141 من 141ms)
-                    val match = Regex("(\\d+)\\s*ms", RegexOption.IGNORE_CASE).find(content)
-                    if (match != null) {
-                        val pingValue = match.groupValues[1].toFloat()
-                        gaugePing?.setPing(pingValue) // تحريك العداد لرقم البنق!
+        if (content.isNullOrEmpty()) return
+
+        try {
+            // تحويل الأرقام العربية (١٢٣) إلى إنجليزية (123) في حال كان هاتف المستخدم باللغة العربية
+            val normalizedContent = content
+                .replace("٠", "0").replace("١", "1").replace("٢", "2")
+                .replace("٣", "3").replace("٤", "4").replace("٥", "5")
+                .replace("٦", "6").replace("٧", "7").replace("٨", "8").replace("٩", "9")
+
+            // 2. إذا احتوى النص على كلمة ms أو م.ث، نقوم باصطياد الرقم الذي قبلها مباشرة
+            if (normalizedContent.contains("ms", ignoreCase = true) || normalizedContent.contains("م.ث")) {
+                
+                // هذا الكود (Regex) يبحث عن أي رقم متصل بكلمة ms 
+                val match = Regex("(\\d+)\\s*(ms|م\\.ث)", RegexOption.IGNORE_CASE).find(normalizedContent)
+                
+                if (match != null) {
+                    val pingValue = match.groupValues[1].toFloat()
+                    gaugePing?.setPing(pingValue) // تحريك الإبرة للرقم!
+                } else {
+                    // إذا لم تلتصق الكلمة بالرقم، نأخذ أول رقم نجده في الجملة
+                    val fallbackMatch = Regex("(\\d+)").find(normalizedContent)
+                    if (fallbackMatch != null) {
+                        gaugePing?.setPing(fallbackMatch.value.toFloat())
                     }
-                } catch (e: Exception) {
-                    Log.e(AppConfig.TAG, "Error parsing ping value", e)
                 }
-            } else if (content.contains("Timeout", ignoreCase = true) || content.contains("Failed", ignoreCase = true) || content.contains("فشل", ignoreCase = true)) {
-                // إذا فشل الاتصال تصعد الإبرة للون الأحمر
-                gaugePing?.setPing(500f)
-            } else if (content == getString(R.string.connection_connected)) {
+            } 
+            // 3. في حالة فشل البنق (Timeout)
+            else if (normalizedContent.contains("Timeout", ignoreCase = true) || 
+                     normalizedContent.contains("Failed", ignoreCase = true) ||
+                     normalizedContent.contains("فشل", ignoreCase = true)) {
+                gaugePing?.setPing(500f) // صعود الإبرة للون الأحمر
+            } 
+            // 4. تصفير العداد فقط إذا كان النص "متصل" ولم يبدأ الفحص بعد
+            else if (normalizedContent == getString(R.string.connection_connected)) {
                 gaugePing?.setPing(0f)
             }
+            // ملاحظة: تم تجاهل الكلمات الأخرى مثل "Testing..." لكي لا تنزل الإبرة للصفر فجأة.
+            
+        } catch (e: Exception) {
+            Log.e(AppConfig.TAG, "Error parsing ping", e)
         }
     }
+    // =========================================================================
 
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
@@ -436,19 +455,19 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             startTrafficMonitor()
             
             // ============================================
-            // فحص البنق بشكل مستمر ومنتظم (لا يسبب كراش!)
+            // حلقة الفحص المستمر للبنق (بدون كراش)
             // ============================================
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
-                delay(2000) // انتظار ثانيتين لكي يكتمل الاتصال قبل الفحص
+                delay(2000) // انتظار ثانيتين لكي يكتمل الاتصال ولا ينهار التطبيق
+                
                 while (true) {
                     try {
                         mainViewModel.testCurrentServerRealPing()
                     } catch (e: Exception) {
                         Log.e(AppConfig.TAG, "Ping Error", e)
                     }
-                    // تأخير 1.2 ثانية. هذا الوقت يعطيك تحديث "كل ثانية" ويمنع انهيار السيرفر والكراش!
-                    delay(1200) 
+                    delay(1500) // يتم الفحص كل ثانية ونصف، سرعة مثالية للعداد ولا تخنق السيرفر
                 }
             }
             
@@ -468,7 +487,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             stopTrafficMonitor()
             
             pingJob?.cancel()
-            gaugePing?.setPing(0f) // إعادة عداد البنق للصفر عند الإيقاف
+            gaugePing?.setPing(0f) 
         }
     }
 
