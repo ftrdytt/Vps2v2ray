@@ -73,7 +73,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var pingJob: Job? = null
     private var trafficJob: Job? = null
     
-    // متغيرات حساب السرعة
+    // متغيرات حساب البيانات الكلية (المربع العلوي)
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
     private var isFirstTrafficRead: Boolean = true
@@ -196,9 +196,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         tvTotalTraffic?.text = formatTraffic(total)
     }
 
-    // =========================================================================
-    // مراقب السرعة الحية وارسالها للعداد
-    // =========================================================================
     private fun startTrafficMonitor() {
         isFirstTrafficRead = true
         trafficJob?.cancel()
@@ -225,9 +222,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val validSpeedRx = if (speedRx > 0) speedRx else 0L
                         val validSpeedTx = if (speedTx > 0) speedTx else 0L
 
-                        val totalSpeedBytes = validSpeedRx + validSpeedTx
-                        val speedKbps = totalSpeedBytes / 1024f // تحويل لـ KB/s
-
                         lastRxBytes = currentRxBytes
                         lastTxBytes = currentTxBytes
 
@@ -244,9 +238,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
                         withContext(Dispatchers.Main) {
                             updateTrafficDisplay()
-                            // إرسال السرعة الحية للعداد لكي تتحرك الإبرة
-                            val gaugeSpeed = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
-                            gaugeSpeed?.setSpeed(speedKbps)
                         }
                     }
                 } catch (e: Exception) {
@@ -388,23 +379,45 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     // =========================================================================
-    // كتابة حالة البنق في أسفل الشاشة (تحديث النص فقط)
+    // التعديل السحري: استخراج البنق من النص وتحديث العداد (Ping ms)
     // =========================================================================
     private fun setTestState(content: String?) {
-        // نص البنق سيظهر في أسفل الشاشة بشكل طبيعي
+        // تحديث النص الطبيعي أسفل الشاشة
         binding.tvTestState.text = content
+        
+        val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
+        
+        if (content != null) {
+            if (content.contains("ms", ignoreCase = true)) {
+                try {
+                    // يقوم بالبحث عن الأرقام التي تسبق كلمة ms مباشرة (مثل 141 من 141ms)
+                    val match = Regex("(\\d+)\\s*ms", RegexOption.IGNORE_CASE).find(content)
+                    if (match != null) {
+                        val pingValue = match.groupValues[1].toFloat()
+                        gaugePing?.setPing(pingValue) // تحريك العداد لرقم البنق!
+                    }
+                } catch (e: Exception) {
+                    Log.e(AppConfig.TAG, "Error parsing ping value", e)
+                }
+            } else if (content.contains("Timeout", ignoreCase = true) || content.contains("Failed", ignoreCase = true) || content.contains("فشل", ignoreCase = true)) {
+                // إذا فشل الاتصال تصعد الإبرة للون الأحمر
+                gaugePing?.setPing(500f)
+            } else if (content == getString(R.string.connection_connected)) {
+                gaugePing?.setPing(0f)
+            }
+        }
     }
 
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
-        val gaugeSpeed = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
+        val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
 
         if (isLoading) {
             binding.fab.setImageResource(R.drawable.ic_fab_check)
             btnGreenConnect?.text = "جاري تشغيل المحرك..."
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
-            gaugeSpeed?.setSpeed(0f)
+            gaugePing?.setPing(0f)
             lottieEngine?.playAnimation()
             return
         }
@@ -420,20 +433,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F"))
             lottieEngine?.playAnimation()
             
-            // تشغيل العداد الدائري ليعمل كـ Speedometer
             startTrafficMonitor()
             
-            // فحص البنق ليعرض الرقم أسفل الشاشة
+            // ============================================
+            // فحص البنق بشكل مستمر ومنتظم (لا يسبب كراش!)
+            // ============================================
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
-                delay(2000) 
+                delay(2000) // انتظار ثانيتين لكي يكتمل الاتصال قبل الفحص
                 while (true) {
                     try {
                         mainViewModel.testCurrentServerRealPing()
                     } catch (e: Exception) {
                         Log.e(AppConfig.TAG, "Ping Error", e)
                     }
-                    delay(3000) 
+                    // تأخير 1.2 ثانية. هذا الوقت يعطيك تحديث "كل ثانية" ويمنع انهيار السيرفر والكراش!
+                    delay(1200) 
                 }
             }
             
@@ -451,8 +466,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.progress = 0f
             
             stopTrafficMonitor()
+            
             pingJob?.cancel()
-            gaugeSpeed?.setSpeed(0f) 
+            gaugePing?.setPing(0f) // إعادة عداد البنق للصفر عند الإيقاف
         }
     }
 
