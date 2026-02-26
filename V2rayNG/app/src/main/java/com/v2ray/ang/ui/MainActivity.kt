@@ -197,7 +197,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     // =========================================================================
-    // حساب السرعة الحية وتحريك إبرة العداد
+    // مراقب السرعة الحية وارسالها للعداد
     // =========================================================================
     private fun startTrafficMonitor() {
         isFirstTrafficRead = true
@@ -226,7 +226,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val validSpeedTx = if (speedTx > 0) speedTx else 0L
 
                         val totalSpeedBytes = validSpeedRx + validSpeedTx
-                        val speedKbps = totalSpeedBytes / 1024f // تحويل السرعة إلى KB/s
+                        val speedKbps = totalSpeedBytes / 1024f // تحويل لـ KB/s
 
                         lastRxBytes = currentRxBytes
                         lastTxBytes = currentTxBytes
@@ -244,9 +244,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
                         withContext(Dispatchers.Main) {
                             updateTrafficDisplay()
-                            // إرسال السرعة الحقيقية إلى العداد ليتحرك كالمحرك!
-                            val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
-                            gaugePing?.setSpeed(speedKbps)
+                            // إرسال السرعة الحية للعداد لكي تتحرك الإبرة
+                            val gaugeSpeed = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
+                            gaugeSpeed?.setSpeed(speedKbps)
                         }
                     }
                 } catch (e: Exception) {
@@ -387,33 +387,24 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    // =========================================================================
+    // كتابة حالة البنق في أسفل الشاشة (تحديث النص فقط)
+    // =========================================================================
     private fun setTestState(content: String?) {
-        val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
+        // نص البنق سيظهر في أسفل الشاشة بشكل طبيعي
         binding.tvTestState.text = content
-        
-        if (content != null) {
-            if (content.contains("ms", ignoreCase = true)) {
-                tvGreenPing?.text = content
-            } else if (content.contains("Timeout", ignoreCase = true) || content.contains("Failed", ignoreCase = true)) {
-                tvGreenPing?.text = "Timeout"
-            } else if (content == getString(R.string.connection_connected)) {
-                tvGreenPing?.text = "متصل..."
-            }
-        } else {
-            tvGreenPing?.text = "--- ms"
-        }
     }
 
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
-        val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
+        val gaugeSpeed = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
 
         if (isLoading) {
             binding.fab.setImageResource(R.drawable.ic_fab_check)
             btnGreenConnect?.text = "جاري تشغيل المحرك..."
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
-            gaugePing?.setSpeed(0f)
+            gaugeSpeed?.setSpeed(0f)
             lottieEngine?.playAnimation()
             return
         }
@@ -429,17 +420,20 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F"))
             lottieEngine?.playAnimation()
             
-            // 1. تشغيل عداد السرعة (لا يسبب كراش ويجعل الإبرة تتراقص)
+            // تشغيل العداد الدائري ليعمل كـ Speedometer
             startTrafficMonitor()
             
-            // 2. فحص البنق مرة واحدة فقط بعد الاتصال لتحديث النص بالأسفل
+            // فحص البنق ليعرض الرقم أسفل الشاشة
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
                 delay(2000) 
-                try {
-                    mainViewModel.testCurrentServerRealPing()
-                } catch (e: Exception) {
-                    Log.e(AppConfig.TAG, "Ping Error", e)
+                while (true) {
+                    try {
+                        mainViewModel.testCurrentServerRealPing()
+                    } catch (e: Exception) {
+                        Log.e(AppConfig.TAG, "Ping Error", e)
+                    }
+                    delay(3000) 
                 }
             }
             
@@ -458,10 +452,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             stopTrafficMonitor()
             pingJob?.cancel()
-            
-            val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
-            tvGreenPing?.text = "--- ms"
-            gaugePing?.setSpeed(0f) 
+            gaugeSpeed?.setSpeed(0f) 
         }
     }
 
