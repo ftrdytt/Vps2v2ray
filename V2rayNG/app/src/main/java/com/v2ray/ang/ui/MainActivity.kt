@@ -57,6 +57,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
@@ -72,6 +74,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     
     private var pingJob: Job? = null
     private var trafficJob: Job? = null
+    private var speedTestJob: Job? = null
     
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
@@ -111,6 +114,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
         btnGreenConnect?.setOnClickListener {
             handleFabAction()
+        }
+
+        // زر فحص السرعة الجديد
+        val btnSpeedTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
+        btnSpeedTest?.setOnClickListener {
+            if (mainViewModel.isRunning.value == true) {
+                runSpeedTest()
+            } else {
+                toast("الرجاء تشغيل المحرك أولاً!")
+            }
         }
 
         val cardTrafficMeter = binding.root.findViewById<CardView>(R.id.card_traffic_meter)
@@ -173,7 +186,80 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {
         }
     }
-    
+
+    // =========================================================================
+    // كود فحص السرعة الحقيقي (يعمل عند ضغط زر TEST SPEED)
+    // =========================================================================
+    private fun runSpeedTest() {
+        val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
+        val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
+        
+        if (speedTestJob?.isActive == true) return
+        
+        btnTest?.isEnabled = false
+        btnTest?.text = "جاري الفحص..."
+        btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FF9800"))
+
+        speedTestJob = lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // استخدام سيرفر Cloudflare لفحص السرعة (15 ميجابايت)
+                val url = URL("https://speed.cloudflare.com/__down?bytes=15000000")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+                
+                val inputStream = connection.inputStream
+                val buffer = ByteArray(8192)
+                var totalBytesRead = 0L
+                var bytesRead: Int
+                val startTime = System.currentTimeMillis()
+                var lastUpdateTime = startTime
+                var lastBytesRead = 0L
+                
+                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    totalBytesRead += bytesRead
+                    val currentTime = System.currentTimeMillis()
+                    val timeDiff = currentTime - lastUpdateTime
+                    
+                    // تحديث الكيج كل نصف ثانية لحركة مذهلة!
+                    if (timeDiff >= 500) { 
+                        val bytesDiff = totalBytesRead - lastBytesRead
+                        val speedBps = bytesDiff / (timeDiff / 1000f)
+                        val speedMbps = (speedBps * 8) / 1_000_000f // تحويل إلى Mbps
+                        
+                        withContext(Dispatchers.Main) {
+                            speedGauge?.setSpeed(speedMbps)
+                        }
+                        
+                        lastUpdateTime = currentTime
+                        lastBytesRead = totalBytesRead
+                    }
+                }
+                inputStream.close()
+                
+                // إعادة الزر لوضعه الطبيعي بعد انتهاء الفحص
+                withContext(Dispatchers.Main) {
+                    speedGauge?.setSpeed(0f)
+                    btnTest?.isEnabled = true
+                    btnTest?.text = "TEST SPEED"
+                    btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
+                    toast("تم إكمال الفحص بنجاح!")
+                }
+                
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    speedGauge?.setSpeed(0f)
+                    btnTest?.isEnabled = true
+                    btnTest?.text = "TEST SPEED"
+                    btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
+                    toastError(R.string.connection_test_fail)
+                }
+            }
+        }
+    }
+    // =========================================================================
+
     private fun formatTraffic(bytes: Long): String {
         if (bytes <= 0) return "0.00 B"
         if (bytes < 1024) return "$bytes B"
@@ -374,11 +460,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // =========================================================================
-    // التعديل الخرافي: الفلتر الذكي لقراءة البنق (Ping) من أي نص معقد!
-    // =========================================================================
     private fun setTestState(content: String?) {
-        // 1. تحديث النص أسفل الشاشة (مثل: نجاح: استغرق اتصال 141ms HTTP)
+        val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
         binding.tvTestState.text = content
         
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
@@ -386,57 +469,53 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         if (content.isNullOrEmpty()) return
 
         try {
-            // تحويل الأرقام العربية (١٢٣) إلى إنجليزية (123) في حال كان هاتف المستخدم باللغة العربية
             val normalizedContent = content
                 .replace("٠", "0").replace("١", "1").replace("٢", "2")
                 .replace("٣", "3").replace("٤", "4").replace("٥", "5")
                 .replace("٦", "6").replace("٧", "7").replace("٨", "8").replace("٩", "9")
 
-            // 2. إذا احتوى النص على كلمة ms أو م.ث، نقوم باصطياد الرقم الذي قبلها مباشرة
             if (normalizedContent.contains("ms", ignoreCase = true) || normalizedContent.contains("م.ث")) {
-                
-                // هذا الكود (Regex) يبحث عن أي رقم متصل بكلمة ms 
                 val match = Regex("(\\d+)\\s*(ms|م\\.ث)", RegexOption.IGNORE_CASE).find(normalizedContent)
                 
                 if (match != null) {
                     val pingValue = match.groupValues[1].toFloat()
-                    gaugePing?.setPing(pingValue) // تحريك الإبرة للرقم!
+                    gaugePing?.setPing(pingValue) 
+                    tvGreenPing?.text = "${pingValue.toInt()} ms"
                 } else {
-                    // إذا لم تلتصق الكلمة بالرقم، نأخذ أول رقم نجده في الجملة
                     val fallbackMatch = Regex("(\\d+)").find(normalizedContent)
                     if (fallbackMatch != null) {
                         gaugePing?.setPing(fallbackMatch.value.toFloat())
+                        tvGreenPing?.text = "${fallbackMatch.value} ms"
                     }
                 }
             } 
-            // 3. في حالة فشل البنق (Timeout)
             else if (normalizedContent.contains("Timeout", ignoreCase = true) || 
                      normalizedContent.contains("Failed", ignoreCase = true) ||
                      normalizedContent.contains("فشل", ignoreCase = true)) {
-                gaugePing?.setPing(500f) // صعود الإبرة للون الأحمر
+                gaugePing?.setPing(500f) 
+                tvGreenPing?.text = "Timeout"
             } 
-            // 4. تصفير العداد فقط إذا كان النص "متصل" ولم يبدأ الفحص بعد
             else if (normalizedContent == getString(R.string.connection_connected)) {
                 gaugePing?.setPing(0f)
+                tvGreenPing?.text = "متصل..."
             }
-            // ملاحظة: تم تجاهل الكلمات الأخرى مثل "Testing..." لكي لا تنزل الإبرة للصفر فجأة.
-            
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Error parsing ping", e)
         }
     }
-    // =========================================================================
 
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
+        val gaugeSpeed = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
 
         if (isLoading) {
             binding.fab.setImageResource(R.drawable.ic_fab_check)
             btnGreenConnect?.text = "جاري تشغيل المحرك..."
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
             gaugePing?.setPing(0f)
+            gaugeSpeed?.setSpeed(0f)
             lottieEngine?.playAnimation()
             return
         }
@@ -454,20 +533,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             startTrafficMonitor()
             
-            // ============================================
-            // حلقة الفحص المستمر للبنق (بدون كراش)
-            // ============================================
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
-                delay(2000) // انتظار ثانيتين لكي يكتمل الاتصال ولا ينهار التطبيق
-                
+                delay(2000) 
                 while (true) {
                     try {
                         mainViewModel.testCurrentServerRealPing()
                     } catch (e: Exception) {
                         Log.e(AppConfig.TAG, "Ping Error", e)
                     }
-                    delay(1500) // يتم الفحص كل ثانية ونصف، سرعة مثالية للعداد ولا تخنق السيرفر
+                    delay(1500) 
                 }
             }
             
@@ -485,9 +560,19 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.progress = 0f
             
             stopTrafficMonitor()
+            speedTestJob?.cancel()
             
             pingJob?.cancel()
             gaugePing?.setPing(0f) 
+            gaugeSpeed?.setSpeed(0f)
+            
+            val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
+            tvGreenPing?.text = "--- ms"
+            
+            val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
+            btnTest?.isEnabled = true
+            btnTest?.text = "TEST SPEED"
+            btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
         }
     }
 
@@ -503,6 +588,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onPause() {
         super.onPause()
         stopTrafficMonitor()
+        speedTestJob?.cancel()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -807,6 +893,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         tabMediator?.detach()
         pingJob?.cancel() 
         trafficJob?.cancel()
+        speedTestJob?.cancel()
         super.onDestroy()
     }
 }
