@@ -52,7 +52,7 @@
                             android:id="@+id/card_traffic_meter"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginBottom="10dp"
+                            android:layout_marginBottom="5dp"
                             android:clickable="true"
                             android:focusable="true"
                             android:foreground="?attr/selectableItemBackground"
@@ -96,18 +96,70 @@
                         
                         <com.airbnb.lottie.LottieAnimationView
                             android:id="@+id/lottie_engine"
-                            android:layout_width="260dp"
-                            android:layout_height="260dp"
+                            android:layout_width="200dp"
+                            android:layout_height="200dp"
                             app:lottie_rawRes="@raw/engine_anim"
                             app:lottie_loop="true"
                             app:lottie_autoPlay="false" />
 
-                        <com.v2ray.ang.ui.PingGaugeView
-                            android:id="@+id/gauge_ping"
-                            android:layout_width="200dp"
-                            android:layout_height="200dp"
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
                             android:layout_marginTop="5dp"
-                            android:layout_marginBottom="10dp" />
+                            android:layout_marginBottom="15dp"
+                            android:weightSum="2">
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:gravity="center"
+                                android:orientation="vertical">
+
+                                <com.v2ray.ang.ui.SpeedGaugeView
+                                    android:id="@+id/gauge_speed"
+                                    android:layout_width="160dp"
+                                    android:layout_height="160dp" />
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/btn_speed_test"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="8dp"
+                                    android:backgroundTint="#2196F3"
+                                    android:text="TEST SPEED"
+                                    android:textColor="#FFFFFF"
+                                    android:textSize="12sp"
+                                    android:textStyle="bold"
+                                    app:cornerRadius="16dp" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:gravity="center"
+                                android:orientation="vertical">
+
+                                <com.v2ray.ang.ui.PingGaugeView
+                                    android:id="@+id/gauge_ping"
+                                    android:layout_width="160dp"
+                                    android:layout_height="160dp" />
+
+                                <TextView
+                                    android:id="@+id/tv_green_ping"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="8dp"
+                                    android:text="--- ms"
+                                    android:gravity="center"
+                                    android:textColor="#4CAF50"
+                                    android:textSize="14sp"
+                                    android:textStyle="bold" />
+                            </LinearLayout>
+
+                        </LinearLayout>
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btn_green_connect"
