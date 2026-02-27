@@ -116,14 +116,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             handleFabAction()
         }
 
-        // زر فحص السرعة الجديد
+        // =======================================================
+        // زر الفحص الآن يعمل دائماً (سواء المحرك شغال أو طافي)
+        // =======================================================
         val btnSpeedTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
         btnSpeedTest?.setOnClickListener {
-            if (mainViewModel.isRunning.value == true) {
-                runSpeedTest()
-            } else {
-                toast("الرجاء تشغيل المحرك أولاً!")
-            }
+            runSpeedTest()
         }
 
         val cardTrafficMeter = binding.root.findViewById<CardView>(R.id.card_traffic_meter)
@@ -188,7 +186,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     // =========================================================================
-    // كود فحص السرعة الحقيقي (يعمل عند ضغط زر TEST SPEED)
+    // التعديل الجديد: فحص السرعة القوي (مضاد للحظر ويعمل بقوة)
     // =========================================================================
     private fun runSpeedTest() {
         val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
@@ -202,15 +200,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         speedTestJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // استخدام سيرفر Cloudflare لفحص السرعة (15 ميجابايت)
+                // استخدام سيرفر عالمي قوي وموثوق مع إضافة هوية متصفح لمنع الحظر
                 val url = URL("https://speed.cloudflare.com/__down?bytes=15000000")
                 val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
-                connection.connectTimeout = 5000
-                connection.readTimeout = 5000
+                // السطر السحري: إقناع السيرفر بأننا متصفح حقيقي لكي لا يطردنا!
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+                connection.connectTimeout = 8000
+                connection.readTimeout = 8000
+                
+                val responseCode = connection.responseCode
+                if (responseCode != HttpURLConnection.HTTP_OK) {
+                    throw Exception("HTTP Error: $responseCode")
+                }
                 
                 val inputStream = connection.inputStream
-                val buffer = ByteArray(8192)
+                val buffer = ByteArray(16384) // تكبير الذاكرة لضخ بيانات أسرع وأقوى
                 var totalBytesRead = 0L
                 var bytesRead: Int
                 val startTime = System.currentTimeMillis()
@@ -222,11 +227,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     val currentTime = System.currentTimeMillis()
                     val timeDiff = currentTime - lastUpdateTime
                     
-                    // تحديث الكيج كل نصف ثانية لحركة مذهلة!
-                    if (timeDiff >= 500) { 
+                    // تحديث الإبرة كل 300 ملي ثانية لتكون حركتها مجنونة وحية!
+                    if (timeDiff >= 300) { 
                         val bytesDiff = totalBytesRead - lastBytesRead
                         val speedBps = bytesDiff / (timeDiff / 1000f)
-                        val speedMbps = (speedBps * 8) / 1_000_000f // تحويل إلى Mbps
+                        val speedMbps = (speedBps * 8) / 1_000_000f 
                         
                         withContext(Dispatchers.Main) {
                             speedGauge?.setSpeed(speedMbps)
@@ -238,7 +243,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
                 inputStream.close()
                 
-                // إعادة الزر لوضعه الطبيعي بعد انتهاء الفحص
                 withContext(Dispatchers.Main) {
                     speedGauge?.setSpeed(0f)
                     btnTest?.isEnabled = true
@@ -248,12 +252,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
                 
             } catch (e: Exception) {
+                Log.e(AppConfig.TAG, "Speed test failed", e)
                 withContext(Dispatchers.Main) {
                     speedGauge?.setSpeed(0f)
                     btnTest?.isEnabled = true
                     btnTest?.text = "TEST SPEED"
                     btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
-                    toastError(R.string.connection_test_fail)
+                    toast("تعذر الفحص، الرجاء التأكد من وجود إنترنت.")
                 }
             }
         }
@@ -461,10 +466,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun setTestState(content: String?) {
-        val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
         binding.tvTestState.text = content
         
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
+        val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
         
         if (content.isNullOrEmpty()) return
 
@@ -499,6 +504,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 gaugePing?.setPing(0f)
                 tvGreenPing?.text = "متصل..."
             }
+            
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Error parsing ping", e)
         }
@@ -508,14 +514,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
-        val gaugeSpeed = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
 
         if (isLoading) {
             binding.fab.setImageResource(R.drawable.ic_fab_check)
             btnGreenConnect?.text = "جاري تشغيل المحرك..."
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
             gaugePing?.setPing(0f)
-            gaugeSpeed?.setSpeed(0f)
             lottieEngine?.playAnimation()
             return
         }
@@ -560,19 +564,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.progress = 0f
             
             stopTrafficMonitor()
-            speedTestJob?.cancel()
             
             pingJob?.cancel()
             gaugePing?.setPing(0f) 
-            gaugeSpeed?.setSpeed(0f)
-            
-            val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
-            tvGreenPing?.text = "--- ms"
-            
-            val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
-            btnTest?.isEnabled = true
-            btnTest?.text = "TEST SPEED"
-            btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
         }
     }
 
@@ -588,7 +582,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onPause() {
         super.onPause()
         stopTrafficMonitor()
-        speedTestJob?.cancel()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
