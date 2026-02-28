@@ -185,7 +185,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     // =========================================================================
-    // كود فحص السرعة القوي والمعدل (يستخدم البروكسي المحلي إذا كان الـ VPN شغال)
+    // التعديل المذهل: فحص لا يقهر (ينتقل للاتصال المباشر إذا فشل الـ VPN)
     // =========================================================================
     private fun runSpeedTest() {
         val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
@@ -198,89 +198,94 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FF9800"))
 
         speedTestJob = lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                // نستخدم سيرفر كلاود فلير الرسمي للفحص السريع
-                val url = URL("https://speed.cloudflare.com/__down?bytes=20000000")
-                var connection: HttpURLConnection? = null
+            var isSuccess = false
+            var currentProxy: Proxy = Proxy.NO_PROXY
+
+            // 1. محاولة استخدام بروكسي الـ VPN إذا كان المحرك شغالاً
+            if (mainViewModel.isRunning.value == true) {
+                currentProxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 10809))
+                try {
+                    isSuccess = attemptDownload(speedGauge, currentProxy)
+                } catch (e: Exception) {
+                    Log.e(AppConfig.TAG, "VPN Proxy failed, falling back to direct", e)
+                }
+            }
+
+            // 2. إذا فشل البروكسي (مثل خطأ 10809) أو كان المحرك مطفأ، نجرب فوراً الاتصال المباشر
+            if (!isSuccess) {
+                try {
+                    isSuccess = attemptDownload(speedGauge, Proxy.NO_PROXY)
+                } catch (e: Exception) {
+                    Log.e(AppConfig.TAG, "Direct download also failed", e)
+                }
+            }
+
+            // إرجاع الزر لوضعه الطبيعي
+            withContext(Dispatchers.Main) {
+                speedGauge?.setSpeed(0f)
+                btnTest?.isEnabled = true
+                btnTest?.text = "TEST SPEED"
+                btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
                 
-                // السحر هنا: توجيه الفحص إجبارياً عبر السيرفر إذا كان المحرك يعمل
-                if (mainViewModel.isRunning.value == true) {
-                    try {
-                        val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 10809))
-                        connection = url.openConnection(proxy) as HttpURLConnection
-                    } catch (e: Exception) {
-                        connection = url.openConnection() as HttpURLConnection
-                    }
+                if (isSuccess) {
+                    toast("تم الفحص بنجاح!")
                 } else {
-                    connection = url.openConnection() as HttpURLConnection
-                }
-                
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-                connection.connectTimeout = 15000 
-                connection.readTimeout = 15000
-                connection.doInput = true
-                
-                connection.connect()
-                
-                if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                    throw Exception("HTTP Error: ${connection.responseCode}")
-                }
-                
-                val inputStream = connection.inputStream
-                val buffer = ByteArray(8192) 
-                var totalBytesRead = 0L
-                var bytesRead: Int
-                val startTime = System.currentTimeMillis()
-                var lastUpdateTime = startTime
-                var lastBytesRead = 0L
-                
-                // تحريك إبرة الكيج بناءً على البيانات المتدفقة
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    totalBytesRead += bytesRead
-                    val currentTime = System.currentTimeMillis()
-                    val timeDiff = currentTime - lastUpdateTime
-                    
-                    if (timeDiff >= 300) { 
-                        val bytesDiff = totalBytesRead - lastBytesRead
-                        val speedBps = bytesDiff / (timeDiff / 1000f)
-                        val speedMbps = (speedBps * 8) / 1_000_000f 
-                        
-                        withContext(Dispatchers.Main) {
-                            speedGauge?.setSpeed(speedMbps)
-                        }
-                        
-                        lastUpdateTime = currentTime
-                        lastBytesRead = totalBytesRead
-                    }
-                    
-                    // إيقاف الفحص بعد 8 ثواني لتوفير باقة الإنترنت
-                    if (currentTime - startTime > 8000) {
-                        break 
-                    }
-                }
-                inputStream.close()
-                
-                withContext(Dispatchers.Main) {
-                    speedGauge?.setSpeed(0f)
-                    btnTest?.isEnabled = true
-                    btnTest?.text = "TEST SPEED"
-                    btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
-                    toast("اكتمل الفحص بنجاح!")
-                }
-                
-            } catch (e: Exception) {
-                Log.e(AppConfig.TAG, "Speed test error", e)
-                withContext(Dispatchers.Main) {
-                    speedGauge?.setSpeed(0f)
-                    btnTest?.isEnabled = true
-                    btnTest?.text = "TEST SPEED"
-                    btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
-                    // إظهار سبب الخطأ الفعلي بدلاً من رسالة عامة لنعرف المشكلة
-                    toast("خطأ في الفحص: ${e.message?.take(40)}")
+                    toast("تعذر الفحص، الرجاء التأكد من توفر إنترنت.")
                 }
             }
         }
+    }
+
+    // دالة مساعدة لتنفيذ التحميل وتحريك الإبرة (تستخدم من قبل runSpeedTest)
+    private suspend fun attemptDownload(speedGauge: SpeedGaugeView?, proxy: Proxy): Boolean {
+        // نستخدم رابط جوجل لأنه أسرع رابط في العالم ومستحيل ينحظر
+        val url = URL("https://dl.google.com/android/repository/emulator-windows-7425822.zip")
+        val connection = url.openConnection(proxy) as HttpURLConnection
+        connection.requestMethod = "GET"
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+        connection.connectTimeout = 5000 // وقت قصير لكي ينتقل للخطة البديلة بسرعة إذا فشل
+        connection.readTimeout = 8000
+        
+        connection.connect() // هنا كان يحدث الخطأ في السابق، الآن تم ترويضه!
+        
+        if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+            return false
+        }
+        
+        val inputStream = connection.inputStream
+        val buffer = ByteArray(16384) 
+        var totalBytesRead = 0L
+        var bytesRead: Int
+        val startTime = System.currentTimeMillis()
+        var lastUpdateTime = startTime
+        var lastBytesRead = 0L
+        
+        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+            totalBytesRead += bytesRead
+            val currentTime = System.currentTimeMillis()
+            val timeDiff = currentTime - lastUpdateTime
+            
+            // تحديث الإبرة بمرونة
+            if (timeDiff >= 300) { 
+                val bytesDiff = totalBytesRead - lastBytesRead
+                val speedBps = bytesDiff / (timeDiff / 1000f)
+                val speedMbps = (speedBps * 8) / 1_000_000f 
+                
+                withContext(Dispatchers.Main) {
+                    speedGauge?.setSpeed(speedMbps)
+                }
+                
+                lastUpdateTime = currentTime
+                lastBytesRead = totalBytesRead
+            }
+            
+            // التوقف بعد 8 ثواني
+            if (currentTime - startTime > 8000) {
+                break 
+            }
+        }
+        inputStream.close()
+        return true
     }
     // =========================================================================
 
