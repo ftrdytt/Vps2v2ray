@@ -9,6 +9,7 @@ import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
 import android.view.animation.OvershootInterpolator
+import java.util.Locale // هذا هو السطر الذي كان مفقوداً وتمت إضافته!
 
 class SpeedGaugeView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
@@ -54,7 +55,7 @@ class SpeedGaugeView @JvmOverloads constructor(
         if (targetSpeed < 0f) targetSpeed = 0f
         if (targetSpeed > maxSpeed) targetSpeed = maxSpeed
 
-        // السحر هنا: تسريع استجابة الإبرة لتصبح كالمحرك الرياضي
+        // تسريع استجابة الإبرة لتصبح كالمحرك الرياضي
         currentAnimator = ValueAnimator.ofFloat(currentSpeed, targetSpeed).apply {
             duration = 150 // استجابة لحظية في أجزاء من الثانية!
             interpolator = OvershootInterpolator(1.2f) // تأثير ارتداد خفيف وممتع للإبرة
