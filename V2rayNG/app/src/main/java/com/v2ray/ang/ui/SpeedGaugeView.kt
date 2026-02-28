@@ -8,7 +8,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
-import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 
 class SpeedGaugeView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0
@@ -45,7 +45,8 @@ class SpeedGaugeView @JvmOverloads constructor(
     }
 
     fun setSpeed(speedMbps: Float) {
-        if (Math.abs(currentSpeed - speedMbps) < 0.5f) return
+        // تجاهل التحديث إذا كان التغيير طفيفاً جداً لتقليل الارتجاف المزعج
+        if (Math.abs(currentSpeed - speedMbps) < 0.2f) return
 
         currentAnimator?.cancel()
 
@@ -53,9 +54,10 @@ class SpeedGaugeView @JvmOverloads constructor(
         if (targetSpeed < 0f) targetSpeed = 0f
         if (targetSpeed > maxSpeed) targetSpeed = maxSpeed
 
+        // السحر هنا: تسريع استجابة الإبرة لتصبح كالمحرك الرياضي
         currentAnimator = ValueAnimator.ofFloat(currentSpeed, targetSpeed).apply {
-            duration = 500 // تحديث سريع جداً لعداد السرعة
-            interpolator = DecelerateInterpolator()
+            duration = 150 // استجابة لحظية في أجزاء من الثانية!
+            interpolator = OvershootInterpolator(1.2f) // تأثير ارتداد خفيف وممتع للإبرة
             addUpdateListener { animation ->
                 currentSpeed = animation.animatedValue as Float
                 invalidate()
@@ -87,7 +89,8 @@ class SpeedGaugeView @JvmOverloads constructor(
         arcPaint.color = Color.parseColor("#4CAF50")
         canvas.drawArc(rectF, 297f, 108f, false, arcPaint)
 
-        canvas.drawText("${currentSpeed.toInt()} Mbps", cx, cy + 30f, textPaint)
+        // رسم الرقم مع كسر عشري واحد ليكون أكثر دقة وحيوية (مثلاً 15.4 Mbps)
+        canvas.drawText(String.format(Locale.US, "%.1f Mbps", currentSpeed), cx, cy + 30f, textPaint)
 
         val angle = 135f + (currentSpeed / maxSpeed) * 270f
         val angleRad = Math.toRadians(angle.toDouble())
