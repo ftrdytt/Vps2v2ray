@@ -77,6 +77,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var pingJob: Job? = null
     private var trafficJob: Job? = null
     private var speedTestJob: Job? = null
+    private var resetSpeedButtonJob: Job? = null // مؤقت الزر (10 ثواني)
     
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
@@ -119,6 +120,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
 
         val btnSpeedTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
+        btnSpeedTest?.text = "قياس سرعة الإنترنت" // تغيير الاسم عند فتح التطبيق
         btnSpeedTest?.setOnClickListener {
             runSpeedTest()
         }
@@ -185,80 +187,88 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     // =========================================================================
-    // التعديل النهائي: نظام الفحص الذكي (يتخطى خطأ 10809 بلمح البصر)
+    // كود الفحص الذكي: استقرار، وقت محدد، وإظهار النتيجة على الزر لـ 10 ثواني
     // =========================================================================
     private fun runSpeedTest() {
         val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
         val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
         
         if (speedTestJob?.isActive == true) return
+        resetSpeedButtonJob?.cancel() // إلغاء أي مؤقت سابق للزر
         
         btnTest?.isEnabled = false
-        btnTest?.text = "جاري الفحص..."
-        btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FF9800"))
+        btnTest?.text = "جاري القياس..."
+        btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FF9800")) // لون برتقالي للفحص
 
         speedTestJob = lifecycleScope.launch(Dispatchers.IO) {
-            var isSuccess = false
+            var finalSpeed = -1f
             val url = URL("https://speed.cloudflare.com/__down?bytes=20000000")
 
-            // الخطة (أ): محاولة الفحص عبر بروكسي الـ VPN (HTTP)
-            if (mainViewModel.isRunning.value == true && !isSuccess) {
+            if (mainViewModel.isRunning.value == true && finalSpeed < 0f) {
                 try {
                     val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 10809))
-                    isSuccess = attemptDownload(url, speedGauge, proxy)
+                    finalSpeed = attemptDownload(url, speedGauge, proxy)
                 } catch (e: Exception) {
                     Log.d(AppConfig.TAG, "HTTP Proxy failed, trying SOCKS...")
                 }
             }
 
-            // الخطة (ب): محاولة الفحص عبر بروكسي الـ VPN (SOCKS)
-            if (mainViewModel.isRunning.value == true && !isSuccess) {
+            if (mainViewModel.isRunning.value == true && finalSpeed < 0f) {
                 try {
                     val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
-                    isSuccess = attemptDownload(url, speedGauge, proxy)
+                    finalSpeed = attemptDownload(url, speedGauge, proxy)
                 } catch (e: Exception) {
                     Log.d(AppConfig.TAG, "SOCKS Proxy failed, trying DIRECT...")
                 }
             }
 
-            // الخطة (ج): الفحص المباشر (وهذا سيعمل 100% إذا فشلت المنافذ المغلقة)
-            if (!isSuccess) {
+            if (finalSpeed < 0f) {
                 try {
-                    isSuccess = attemptDownload(url, speedGauge, Proxy.NO_PROXY)
+                    finalSpeed = attemptDownload(url, speedGauge, Proxy.NO_PROXY)
                 } catch (e: Exception) {
                     Log.e(AppConfig.TAG, "Direct download failed", e)
                 }
             }
 
-            // إنهاء الفحص وإرجاع الزر لوضعه الطبيعي
+            // بعد انتهاء الفحص
             withContext(Dispatchers.Main) {
-                speedGauge?.setSpeed(0f)
+                speedGauge?.setSpeed(0f) // إعادة إبرة الكيج للصفر
                 btnTest?.isEnabled = true
-                btnTest?.text = "TEST SPEED"
-                btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
                 
-                if (isSuccess) {
-                    toast("اكتمل الفحص بنجاح!")
+                if (finalSpeed >= 0f) {
+                    // إذا نجح الفحص، نكتب الرقم على الزر ونلونه بالأخضر
+                    val speedText = String.format(Locale.US, "%.1f", finalSpeed)
+                    btnTest?.text = "السرعة: $speedText Mbps"
+                    btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#4CAF50"))
+                    
+                    // تشغيل عداد مخفي لـ 10 ثواني ليرجع الزر لشكله الطبيعي
+                    resetSpeedButtonJob = lifecycleScope.launch {
+                        delay(10000)
+                        btnTest?.text = "قياس سرعة الإنترنت"
+                        btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
+                    }
                 } else {
+                    // في حال انقطع النت ولم ينجح الفحص
+                    btnTest?.text = "قياس سرعة الإنترنت"
+                    btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
                     toast("تعذر الفحص، الرجاء التأكد من توفر إنترنت.")
                 }
             }
         }
     }
 
-    // الدالة المسؤولة عن التحريك الفعلي للكيج (مخفية وراء الكواليس)
-    private suspend fun attemptDownload(url: URL, speedGauge: SpeedGaugeView?, proxy: Proxy): Boolean {
+    // دالة الفحص (تم إضافة ذكاء اصطناعي لمعرفة متى يستقر الإنترنت)
+    private suspend fun attemptDownload(url: URL, speedGauge: SpeedGaugeView?, proxy: Proxy): Float {
         val connection = url.openConnection(proxy) as HttpURLConnection
         connection.requestMethod = "GET"
         connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-        // وقت قصير جداً (ثانيتين) لكي ينتقل للخطة البديلة فوراً إذا كان المنفذ مغلقاً ولا يزعج المستخدم
         connection.connectTimeout = 2000 
         connection.readTimeout = 5000
         
-        connection.connect() // إذا كان المنفذ مغلق، سيفشل هنا بهدوء وينتقل للبروكسي التالي
+        connection.connect() 
         
         if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-            return false
+            return -1f
         }
         
         val inputStream = connection.inputStream
@@ -268,6 +278,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val startTime = System.currentTimeMillis()
         var lastUpdateTime = startTime
         var lastBytesRead = 0L
+        
+        var maxSpeed = 0f
+        val recentSpeeds = mutableListOf<Float>() // قائمة لحفظ السرعات لمعرفة متى يستقر
         
         while (inputStream.read(buffer).also { bytesRead = it } != -1) {
             totalBytesRead += bytesRead
@@ -279,21 +292,41 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 val speedBps = bytesDiff / (timeDiff / 1000f)
                 val speedMbps = (speedBps * 8) / 1_000_000f 
                 
+                if (speedMbps > maxSpeed) maxSpeed = speedMbps
+                
+                // حفظ آخر 5 قراءات لمعرفة استقرار الخط
+                recentSpeeds.add(speedMbps)
+                if (recentSpeeds.size > 5) recentSpeeds.removeAt(0)
+                
                 withContext(Dispatchers.Main) {
                     speedGauge?.setSpeed(speedMbps)
+                }
+                
+                // نظام الاستقرار: إذا لدينا 5 قراءات، وكان الفرق بين أعلى وأقل سرعة بسيطاً جداً (15%)
+                if (recentSpeeds.size == 5) {
+                    val currentMax = recentSpeeds.maxOrNull() ?: 0f
+                    val currentMin = recentSpeeds.minOrNull() ?: 0f
+                    
+                    // إذا استقرت السرعة ومضى على الأقل 3 ثوانٍ على الفحص، نتوقف فوراً ونعطي النتيجة!
+                    if (currentMax > 1f && (currentMax - currentMin) < (currentMax * 0.15f)) {
+                        if (currentTime - startTime > 3000) {
+                            break
+                        }
+                    }
                 }
                 
                 lastUpdateTime = currentTime
                 lastBytesRead = totalBytesRead
             }
             
-            // التوقف بعد 7 ثواني للحفاظ على الباقة
-            if (currentTime - startTime > 7000) {
+            // الحد الأقصى للفحص: إيقاف إجباري بعد 8 ثواني حتى لو لم يستقر
+            if (currentTime - startTime > 8000) {
                 break 
             }
         }
         inputStream.close()
-        return true
+        
+        return if (maxSpeed > 0f) maxSpeed else -1f
     }
     // =========================================================================
 
@@ -600,6 +633,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             pingJob?.cancel()
             speedTestJob?.cancel()
+            resetSpeedButtonJob?.cancel() // إلغاء المؤقت عند إيقاف المحرك
+            
             gaugePing?.setPing(0f) 
             gaugeSpeed?.setSpeed(0f)
             
@@ -608,7 +643,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
             btnTest?.isEnabled = true
-            btnTest?.text = "TEST SPEED"
+            btnTest?.text = "قياس سرعة الإنترنت" // الاسم الجديد
             btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
         }
     }
@@ -626,6 +661,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         super.onPause()
         stopTrafficMonitor()
         speedTestJob?.cancel()
+        resetSpeedButtonJob?.cancel()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -931,6 +967,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         pingJob?.cancel() 
         trafficJob?.cancel()
         speedTestJob?.cancel()
+        resetSpeedButtonJob?.cancel()
         super.onDestroy()
     }
 }
