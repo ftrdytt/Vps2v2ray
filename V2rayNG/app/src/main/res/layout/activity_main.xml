@@ -48,6 +48,125 @@
                         android:gravity="center"
                         android:orientation="vertical">
 
+                        <ViewFlipper
+                            android:layout_width="match_parent"
+                            android:layout_height="65dp"
+                            android:layout_marginHorizontal="20dp"
+                            android:layout_marginBottom="16dp"
+                            android:autoStart="true"
+                            android:flipInterval="3500"
+                            android:inAnimation="@android:anim/fade_in"
+                            android:outAnimation="@android:anim/fade_out">
+
+                            <androidx.cardview.widget.CardView
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                app:cardBackgroundColor="#C2185B"
+                                app:cardCornerRadius="16dp"
+                                app:cardElevation="0dp">
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="match_parent"
+                                    android:gravity="center"
+                                    android:orientation="horizontal">
+                                    <ImageView
+                                        android:layout_width="22dp"
+                                        android:layout_height="22dp"
+                                        android:src="@android:drawable/star_on"
+                                        app:tint="#FFC107"
+                                        android:layout_marginEnd="8dp"/>
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="كنك نت بلا حدود مع سوشيال أودي"
+                                        android:textColor="#FFFFFF"
+                                        android:textSize="14sp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
+                            </androidx.cardview.widget.CardView>
+
+                            <androidx.cardview.widget.CardView
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                app:cardBackgroundColor="#D32F2F"
+                                app:cardCornerRadius="16dp"
+                                app:cardElevation="0dp">
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="match_parent"
+                                    android:gravity="center"
+                                    android:orientation="horizontal">
+                                    <ImageView
+                                        android:layout_width="22dp"
+                                        android:layout_height="22dp"
+                                        android:src="@android:drawable/ic_menu_send"
+                                        app:tint="#FFFFFF"
+                                        android:layout_marginEnd="8dp"/>
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="ريّح بالك مع سوشيال أثير وكفو"
+                                        android:textColor="#FFFFFF"
+                                        android:textSize="14sp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
+                            </androidx.cardview.widget.CardView>
+
+                            <androidx.cardview.widget.CardView
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                app:cardBackgroundColor="#F57C00"
+                                app:cardCornerRadius="16dp"
+                                app:cardElevation="0dp">
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="match_parent"
+                                    android:gravity="center"
+                                    android:orientation="horizontal">
+                                    <ImageView
+                                        android:layout_width="22dp"
+                                        android:layout_height="22dp"
+                                        android:src="@android:drawable/ic_menu_sort_by_size"
+                                        app:tint="#FFFFFF"
+                                        android:layout_marginEnd="8dp"/>
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="مع سوشيال كورك كنك وإنت مرتاح"
+                                        android:textColor="#FFFFFF"
+                                        android:textSize="14sp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
+                            </androidx.cardview.widget.CardView>
+
+                            <androidx.cardview.widget.CardView
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                app:cardBackgroundColor="#1976D2"
+                                app:cardCornerRadius="16dp"
+                                app:cardElevation="0dp">
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="match_parent"
+                                    android:gravity="center"
+                                    android:orientation="horizontal">
+                                    <ImageView
+                                        android:layout_width="22dp"
+                                        android:layout_height="22dp"
+                                        android:src="@android:drawable/ic_popup_sync"
+                                        app:tint="#FFFFFF"
+                                        android:layout_marginEnd="8dp"/>
+                                    <TextView
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="ترقبوا تحديثات التطبيقات وملفات كل الدول"
+                                        android:textColor="#FFFFFF"
+                                        android:textSize="14sp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
+                            </androidx.cardview.widget.CardView>
+
+                        </ViewFlipper>
                         <androidx.cardview.widget.CardView
                             android:id="@+id/card_traffic_meter"
                             android:layout_width="wrap_content"
@@ -128,7 +247,7 @@
                                     android:layout_height="wrap_content"
                                     android:layout_marginTop="8dp"
                                     android:backgroundTint="#2196F3"
-                                    android:text="TEST SPEED"
+                                    android:text="قياس السرعة"
                                     android:textColor="#FFFFFF"
                                     android:textSize="12sp"
                                     android:textStyle="bold"
