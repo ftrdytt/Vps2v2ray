@@ -34,6 +34,7 @@ import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.airbnb.lottie.LottieAnimationView
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.tabs.TabLayoutMediator
 import com.v2ray.ang.AppConfig
@@ -77,11 +78,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var pingJob: Job? = null
     private var trafficJob: Job? = null
     private var speedTestJob: Job? = null
-    private var resetSpeedButtonJob: Job? = null // مؤقت الزر (10 ثواني)
+    private var resetSpeedButtonJob: Job? = null
     
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
     private var isFirstTrafficRead: Boolean = true
+
+    // متغير لتتبع الشاشة الحالية وتحديث الـ Bottom Nav
+    private var screenWidth = 0
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == RESULT_OK) {
@@ -110,7 +114,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         handleIntent(intent)
 
         val displayMetrics = resources.displayMetrics
-        val screenWidth = displayMetrics.widthPixels
+        screenWidth = displayMetrics.widthPixels
         binding.homeContentContainer.layoutParams.width = screenWidth
         binding.greenScreenContainer.layoutParams.width = screenWidth
 
@@ -120,7 +124,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
 
         val btnSpeedTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
-        btnSpeedTest?.text = "قياس سرعة الإنترنت" // تغيير الاسم عند فتح التطبيق
+        btnSpeedTest?.text = "قياس سرعة الإنترنت"
         btnSpeedTest?.setOnClickListener {
             runSpeedTest()
         }
@@ -132,19 +136,51 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         
         updateTrafficDisplay()
 
+        // ربط شريط التنقل السفلي بحركة السحب (Scroll)
+        val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
+
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
                 val halfScreen = screenWidth / 2
                 if (scrollX > halfScreen) {
                     binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(screenWidth, 0) }
+                    bottomNav?.selectedItemId = R.id.nav_servers // تحديث الأيقونة لتصبح "ملفاتي"
                 } else {
                     binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(0, 0) }
+                    bottomNav?.selectedItemId = R.id.nav_home // تحديث الأيقونة لتصبح "الرئيسية"
                 }
                 return@setOnTouchListener true
             }
             false
         }
+
+        // =========================================================
+        // برمجة ضغطات شريط التنقل السفلي (Bottom Navigation View)
+        // =========================================================
+        bottomNav?.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_home -> {
+                    // سحب الشاشة لليسار نحو لوحة القيادة
+                    binding.mainScrollView.smoothScrollTo(0, 0)
+                    true
+                }
+                R.id.nav_servers -> {
+                    // سحب الشاشة لليمين نحو قائمة السيرفرات
+                    binding.mainScrollView.smoothScrollTo(screenWidth, 0)
+                    true
+                }
+                R.id.nav_settings -> {
+                    // فتح شاشة الإعدادات
+                    requestActivityLauncher.launch(Intent(this, SettingsActivity::class.java))
+                    false // إرجاع false لكي لا تتغير الأيقونة المحددة، بل تبقى على الشاشة التي كنت فيها
+                }
+                else -> false
+            }
+        }
+
+        // تعيين الصفحة الرئيسية عند الفتح
+        bottomNav?.selectedItemId = R.id.nav_home
 
         setupToolbar(binding.toolbar, false, getString(R.string.title_server))
 
@@ -166,6 +202,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 } else {
                     if (binding.mainScrollView.scrollX > 0) {
                          binding.mainScrollView.smoothScrollTo(0, 0)
+                         bottomNav?.selectedItemId = R.id.nav_home // تحديث الـ Bottom Nav عند الرجوع
                     } else {
                         isEnabled = false
                         onBackPressedDispatcher.onBackPressed()
@@ -186,19 +223,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // =========================================================================
-    // كود الفحص الذكي: استقرار، وقت محدد، وإظهار النتيجة على الزر لـ 10 ثواني
-    // =========================================================================
     private fun runSpeedTest() {
         val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
         val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
         
         if (speedTestJob?.isActive == true) return
-        resetSpeedButtonJob?.cancel() // إلغاء أي مؤقت سابق للزر
+        resetSpeedButtonJob?.cancel() 
         
         btnTest?.isEnabled = false
         btnTest?.text = "جاري القياس..."
-        btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FF9800")) // لون برتقالي للفحص
+        btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FF9800")) 
 
         speedTestJob = lifecycleScope.launch(Dispatchers.IO) {
             var finalSpeed = -1f
@@ -230,25 +264,21 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
 
-            // بعد انتهاء الفحص
             withContext(Dispatchers.Main) {
-                speedGauge?.setSpeed(0f) // إعادة إبرة الكيج للصفر
+                speedGauge?.setSpeed(0f) 
                 btnTest?.isEnabled = true
                 
                 if (finalSpeed >= 0f) {
-                    // إذا نجح الفحص، نكتب الرقم على الزر ونلونه بالأخضر
                     val speedText = String.format(Locale.US, "%.1f", finalSpeed)
                     btnTest?.text = "السرعة: $speedText Mbps"
                     btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#4CAF50"))
                     
-                    // تشغيل عداد مخفي لـ 10 ثواني ليرجع الزر لشكله الطبيعي
                     resetSpeedButtonJob = lifecycleScope.launch {
                         delay(10000)
                         btnTest?.text = "قياس سرعة الإنترنت"
                         btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
                     }
                 } else {
-                    // في حال انقطع النت ولم ينجح الفحص
                     btnTest?.text = "قياس سرعة الإنترنت"
                     btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
                     toast("تعذر الفحص، الرجاء التأكد من توفر إنترنت.")
@@ -257,7 +287,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // دالة الفحص (تم إضافة ذكاء اصطناعي لمعرفة متى يستقر الإنترنت)
     private suspend fun attemptDownload(url: URL, speedGauge: SpeedGaugeView?, proxy: Proxy): Float {
         val connection = url.openConnection(proxy) as HttpURLConnection
         connection.requestMethod = "GET"
@@ -280,7 +309,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         var lastBytesRead = 0L
         
         var maxSpeed = 0f
-        val recentSpeeds = mutableListOf<Float>() // قائمة لحفظ السرعات لمعرفة متى يستقر
+        val recentSpeeds = mutableListOf<Float>() 
         
         while (inputStream.read(buffer).also { bytesRead = it } != -1) {
             totalBytesRead += bytesRead
@@ -294,7 +323,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 
                 if (speedMbps > maxSpeed) maxSpeed = speedMbps
                 
-                // حفظ آخر 5 قراءات لمعرفة استقرار الخط
                 recentSpeeds.add(speedMbps)
                 if (recentSpeeds.size > 5) recentSpeeds.removeAt(0)
                 
@@ -302,12 +330,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     speedGauge?.setSpeed(speedMbps)
                 }
                 
-                // نظام الاستقرار: إذا لدينا 5 قراءات، وكان الفرق بين أعلى وأقل سرعة بسيطاً جداً (15%)
                 if (recentSpeeds.size == 5) {
                     val currentMax = recentSpeeds.maxOrNull() ?: 0f
                     val currentMin = recentSpeeds.minOrNull() ?: 0f
                     
-                    // إذا استقرت السرعة ومضى على الأقل 3 ثوانٍ على الفحص، نتوقف فوراً ونعطي النتيجة!
                     if (currentMax > 1f && (currentMax - currentMin) < (currentMax * 0.15f)) {
                         if (currentTime - startTime > 3000) {
                             break
@@ -319,7 +345,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 lastBytesRead = totalBytesRead
             }
             
-            // الحد الأقصى للفحص: إيقاف إجباري بعد 8 ثواني حتى لو لم يستقر
             if (currentTime - startTime > 8000) {
                 break 
             }
@@ -328,7 +353,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         
         return if (maxSpeed > 0f) maxSpeed else -1f
     }
-    // =========================================================================
 
     private fun formatTraffic(bytes: Long): String {
         if (bytes <= 0) return "0.00 B"
@@ -633,7 +657,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             pingJob?.cancel()
             speedTestJob?.cancel()
-            resetSpeedButtonJob?.cancel() // إلغاء المؤقت عند إيقاف المحرك
+            resetSpeedButtonJob?.cancel() 
             
             gaugePing?.setPing(0f) 
             gaugeSpeed?.setSpeed(0f)
@@ -643,7 +667,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
             btnTest?.isEnabled = true
-            btnTest?.text = "قياس سرعة الإنترنت" // الاسم الجديد
+            btnTest?.text = "قياس سرعة الإنترنت" 
             btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
         }
     }
