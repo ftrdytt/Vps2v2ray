@@ -339,6 +339,7 @@
                                 android:layout_height="@dimen/view_height_dp64"
                                 android:clickable="true"
                                 android:focusable="true"
+                                android:visibility="gone"
                                 android:nextFocusLeft="@+id/view_pager"
                                 android:nextFocusRight="@+id/fab"
                                 android:orientation="vertical">
@@ -375,6 +376,7 @@
                                 android:layout_gravity="bottom|end"
                                 android:layout_marginBottom="@dimen/view_height_dp36"
                                 android:clickable="true"
+                                android:visibility="gone"
                                 android:contentDescription="@string/tasker_start_service"
                                 android:focusable="true"
                                 android:nextFocusLeft="@+id/layout_test"
