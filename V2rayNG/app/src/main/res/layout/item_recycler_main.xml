@@ -7,14 +7,14 @@
     android:layout_height="wrap_content"
     android:gravity="center_vertical"
     android:orientation="vertical"
-    android:paddingHorizontal="12dp"
-    android:paddingVertical="6dp"
-    android:background="#121212"> <androidx.cardview.widget.CardView
+    android:paddingHorizontal="14dp"
+    android:paddingVertical="7dp"
+    android:background="#0A0A0C"> <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:cardBackgroundColor="#1E1E1E"
-        app:cardCornerRadius="16dp"
-        app:cardElevation="2dp">
+        app:cardBackgroundColor="#1A1A1D" 
+        app:cardCornerRadius="18dp"
+        app:cardElevation="4dp">
 
         <LinearLayout
             android:id="@+id/info_container"
@@ -23,21 +23,21 @@
             android:background="?attr/selectableItemBackground"
             android:clickable="true"
             android:focusable="true"
-            android:orientation="horizontal"
-            android:padding="12dp">
+            android:orientation="horizontal">
 
             <LinearLayout
                 android:id="@+id/layout_indicator"
-                android:layout_width="4dp"
+                android:layout_width="6dp"
                 android:layout_height="match_parent"
-                android:layout_gravity="center"
+                android:layout_gravity="start"
+                android:background="#4CAF50" 
+                android:visibility="invisible" 
                 android:orientation="vertical" />
-
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:paddingStart="12dp">
+                android:padding="14dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -48,18 +48,19 @@
                     <androidx.cardview.widget.CardView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        app:cardBackgroundColor="#2D2D2D"
-                        app:cardCornerRadius="6dp"
+                        app:cardBackgroundColor="#FF5722" 
+                        app:cardCornerRadius="8dp"
                         app:cardElevation="0dp">
                         <TextView
                             android:id="@+id/tv_type"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:paddingHorizontal="8dp"
-                            android:paddingVertical="3dp"
-                            android:textColor="#FF9800"
-                            android:textSize="10sp"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="4dp"
+                            android:textColor="#FFFFFF"
+                            android:textSize="11sp"
                             android:textStyle="bold"
+                            android:letterSpacing="0.05"
                             tools:text="VLESS" />
                     </androidx.cardview.widget.CardView>
 
@@ -72,17 +73,25 @@
                         android:id="@+id/tv_test_result"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:textColor="#4CAF50"
-                        android:textSize="11sp"
+                        android:textColor="#00E676" 
+                        android:textSize="13sp"
                         android:textStyle="bold"
+                        android:fontFamily="sans-serif-medium"
                         tools:text="141ms" />
                 </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_marginBottom="10dp"
+                    android:background="#15FFFFFF" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:layout_marginTop="8dp">
+                    android:gravity="bottom">
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -96,16 +105,17 @@
                             android:layout_height="wrap_content"
                             android:maxLines="2"
                             android:minLines="1"
-                            android:textColor="#FFFFFF"
-                            android:textSize="16sp"
+                            android:ellipsize="end"
+                            android:textColor="#F5F5F5"
+                            android:textSize="17sp"
                             android:textStyle="bold"
-                            tools:text="اسم السيرفر المذهل" />
+                            tools:text="سيرفر ألماني سريع جداً" />
 
                         <LinearLayout
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:orientation="horizontal"
-                            android:layout_marginTop="4dp"
+                            android:layout_marginTop="6dp"
                             android:gravity="center_vertical">
 
                             <androidx.constraintlayout.widget.ConstraintLayout
@@ -114,9 +124,7 @@
                                 android:layout_height="16dp"
                                 android:layout_marginEnd="6dp"
                                 android:background="@drawable/ic_circle"
-                                android:backgroundTint="#FF9800">
-
-                                <TextView
+                                android:backgroundTint="#00BCD4"> <TextView
                                     android:id="@+id/tv_subscription"
                                     android:layout_width="wrap_content"
                                     android:layout_height="wrap_content"
@@ -134,10 +142,10 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:lines="1"
-                                android:textColor="#B0BEC5"
-                                android:textSize="12sp"
+                                android:textColor="#9E9E9E"
+                                android:textSize="13sp"
+                                android:fontFamily="sans-serif-light"
                                 tools:text="81 : ***.46.101.111" />
-
                         </LinearLayout>
                     </LinearLayout>
 
@@ -145,7 +153,6 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="bottom"
-                        android:layout_gravity="bottom"
                         android:orientation="horizontal">
 
                         <LinearLayout
@@ -157,8 +164,8 @@
                             android:focusable="true"
                             android:padding="6dp">
                             <ImageView
-                                android:layout_width="20dp"
-                                android:layout_height="20dp"
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
                                 app:srcCompat="@drawable/ic_share_24dp"
                                 app:tint="#B0BEC5" />
                         </LinearLayout>
@@ -172,8 +179,8 @@
                             android:focusable="true"
                             android:padding="6dp">
                             <ImageView
-                                android:layout_width="20dp"
-                                android:layout_height="20dp"
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
                                 app:srcCompat="@drawable/ic_edit_24dp"
                                 app:tint="#B0BEC5" />
                         </LinearLayout>
@@ -187,10 +194,10 @@
                             android:focusable="true"
                             android:padding="6dp">
                             <ImageView
-                                android:layout_width="20dp"
-                                android:layout_height="20dp"
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
                                 app:srcCompat="@drawable/ic_delete_24dp"
-                                app:tint="#F44336" /> </LinearLayout>
+                                app:tint="#E53935" /> </LinearLayout>
 
                         <LinearLayout
                             android:id="@+id/layout_more"
@@ -201,8 +208,8 @@
                             android:focusable="true"
                             android:padding="6dp">
                             <ImageView
-                                android:layout_width="20dp"
-                                android:layout_height="20dp"
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
                                 app:srcCompat="@drawable/ic_more_vert_24dp"
                                 app:tint="#B0BEC5" />
                         </LinearLayout>
