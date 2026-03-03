@@ -3,9 +3,8 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
-
-    <LinearLayout
+    android:layout_height="match_parent"
+    android:background="#0A0A0C"> <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:fitsSystemWindows="true"
@@ -13,12 +12,16 @@
 
         <com.google.android.material.appbar.AppBarLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="wrap_content"
+            android:background="#141417"
+            android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+            app:elevation="4dp">
 
             <androidx.appcompat.widget.Toolbar
                 android:id="@+id/toolbar"
                 android:layout_width="match_parent"
-                android:layout_height="?attr/actionBarSize" />
+                android:layout_height="?attr/actionBarSize"
+                app:titleTextColor="#FFFFFF" />
 
         </com.google.android.material.appbar.AppBarLayout>
 
@@ -39,7 +42,7 @@
                     android:id="@+id/green_screen_container"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:background="#121212"> 
+                    android:background="#0A0A0C"> 
                     
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -167,6 +170,7 @@
                             </androidx.cardview.widget.CardView>
 
                         </ViewFlipper>
+
                         <androidx.cardview.widget.CardView
                             android:id="@+id/card_traffic_meter"
                             android:layout_width="wrap_content"
@@ -297,9 +301,8 @@
                 <RelativeLayout
                     android:id="@+id/home_content_container"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent">
-
-                    <androidx.coordinatorlayout.widget.CoordinatorLayout
+                    android:layout_height="match_parent"
+                    android:background="#0A0A0C"> <androidx.coordinatorlayout.widget.CoordinatorLayout
                         android:id="@+id/main_content"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent">
@@ -315,12 +318,16 @@
                                 android:layout_height="wrap_content"
                                 android:indeterminate="true"
                                 android:visibility="invisible"
-                                app:indicatorColor="@color/color_fab_active" />
+                                app:indicatorColor="#FF9800" />
 
                             <com.google.android.material.tabs.TabLayout
                                 android:id="@+id/tab_group"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:background="#141417"
+                                app:tabIndicatorColor="#FF9800"
+                                app:tabSelectedTextColor="#FFFFFF"
+                                app:tabTextColor="#80FFFFFF"
                                 app:tabIndicatorFullWidth="false"
                                 app:tabMode="scrollable"
                                 app:tabTextAppearance="@style/TabLayoutTextStyle" />
@@ -343,12 +350,10 @@
                                 android:nextFocusLeft="@+id/view_pager"
                                 android:nextFocusRight="@+id/fab"
                                 android:orientation="vertical">
-
                                 <View
                                     android:layout_width="wrap_content"
                                     android:layout_height="1dp"
                                     android:background="@color/divider_color_light" />
-
                                 <TextView
                                     android:id="@+id/tv_test_state"
                                     android:layout_width="wrap_content"
@@ -359,7 +364,6 @@
                                     android:paddingStart="@dimen/padding_spacing_dp16"
                                     android:text="@string/connection_test_pending"
                                     android:textAppearance="@style/TextAppearance.AppCompat.Small" />
-
                             </LinearLayout>
                         </LinearLayout>
 
@@ -368,7 +372,6 @@
                             android:layout_height="wrap_content"
                             android:layout_gravity="bottom|end"
                             android:layout_marginEnd="@dimen/padding_spacing_dp16">
-
                             <com.google.android.material.floatingactionbutton.FloatingActionButton
                                 android:id="@+id/fab"
                                 android:layout_width="wrap_content"
@@ -383,7 +386,6 @@
                                 android:src="@drawable/ic_play_24dp"
                                 app:tint="@color/colorWhite"
                                 app:layout_anchorGravity="bottom|right|end" />
-
                         </FrameLayout>
                     </androidx.coordinatorlayout.widget.CoordinatorLayout>
                 </RelativeLayout>
@@ -398,6 +400,9 @@
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
         android:layout_gravity="start"
+        android:background="#141417"
+        app:itemTextColor="#E0E0E0"
+        app:itemIconTint="#B0BEC5"
         app:headerLayout="@layout/nav_header"
         app:menu="@menu/menu_drawer">
     </com.google.android.material.navigation.NavigationView>
