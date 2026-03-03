@@ -78,13 +78,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var pingJob: Job? = null
     private var trafficJob: Job? = null
     private var speedTestJob: Job? = null
-    private var resetSpeedButtonJob: Job? = null
+    private var resetSpeedButtonJob: Job? = null 
     
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
     private var isFirstTrafficRead: Boolean = true
 
-    // متغير لتتبع الشاشة الحالية وتحديث الـ Bottom Nav
     private var screenWidth = 0
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -124,7 +123,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
 
         val btnSpeedTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
-        btnSpeedTest?.text = "قياس سرعة الإنترنت"
+        btnSpeedTest?.text = "قياس سرعة الإنترنت" 
         btnSpeedTest?.setOnClickListener {
             runSpeedTest()
         }
@@ -136,51 +135,51 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         
         updateTrafficDisplay()
 
-        // ربط شريط التنقل السفلي بحركة السحب (Scroll)
         val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
 
+        // =========================================================
+        // التعديل هنا: عكسنا الأزرار لتتناسب مع الواجهات بشكل صحيح 100%
+        // =========================================================
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
                 val halfScreen = screenWidth / 2
                 if (scrollX > halfScreen) {
                     binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(screenWidth, 0) }
-                    bottomNav?.selectedItemId = R.id.nav_servers // تحديث الأيقونة لتصبح "ملفاتي"
+                    // الشاشة الجانبية هي لوحة المحرك
+                    bottomNav?.selectedItemId = R.id.nav_home 
                 } else {
                     binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(0, 0) }
-                    bottomNav?.selectedItemId = R.id.nav_home // تحديث الأيقونة لتصبح "الرئيسية"
+                    // الشاشة الأولى هي قائمة السيرفرات (ملفاتي)
+                    bottomNav?.selectedItemId = R.id.nav_servers 
                 }
                 return@setOnTouchListener true
             }
             false
         }
 
-        // =========================================================
-        // برمجة ضغطات شريط التنقل السفلي (Bottom Navigation View)
-        // =========================================================
         bottomNav?.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_home -> {
-                    // سحب الشاشة لليسار نحو لوحة القيادة
-                    binding.mainScrollView.smoothScrollTo(0, 0)
-                    true
-                }
-                R.id.nav_servers -> {
-                    // سحب الشاشة لليمين نحو قائمة السيرفرات
+                    // زر الرئيسية يذهب للوحة المحرك (Dashboard)
                     binding.mainScrollView.smoothScrollTo(screenWidth, 0)
                     true
                 }
+                R.id.nav_servers -> {
+                    // زر ملفاتي يذهب لقائمة السيرفرات
+                    binding.mainScrollView.smoothScrollTo(0, 0)
+                    true
+                }
                 R.id.nav_settings -> {
-                    // فتح شاشة الإعدادات
                     requestActivityLauncher.launch(Intent(this, SettingsActivity::class.java))
-                    false // إرجاع false لكي لا تتغير الأيقونة المحددة، بل تبقى على الشاشة التي كنت فيها
+                    false 
                 }
                 else -> false
             }
         }
 
-        // تعيين الصفحة الرئيسية عند الفتح
-        bottomNav?.selectedItemId = R.id.nav_home
+        // عند فتح التطبيق، الأيقونة المحددة هي "ملفاتي" لأنها الشاشة الأولى الافتراضية
+        bottomNav?.selectedItemId = R.id.nav_servers
 
         setupToolbar(binding.toolbar, false, getString(R.string.title_server))
 
@@ -202,7 +201,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 } else {
                     if (binding.mainScrollView.scrollX > 0) {
                          binding.mainScrollView.smoothScrollTo(0, 0)
-                         bottomNav?.selectedItemId = R.id.nav_home // تحديث الـ Bottom Nav عند الرجوع
+                         // عند الرجوع يعود لقائمة "ملفاتي"
+                         bottomNav?.selectedItemId = R.id.nav_servers 
                     } else {
                         isEnabled = false
                         onBackPressedDispatcher.onBackPressed()
