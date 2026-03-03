@@ -66,12 +66,16 @@ class MainRecyclerAdapter(
             if (isProtected) {
                 // إذا كان محمياً: إخفاء التفاصيل
                 holder.itemMainBinding.tvStatistics.visibility = View.GONE
-                holder.itemMainBinding.tvType.text = "Secure Config" // تغيير نوع السيرفر لكلمة محمية
+                holder.itemMainBinding.tvType.text = "Secure Config" 
+                // تغيير لون البادج للسيرفر المحمي ليعطي طابع الأمان (أحمر داكن مثلاً)
+                (holder.itemMainBinding.tvType.parent as? androidx.cardview.widget.CardView)?.setCardBackgroundColor(Color.parseColor("#D32F2F"))
             } else {
                 // إذا لم يكن محمياً: إظهار التفاصيل العادية
                 holder.itemMainBinding.tvStatistics.visibility = View.VISIBLE
                 holder.itemMainBinding.tvStatistics.text = getAddress(profile)
                 holder.itemMainBinding.tvType.text = profile.configType.name
+                // إرجاع لون البادج الطبيعي (برتقالي)
+                (holder.itemMainBinding.tvType.parent as? androidx.cardview.widget.CardView)?.setCardBackgroundColor(Color.parseColor("#FF5722"))
             }
             // ================================================================
 
@@ -81,15 +85,24 @@ class MainRecyclerAdapter(
             if ((aff?.testDelayMillis ?: 0L) < 0L) {
                 holder.itemMainBinding.tvTestResult.setTextColor(ContextCompat.getColor(context, R.color.colorPingRed))
             } else {
-                holder.itemMainBinding.tvTestResult.setTextColor(ContextCompat.getColor(context, R.color.colorPing))
+                // استخدام لون أخضر نيون قوي للبنق ليتناسب مع التصميم الليلي
+                holder.itemMainBinding.tvTestResult.setTextColor(Color.parseColor("#00E676"))
             }
 
-            // layoutIndicator
+            // ================================================================
+            // السحر هنا: إظهار أو إخفاء الشريط الأخضر المضيء (Indicator) للسيرفر النشط!
+            // ================================================================
             if (guid == MmkvManager.getSelectServer()) {
-                holder.itemMainBinding.layoutIndicator.setBackgroundResource(R.color.colorIndicator)
+                // إذا كان هذا هو السيرفر المختار، أظهر الشريط الأخضر!
+                holder.itemMainBinding.layoutIndicator.visibility = View.VISIBLE
+                // إضافة إضاءة خفيفة للبطاقة لتمييزها أكثر
+                holder.itemMainBinding.infoContainer.setBackgroundColor(Color.parseColor("#1Affffff"))
             } else {
-                holder.itemMainBinding.layoutIndicator.setBackgroundResource(0)
+                // إذا لم يكن هو المختار، اخفِ الشريط
+                holder.itemMainBinding.layoutIndicator.visibility = View.INVISIBLE
+                holder.itemMainBinding.infoContainer.setBackgroundColor(Color.TRANSPARENT)
             }
+            // ================================================================
 
             // subscription remarks
             val subRemarks = getSubscriptionRemarks(profile)
@@ -125,7 +138,7 @@ class MainRecyclerAdapter(
                 }
 
                 holder.itemMainBinding.layoutEdit.setOnClickListener {
-                    // حماية إضافية: في حال تمكن بطريقة ما من الضغط عليه لا يفتح
+                    // حماية إضافية
                     if (!isProtected) {
                         adapterListener?.onEdit(guid, position, profile)
                     }
@@ -199,7 +212,8 @@ class MainRecyclerAdapter(
 
     open class BaseViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         fun onItemSelected() {
-            itemView.setBackgroundColor(Color.LTGRAY)
+            // تغيير لون الخلفية أثناء سحب البطاقة (Drag & Drop)
+            itemView.setBackgroundColor(Color.parseColor("#33FFFFFF")) 
         }
 
         fun onItemClear() {
