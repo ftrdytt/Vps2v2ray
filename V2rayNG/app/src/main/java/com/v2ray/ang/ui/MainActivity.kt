@@ -137,20 +137,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
 
-        // =========================================================
-        // التعديل هنا: عكسنا الأزرار لتتناسب مع الواجهات بشكل صحيح 100%
-        // =========================================================
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
                 val halfScreen = screenWidth / 2
                 if (scrollX > halfScreen) {
                     binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(screenWidth, 0) }
-                    // الشاشة الجانبية هي لوحة المحرك
                     bottomNav?.selectedItemId = R.id.nav_home 
                 } else {
                     binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(0, 0) }
-                    // الشاشة الأولى هي قائمة السيرفرات (ملفاتي)
                     bottomNav?.selectedItemId = R.id.nav_servers 
                 }
                 return@setOnTouchListener true
@@ -161,12 +156,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         bottomNav?.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_home -> {
-                    // زر الرئيسية يذهب للوحة المحرك (Dashboard)
                     binding.mainScrollView.smoothScrollTo(screenWidth, 0)
                     true
                 }
                 R.id.nav_servers -> {
-                    // زر ملفاتي يذهب لقائمة السيرفرات
                     binding.mainScrollView.smoothScrollTo(0, 0)
                     true
                 }
@@ -178,8 +171,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
         }
 
-        // عند فتح التطبيق، الأيقونة المحددة هي "ملفاتي" لأنها الشاشة الأولى الافتراضية
-        bottomNav?.selectedItemId = R.id.nav_servers
+        // =========================================================
+        // التعديل هنا: جعل التطبيق يفتح فوراً على لوحة المحرك
+        // =========================================================
+        // تعيين زر "الرئيسية" كخيار افتراضي
+        bottomNav?.selectedItemId = R.id.nav_home
+        
+        // التمرير الفوري (بدون أنيميشن) إلى واجهة المحرك عند بدء التطبيق
+        binding.mainScrollView.post {
+            binding.mainScrollView.scrollTo(screenWidth, 0)
+        }
+        // =========================================================
 
         setupToolbar(binding.toolbar, false, getString(R.string.title_server))
 
@@ -201,7 +203,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 } else {
                     if (binding.mainScrollView.scrollX > 0) {
                          binding.mainScrollView.smoothScrollTo(0, 0)
-                         // عند الرجوع يعود لقائمة "ملفاتي"
                          bottomNav?.selectedItemId = R.id.nav_servers 
                     } else {
                         isEnabled = false
