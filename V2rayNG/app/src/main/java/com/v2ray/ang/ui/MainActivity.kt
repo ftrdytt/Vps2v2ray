@@ -26,7 +26,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.SearchView
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
@@ -66,7 +65,6 @@ import java.net.URL
 import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
-import kotlin.math.roundToInt
 
 class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener {
     private val binding by lazy {
@@ -109,9 +107,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // السحر الأول: إجبار التطبيق على الوضع الليلي الفاخر، لحل مشكلة الإعدادات السوداء!
-        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
-        
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
         
@@ -151,13 +146,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
 
         // =========================================================
-        // السحر الثاني: الترتيب الدقيق للتنقل (الإعدادات=0، السيرفرات=1، الرئيسية=2)
-        // هذا الترتيب يتماشى 100% مع حركة الإصبع الطبيعية (Swipe)
+        // الخوارزمية الجديدة للسحب: تتطابق مع الشريط السفلي ومع شاشتك
+        // 0 = الإعدادات (اليسار)
+        // 1 = السيرفرات (الوسط)
+        // 2 = المحرك (اليمين)
         // =========================================================
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
-                val page = ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 2)
+                val page = if (screenWidth > 0) ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 2) else 0
                 val targetScrollX = page * screenWidth
 
                 binding.mainScrollView.post { 
@@ -177,22 +174,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         bottomNav?.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_settings -> { 
-                    binding.mainScrollView.smoothScrollTo(0, 0)
+                    binding.mainScrollView.smoothScrollTo(0, 0) // أقصى اليسار
                     true 
                 }
                 R.id.nav_servers -> { 
-                    binding.mainScrollView.smoothScrollTo(screenWidth, 0)
+                    binding.mainScrollView.smoothScrollTo(screenWidth, 0) // الوسط
                     true
                 }
                 R.id.nav_home -> { 
-                    binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
+                    binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0) // أقصى اليمين
                     true
                 }
                 else -> false
             }
         }
 
-        // فتح التطبيق على الرئيسية (المحرك) أقصى اليمين
+        // فتح التطبيق على المحرك (الرئيسية)
         bottomNav?.selectedItemId = R.id.nav_home
         binding.mainScrollView.post {
             binding.mainScrollView.scrollTo(screenWidth * 2, 0)
@@ -217,7 +214,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 } else {
                     val currentScroll = binding.mainScrollView.scrollX
-                    // إذا لم نكن في الرئيسية (2)، نعود إليها
+                    // إذا لم نكن في المحرك نعود إليه
                     if (currentScroll != screenWidth * 2) {
                          binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
                          bottomNav?.selectedItemId = R.id.nav_home 
