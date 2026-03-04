@@ -20,6 +20,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,13 +36,16 @@ import androidx.core.view.isVisible
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
 import com.airbnb.lottie.LottieAnimationView
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.tabs.TabLayoutMediator
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
+import com.v2ray.ang.contracts.MainAdapterListener
 import com.v2ray.ang.databinding.ActivityMainBinding
+import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.extension.toast
@@ -68,7 +72,7 @@ import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 
-class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener {
+class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener, MainAdapterListener {
     private val binding by lazy {
         ActivityMainBinding.inflate(layoutInflater)
     }
@@ -193,6 +197,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         setupToolbar(binding.toolbar, false, "اشور لود")
 
+        // تمرير المستمع (this) إلى المهايئ
         groupPagerAdapter = GroupPagerAdapter(this, emptyList())
         binding.viewPager.adapter = groupPagerAdapter
         binding.viewPager.isUserInputEnabled = true
@@ -201,15 +206,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close
         )
         
-        // إخفاء أيقونة الثلاث خطوط
         toggle.isDrawerIndicatorEnabled = false 
         binding.drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
         binding.navView.setNavigationItemSelectedListener(this)
         
-        // =========================================================
-        // التعديل السحري الجديد: إغلاق القائمة الجانبية نهائياً ومنع السحب!
-        // =========================================================
         binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -239,6 +240,167 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {
         }
+    }
+
+    // =======================================================
+    // واجهة المشاركة المنبثقة الفاخرة (Bottom Sheet Dialog)
+    // =======================================================
+    override fun onShare(guid: String, profile: ProfileItem, position: Int, isMore: Boolean) {
+        val isProtected = V2rayCrypt.isProtected(this, guid)
+        
+        val bottomSheetDialog = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.bottom_sheet_share_custom, null)
+        
+        val container = view.findViewById<LinearLayout>(R.id.share_container)
+        container.setBackgroundColor(Color.parseColor("#141417")) // لون ليلي
+        
+        // عنوان القائمة
+        val title = TextView(this).apply {
+            text = "خيارات التصدير والمشاركة"
+            textSize = 18f
+            setTextColor(Color.parseColor("#FF9800"))
+            setPadding(40, 40, 40, 20)
+            textAlignment = View.TEXT_ALIGNMENT_CENTER
+        }
+        container.addView(title)
+        
+        // خط فاصل
+        val divider = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 2).apply {
+                setMargins(40, 0, 40, 20)
+            }
+            setBackgroundColor(Color.parseColor("#33FFFFFF"))
+        }
+        container.addView(divider)
+
+        // دالة مساعدة لإنشاء الأزرار بشكل أنيق
+        fun createOptionButton(textStr: String, iconRes: Int, onClick: () -> Unit) {
+            val layout = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                setPadding(50, 30, 50, 30)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                isClickable = true
+                isFocusable = true
+                
+                // تأثير الضغط
+                val outValue = android.util.TypedValue()
+                theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+                setBackgroundResource(outValue.resourceId)
+                
+                setOnClickListener {
+                    onClick()
+                    bottomSheetDialog.dismiss()
+                }
+            }
+
+            val icon = ImageView(this).apply {
+                setImageResource(iconRes)
+                setColorFilter(Color.parseColor("#B0BEC5"))
+                layoutParams = LinearLayout.LayoutParams(64, 64)
+            }
+
+            val textView = TextView(this).apply {
+                text = textStr
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = 40
+                }
+            }
+
+            layout.addView(icon)
+            layout.addView(textView)
+            container.addView(layout)
+        }
+
+        // خيار التصدير المشفر
+        createOptionButton("تصدير إلى ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) {
+            shareEncryptedFile(guid)
+        }
+        
+        createOptionButton("تصدير إلى الحافظة مشفر", android.R.drawable.ic_menu_copy) {
+            shareEncryptedClipboard(guid)
+        }
+
+        if (!isProtected) {
+            // الخيارات العادية تظهر فقط إذا لم يكن محميًا
+            createOptionButton("تصدير إلى الحافظة (عادي)", android.R.drawable.ic_menu_edit) {
+                mainViewModel.share2Clipboard(guid)
+            }
+            createOptionButton("تصدير التكوين الكامل للحافظة", android.R.drawable.ic_menu_share) {
+                mainViewModel.shareFull2Clipboard(guid)
+            }
+        }
+
+        // إضافة View فارغ في الأسفل للمسافة
+        val space = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 40)
+        }
+        container.addView(space)
+
+        bottomSheetDialog.setContentView(view)
+        bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
+        bottomSheetDialog.show()
+    }
+    
+    // دوال للمشاركة المشفرة
+    private fun shareEncryptedClipboard(guid: String) {
+        val configStr = MmkvManager.decodeServerConfig(guid)
+        if (!configStr.isNullOrEmpty()) {
+            val encryptedStr = V2rayCrypt.encrypt(configStr)
+            Utils.setClipboard(this, encryptedStr)
+            toast("تم نسخ الكود المشفر بنجاح!")
+        } else {
+            toastError("خطأ في التصدير")
+        }
+    }
+
+    private fun shareEncryptedFile(guid: String) {
+        try {
+            val configStr = MmkvManager.decodeServerConfig(guid)
+            if (!configStr.isNullOrEmpty()) {
+                val encryptedStr = V2rayCrypt.encrypt(configStr)
+                val fileName = "Config_${System.currentTimeMillis()}.ashor"
+                val file = java.io.File(getExternalFilesDir(null), fileName)
+                file.writeText(encryptedStr)
+
+                val uri = androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "*/*"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(intent, "مشاركة الملف المشفر"))
+            }
+        } catch (e: Exception) {
+            toastError("فشل تصدير الملف")
+        }
+    }
+    
+    // تطبيق باقي متطلبات واجهة المستمع (MainAdapterListener)
+    override fun onSelectServer(guid: String) {
+        mainViewModel.setSelectServer(guid)
+        toast(R.string.toast_success)
+        groupPagerAdapter.notifyDataSetChanged()
+    }
+
+    override fun onEdit(guid: String, position: Int, profile: ProfileItem) {
+        if (!V2rayCrypt.isProtected(this, guid)) {
+            startActivity(Intent().putExtra("guid", guid).putExtra("subscriptionId", profile.subscriptionId).setClass(this, ServerActivity::class.java))
+        } else {
+            toast("هذا السيرفر محمي ولا يمكن تعديله")
+        }
+    }
+
+    override fun onRemove(guid: String, position: Int) {
+        AlertDialog.Builder(this)
+            .setMessage(R.string.del_config_comfirm)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                mainViewModel.removeServer(guid)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun runSpeedTest() {
