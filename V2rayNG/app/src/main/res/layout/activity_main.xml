@@ -51,6 +51,7 @@
                     android:layout_height="match_parent"
                     android:orientation="vertical"
                     android:layoutDirection="rtl"
+                    android:theme="@style/ThemeOverlay.AppCompat.Dark"
                     android:background="#0A0A0C">
                     
                     <TextView
@@ -134,6 +135,22 @@
                                     android:textAppearance="@style/TextAppearance.AppCompat.Small" />
                             </LinearLayout>
                         </LinearLayout>
+                        <FrameLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="bottom|end"
+                            android:layout_marginEnd="@dimen/padding_spacing_dp16">
+                            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                                android:id="@+id/fab"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_gravity="bottom|end"
+                                android:layout_marginBottom="@dimen/view_height_dp36"
+                                android:clickable="true"
+                                android:visibility="gone"
+                                android:src="@drawable/ic_play_24dp"
+                                app:tint="@color/colorWhite" />
+                        </FrameLayout>
                     </androidx.coordinatorlayout.widget.CoordinatorLayout>
                 </RelativeLayout>
 
