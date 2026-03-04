@@ -388,7 +388,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:orientation="vertical"
-                    android:theme="@style/ThemeOverlay.AppCompat.Dark" 
+                    android:theme="@style/Theme.AppCompat.NoActionBar" 
                     android:background="#0A0A0C"> 
                     
                     <TextView
@@ -405,8 +405,7 @@
                     <FrameLayout
                         android:id="@+id/settings_fragment_container"
                         android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:background="#0A0A0C" />
+                        android:layout_height="match_parent" />
                 </LinearLayout>
 
             </LinearLayout>
