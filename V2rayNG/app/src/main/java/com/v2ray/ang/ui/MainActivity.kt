@@ -26,6 +26,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.SearchView
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
@@ -108,6 +109,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // السحر الأول: إجبار التطبيق على الوضع الليلي الفاخر، لحل مشكلة الإعدادات السوداء!
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+        
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
         
@@ -116,13 +120,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val displayMetrics = resources.displayMetrics
         screenWidth = displayMetrics.widthPixels
         
-        // الترتيب الصحيح للأبعاد
-        binding.greenScreenContainer.layoutParams.width = screenWidth
-        binding.homeContentContainer.layoutParams.width = screenWidth
+        // ربط الشاشات الثلاث بأبعاد الشاشة
         val settingsWrapper = binding.root.findViewById<View>(R.id.settings_wrapper)
         settingsWrapper?.layoutParams?.width = screenWidth
+        binding.homeContentContainer.layoutParams.width = screenWidth
+        binding.greenScreenContainer.layoutParams.width = screenWidth
 
-        // زرع واجهة الإعدادات
         supportFragmentManager.beginTransaction()
             .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
             .commit()
@@ -148,27 +151,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
 
         // =========================================================
-        // خوارزمية الربط الذكية المتوافقة مع الـ RTL 100%
-        // الصفحة 0 = المحرك ، الصفحة 1 = السيرفرات ، الصفحة 2 = الإعدادات
+        // السحر الثاني: الترتيب الدقيق للتنقل (الإعدادات=0، السيرفرات=1، الرئيسية=2)
+        // هذا الترتيب يتماشى 100% مع حركة الإصبع الطبيعية (Swipe)
         // =========================================================
-        bottomNav?.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_home -> { 
-                    binding.mainScrollView.smoothScrollTo(0, 0)
-                    true
-                }
-                R.id.nav_servers -> { 
-                    binding.mainScrollView.smoothScrollTo(screenWidth, 0)
-                    true
-                }
-                R.id.nav_settings -> { 
-                    binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
-                    true 
-                }
-                else -> false
-            }
-        }
-
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
@@ -180,19 +165,37 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
                 
                 when (page) {
-                    0 -> bottomNav?.selectedItemId = R.id.nav_home
+                    0 -> bottomNav?.selectedItemId = R.id.nav_settings
                     1 -> bottomNav?.selectedItemId = R.id.nav_servers
-                    2 -> bottomNav?.selectedItemId = R.id.nav_settings
+                    2 -> bottomNav?.selectedItemId = R.id.nav_home
                 }
                 return@setOnTouchListener true
             }
             false
         }
 
-        // فتح التطبيق على الشاشة الرئيسية (المحرك) بشكل افتراضي
+        bottomNav?.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_settings -> { 
+                    binding.mainScrollView.smoothScrollTo(0, 0)
+                    true 
+                }
+                R.id.nav_servers -> { 
+                    binding.mainScrollView.smoothScrollTo(screenWidth, 0)
+                    true
+                }
+                R.id.nav_home -> { 
+                    binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
+                    true
+                }
+                else -> false
+            }
+        }
+
+        // فتح التطبيق على الرئيسية (المحرك) أقصى اليمين
         bottomNav?.selectedItemId = R.id.nav_home
         binding.mainScrollView.post {
-            binding.mainScrollView.scrollTo(0, 0)
+            binding.mainScrollView.scrollTo(screenWidth * 2, 0)
         }
 
         setupToolbar(binding.toolbar, false, getString(R.string.title_server))
@@ -214,9 +217,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 } else {
                     val currentScroll = binding.mainScrollView.scrollX
-                    // إذا كان في أي شاشة غير المحرك (0)، إرجاعه للمحرك
-                    if (currentScroll > 0) {
-                         binding.mainScrollView.smoothScrollTo(0, 0)
+                    // إذا لم نكن في الرئيسية (2)، نعود إليها
+                    if (currentScroll != screenWidth * 2) {
+                         binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
                          bottomNav?.selectedItemId = R.id.nav_home 
                     } else {
                         isEnabled = false
