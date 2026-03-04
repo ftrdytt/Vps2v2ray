@@ -26,6 +26,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.SearchView
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
@@ -107,6 +108,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+        
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
         
@@ -115,7 +118,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val displayMetrics = resources.displayMetrics
         screenWidth = displayMetrics.widthPixels
         
-        // ربط الشاشات الثلاث بأبعاد الشاشة
         val settingsWrapper = binding.root.findViewById<View>(R.id.settings_wrapper)
         settingsWrapper?.layoutParams?.width = screenWidth
         binding.homeContentContainer.layoutParams.width = screenWidth
@@ -145,12 +147,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
 
-        // =========================================================
-        // الخوارزمية الجديدة للسحب: تتطابق مع الشريط السفلي ومع شاشتك
-        // 0 = الإعدادات (اليسار)
-        // 1 = السيرفرات (الوسط)
-        // 2 = المحرك (اليمين)
-        // =========================================================
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
@@ -174,28 +170,30 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         bottomNav?.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_settings -> { 
-                    binding.mainScrollView.smoothScrollTo(0, 0) // أقصى اليسار
+                    binding.mainScrollView.smoothScrollTo(0, 0)
                     true 
                 }
                 R.id.nav_servers -> { 
-                    binding.mainScrollView.smoothScrollTo(screenWidth, 0) // الوسط
+                    binding.mainScrollView.smoothScrollTo(screenWidth, 0)
                     true
                 }
                 R.id.nav_home -> { 
-                    binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0) // أقصى اليمين
+                    binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
                     true
                 }
                 else -> false
             }
         }
 
-        // فتح التطبيق على المحرك (الرئيسية)
         bottomNav?.selectedItemId = R.id.nav_home
         binding.mainScrollView.post {
             binding.mainScrollView.scrollTo(screenWidth * 2, 0)
         }
 
-        setupToolbar(binding.toolbar, false, getString(R.string.title_server))
+        // =========================================================
+        // التعديل السحري: تغيير اسم التطبيق في الشريط العلوي!
+        // =========================================================
+        setupToolbar(binding.toolbar, false, "اشور لود")
 
         groupPagerAdapter = GroupPagerAdapter(this, emptyList())
         binding.viewPager.adapter = groupPagerAdapter
@@ -204,6 +202,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val toggle = ActionBarDrawerToggle(
             this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close
         )
+        // =========================================================
+        // التعديل السحري: إخفاء الثلاث خطوط العلوية تماماً!
+        // =========================================================
+        toggle.isDrawerIndicatorEnabled = false 
+        
         binding.drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
         binding.navView.setNavigationItemSelectedListener(this)
@@ -214,7 +217,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 } else {
                     val currentScroll = binding.mainScrollView.scrollX
-                    // إذا لم نكن في المحرك نعود إليه
                     if (currentScroll != screenWidth * 2) {
                          binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
                          bottomNav?.selectedItemId = R.id.nav_home 
