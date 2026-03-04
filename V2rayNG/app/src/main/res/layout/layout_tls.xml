@@ -1,264 +1,340 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="@dimen/padding_spacing_dp16"
     android:orientation="vertical">
 
     <LinearLayout
         android:id="@+id/lay_stream_security"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="@dimen/padding_spacing_dp16"
-
+        android:layout_marginBottom="16dp"
         android:orientation="vertical">
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/server_lab_stream_security" />
-
-        <Spinner
-            android:id="@+id/sp_stream_security"
+            android:text="@string/server_lab_stream_security"
+            android:textColor="#B0BEC5"
+            android:textSize="12sp"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="4dp"/>
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/padding_spacing_dp8"
-            android:layout_marginBottom="@dimen/padding_spacing_dp8"
-            android:entries="@array/streamsecurityxs"
-            android:nextFocusDown="@+id/et_sni" />
-
+            app:cardBackgroundColor="#1E1E22"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp">
+            <Spinner
+                android:id="@+id/sp_stream_security"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:entries="@array/streamsecurityxs"
+                android:backgroundTint="#FF9800"/>
+        </androidx.cardview.widget.CardView>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/lay_sni"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="@dimen/padding_spacing_dp16"
+        android:layout_marginBottom="16dp"
         android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_sni" />
-
-        <EditText
-            android:id="@+id/et_sni"
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="text"
-            android:nextFocusDown="@+id/sp_stream_fingerprint" />
-
+            android:hint="@string/server_lab_sni"
+            app:boxStrokeColor="#FF9800"
+            app:hintTextColor="#FF9800"
+            android:textColorHint="#B0BEC5"
+            app:boxCornerRadiusTopStart="12dp"
+            app:boxCornerRadiusTopEnd="12dp"
+            app:boxCornerRadiusBottomStart="12dp"
+            app:boxCornerRadiusBottomEnd="12dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_sni"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:textColor="#FFFFFF" />
+        </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/lay_stream_fingerprint"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="@dimen/padding_spacing_dp16"
+        android:layout_marginBottom="16dp"
         android:orientation="vertical">
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/server_lab_stream_fingerprint" />
-
-        <Spinner
-            android:id="@+id/sp_stream_fingerprint"
+            android:text="@string/server_lab_stream_fingerprint"
+            android:textColor="#B0BEC5"
+            android:textSize="12sp"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="4dp"/>
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/padding_spacing_dp8"
-            android:layout_marginBottom="@dimen/padding_spacing_dp8"
-            android:entries="@array/streamsecurity_utls"
-            android:nextFocusDown="@+id/sp_stream_alpn" />
-
+            app:cardBackgroundColor="#1E1E22"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp">
+            <Spinner
+                android:id="@+id/sp_stream_fingerprint"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:entries="@array/streamsecurity_utls"
+                android:backgroundTint="#FF9800"/>
+        </androidx.cardview.widget.CardView>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/lay_stream_alpn"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="@dimen/padding_spacing_dp16"
+        android:layout_marginBottom="16dp"
         android:orientation="vertical">
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/server_lab_stream_alpn" />
-
-        <Spinner
-            android:id="@+id/sp_stream_alpn"
+            android:text="@string/server_lab_stream_alpn"
+            android:textColor="#B0BEC5"
+            android:textSize="12sp"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="4dp"/>
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/padding_spacing_dp8"
-            android:layout_marginBottom="@dimen/padding_spacing_dp8"
-            android:entries="@array/streamsecurity_alpn"
-            android:nextFocusDown="@+id/sp_allow_insecure" />
-
+            app:cardBackgroundColor="#1E1E22"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp">
+            <Spinner
+                android:id="@+id/sp_stream_alpn"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:entries="@array/streamsecurity_alpn"
+                android:backgroundTint="#FF9800"/>
+        </androidx.cardview.widget.CardView>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/lay_allow_insecure"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
         android:orientation="vertical">
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/server_lab_allow_insecure" />
-
-        <Spinner
-            android:id="@+id/sp_allow_insecure"
+            android:text="@string/server_lab_allow_insecure"
+            android:textColor="#B0BEC5"
+            android:textSize="12sp"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="4dp"/>
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/padding_spacing_dp8"
-            android:layout_marginBottom="@dimen/padding_spacing_dp8"
-            android:entries="@array/allowinsecures"
-            android:nextFocusDown="@+id/et_ech_config_list"/>
+            app:cardBackgroundColor="#1E1E22"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp">
+            <Spinner
+                android:id="@+id/sp_allow_insecure"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:entries="@array/allowinsecures"
+                android:backgroundTint="#FF9800"/>
+        </androidx.cardview.widget.CardView>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/lay_ech_config_list"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="@dimen/padding_spacing_dp16"
+        android:layout_marginBottom="16dp"
         android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_ech_config_list" />
-
-        <EditText
-            android:id="@+id/et_ech_config_list"
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="text"
-            android:nextFocusDown="@+id/sp_ech_force_query" />
-
+            android:hint="@string/server_lab_ech_config_list"
+            app:boxStrokeColor="#FF9800"
+            app:hintTextColor="#FF9800"
+            android:textColorHint="#B0BEC5"
+            app:boxCornerRadiusTopStart="12dp"
+            app:boxCornerRadiusTopEnd="12dp"
+            app:boxCornerRadiusBottomStart="12dp"
+            app:boxCornerRadiusBottomEnd="12dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_ech_config_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:textColor="#FFFFFF" />
+        </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/lay_ech_force_query"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
         android:orientation="vertical">
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/server_lab_ech_force_query" />
-
-        <Spinner
-            android:id="@+id/sp_ech_force_query"
+            android:text="@string/server_lab_ech_force_query"
+            android:textColor="#B0BEC5"
+            android:textSize="12sp"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="4dp"/>
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/padding_spacing_dp8"
-            android:layout_marginBottom="@dimen/padding_spacing_dp8"
-            android:entries="@array/ech_force_query_value" />
+            app:cardBackgroundColor="#1E1E22"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp">
+            <Spinner
+                android:id="@+id/sp_ech_force_query"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:entries="@array/ech_force_query_value"
+                android:backgroundTint="#FF9800"/>
+        </androidx.cardview.widget.CardView>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/lay_pinned_ca256"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="@dimen/padding_spacing_dp16"
+        android:layout_marginBottom="16dp"
         android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_pinned_ca256" />
-
-        <EditText
-            android:id="@+id/et_pinned_ca256"
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="text"
-            android:nextFocusDown="@+id/sp_ech_force_query" />
-
+            android:hint="@string/server_lab_pinned_ca256"
+            app:boxStrokeColor="#FF9800"
+            app:hintTextColor="#FF9800"
+            android:textColorHint="#B0BEC5"
+            app:boxCornerRadiusTopStart="12dp"
+            app:boxCornerRadiusTopEnd="12dp"
+            app:boxCornerRadiusBottomStart="12dp"
+            app:boxCornerRadiusBottomEnd="12dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_pinned_ca256"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:textColor="#FFFFFF" />
+        </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/lay_public_key"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="@dimen/padding_spacing_dp16"
+        android:layout_marginBottom="16dp"
         android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_public_key" />
-
-        <EditText
-            android:id="@+id/et_public_key"
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="text"
-            android:nextFocusDown="@+id/et_short_id" />
-
+            android:hint="@string/server_lab_public_key"
+            app:boxStrokeColor="#FF9800"
+            app:hintTextColor="#FF9800"
+            android:textColorHint="#B0BEC5"
+            app:boxCornerRadiusTopStart="12dp"
+            app:boxCornerRadiusTopEnd="12dp"
+            app:boxCornerRadiusBottomStart="12dp"
+            app:boxCornerRadiusBottomEnd="12dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_public_key"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:textColor="#FFFFFF" />
+        </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/lay_short_id"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="@dimen/padding_spacing_dp16"
+        android:layout_marginBottom="16dp"
         android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_short_id" />
-
-        <EditText
-            android:id="@+id/et_short_id"
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="text"
-            android:nextFocusDown="@+id/et_spider_x" />
-
+            android:hint="@string/server_lab_short_id"
+            app:boxStrokeColor="#FF9800"
+            app:hintTextColor="#FF9800"
+            android:textColorHint="#B0BEC5"
+            app:boxCornerRadiusTopStart="12dp"
+            app:boxCornerRadiusTopEnd="12dp"
+            app:boxCornerRadiusBottomStart="12dp"
+            app:boxCornerRadiusBottomEnd="12dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_short_id"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:textColor="#FFFFFF" />
+        </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/lay_spider_x"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="@dimen/padding_spacing_dp16"
+        android:layout_marginBottom="16dp"
         android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_spider_x" />
-
-        <EditText
-            android:id="@+id/et_spider_x"
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="text"
-            android:nextFocusDown="@+id/et_mldsa65_verify" />
-
+            android:hint="@string/server_lab_spider_x"
+            app:boxStrokeColor="#FF9800"
+            app:hintTextColor="#FF9800"
+            android:textColorHint="#B0BEC5"
+            app:boxCornerRadiusTopStart="12dp"
+            app:boxCornerRadiusTopEnd="12dp"
+            app:boxCornerRadiusBottomStart="12dp"
+            app:boxCornerRadiusBottomEnd="12dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_spider_x"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:textColor="#FFFFFF" />
+        </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/lay_mldsa65_verify"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="@dimen/padding_spacing_dp16"
         android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_mldsa65_verify" />
-
-        <EditText
-            android:id="@+id/et_mldsa65_verify"
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="text" />
-
+            android:hint="@string/server_lab_mldsa65_verify"
+            app:boxStrokeColor="#FF9800"
+            app:hintTextColor="#FF9800"
+            android:textColorHint="#B0BEC5"
+            app:boxCornerRadiusTopStart="12dp"
+            app:boxCornerRadiusTopEnd="12dp"
+            app:boxCornerRadiusBottomStart="12dp"
+            app:boxCornerRadiusBottomEnd="12dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_mldsa65_verify"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:textColor="#FFFFFF" />
+        </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
 </LinearLayout>
