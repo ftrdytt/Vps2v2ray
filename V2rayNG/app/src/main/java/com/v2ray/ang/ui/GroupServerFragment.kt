@@ -4,23 +4,30 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.contracts.MainAdapterListener
 import com.v2ray.ang.databinding.FragmentGroupServerBinding
-import com.v2ray.ang.databinding.ItemQrcodeBinding
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.extension.toast
@@ -41,10 +48,8 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
     private var itemTouchHelper: ItemTouchHelper? = null
     private val subId: String by lazy { arguments?.getString(ARG_SUB_ID).orEmpty() }
 
-    // متغير لحفظ النص المشفر مؤقتاً حتى يختار المستخدم مكان الحفظ
     private var pendingEncryptedConfigToSave: String? = null
 
-    // نافذة حفظ الملف (تفتح مدير الملفات ليختار المستخدم المكان)
     private val saveEncryptedFileLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri: Uri? ->
         if (uri != null) {
             try {
@@ -62,14 +67,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 Log.e(AppConfig.TAG, "Failed to write file", e)
             }
         }
-        pendingEncryptedConfigToSave = null // تفريغ المتغير بعد الانتهاء
-    }
-
-    private val share_method: Array<out String> by lazy {
-        ownerActivity.resources.getStringArray(R.array.share_method)
-    }
-    private val share_method_more: Array<out String> by lazy {
-        ownerActivity.resources.getStringArray(R.array.share_method_more)
+        pendingEncryptedConfigToSave = null
     }
 
     companion object {
@@ -110,61 +108,120 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         mainViewModel.subscriptionIdChanged(subId)
     }
 
-    /**
-     * Shares server configuration
-     * Displays a dialog with sharing options and executes the selected action
-     */
-    private fun shareServer(guid: String, profile: ProfileItem, position: Int, baseOptions: List<String>, skip: Int) {
-        val encryptedFileOptionName = "تصدير إلى ملف مشفر (.ashor)"
-        val encryptedOptionName = "تصدير إلى الحافظة مشفر"
-        
-        // ========================================================
-        // فحص هل السيرفر محمي أم لا
-        // ========================================================
+    // =======================================================
+    // واجهة المشاركة المنبثقة الفاخرة (Bottom Sheet Dialog)
+    // =======================================================
+    private fun shareServer(guid: String, profile: ProfileItem, position: Int) {
         val isProtected = V2rayCrypt.isProtected(requireContext(), guid)
 
-        val shareOptions: MutableList<String>
+        val bottomSheetDialog = BottomSheetDialog(ownerActivity)
         
-        if (isProtected) {
-            // إذا كان محمياً: إظهار خيارات التشفير فقط
-            shareOptions = mutableListOf(encryptedFileOptionName, encryptedOptionName)
-        } else {
-            // إذا كان عادياً: إظهار كل الخيارات
-            shareOptions = baseOptions.toMutableList()
-            if (profile.configType != EConfigType.CUSTOM && profile.configType != EConfigType.POLICYGROUP) {
-                shareOptions.add(1, encryptedFileOptionName)
-                shareOptions.add(2, encryptedOptionName)
+        val scrollView = ScrollView(ownerActivity)
+        val container = LinearLayout(ownerActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#141417")) // لون ليلي فخم
+            setPadding(0, 0, 0, 40)
+        }
+        scrollView.addView(container)
+
+        // العنوان
+        val title = TextView(ownerActivity).apply {
+            text = "خيارات التصدير والمشاركة"
+            textSize = 18f
+            setTextColor(Color.parseColor("#FF9800")) // برتقالي
+            setPadding(40, 40, 40, 20)
+            textAlignment = View.TEXT_ALIGNMENT_CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        container.addView(title)
+        
+        // خط فاصل
+        val divider = View(ownerActivity).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 2).apply {
+                setMargins(40, 0, 40, 20)
+            }
+            setBackgroundColor(Color.parseColor("#33FFFFFF"))
+        }
+        container.addView(divider)
+
+        // دالة مساعدة لإنشاء الأزرار بشكل أنيق
+        fun createOptionButton(textStr: String, iconRes: Int, onClick: () -> Unit) {
+            val layout = LinearLayout(ownerActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                setPadding(50, 30, 50, 30)
+                gravity = Gravity.CENTER_VERTICAL
+                isClickable = true
+                isFocusable = true
+                
+                val outValue = TypedValue()
+                ownerActivity.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+                setBackgroundResource(outValue.resourceId)
+                
+                setOnClickListener {
+                    onClick()
+                    bottomSheetDialog.dismiss()
+                }
+            }
+
+            val icon = ImageView(ownerActivity).apply {
+                setImageResource(iconRes)
+                setColorFilter(Color.parseColor("#FF9800"))
+                layoutParams = LinearLayout.LayoutParams(56, 56)
+            }
+
+            val textView = TextView(ownerActivity).apply {
+                text = textStr
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = 40
+                }
+            }
+
+            layout.addView(icon)
+            layout.addView(textView)
+            container.addView(layout)
+        }
+
+        // الخيارات الآمنة والمشفرة (تظهر دائماً)
+        createOptionButton("تصدير إلى ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) {
+            exportEncryptedFile(guid)
+        }
+        
+        createOptionButton("تصدير إلى الحافظة مشفر", android.R.drawable.ic_lock_idle_lock) {
+            shareEncryptedClipboard(guid)
+        }
+
+        // الخيارات العادية (تظهر فقط إذا لم يكن السيرفر محمياً)
+        if (!isProtected) {
+            val isCustom = profile.configType == EConfigType.CUSTOM || profile.configType == EConfigType.POLICYGROUP
+            
+            // تم حذف زر QR Code نهائياً من هنا
+            createOptionButton("نسخ التكوين العادي للحافظة", android.R.drawable.ic_menu_paste) {
+                share2Clipboard(guid)
+            }
+            
+            if (!isCustom) {
+                createOptionButton("نسخ التكوين الكامل للحافظة", android.R.drawable.ic_menu_share) {
+                    shareFullContent(guid)
+                }
+            }
+            
+            createOptionButton("تعديل التكوين", android.R.drawable.ic_menu_edit) {
+                editServer(guid, profile)
+            }
+            
+            createOptionButton("حذف التكوين", android.R.drawable.ic_menu_delete) {
+                removeServer(guid, position)
             }
         }
-        // ========================================================
 
-        AlertDialog.Builder(ownerActivity).setItems(shareOptions.toTypedArray()) { _, index ->
-            try {
-                val selectedItem = shareOptions[index]
-                
-                when (selectedItem) {
-                    encryptedFileOptionName -> exportEncryptedFile(guid)
-                    encryptedOptionName -> shareEncryptedClipboard(guid)
-                    else -> {
-                        // يتم تنفيذ هذا الجزء فقط إذا كان السيرفر غير محمي (عادي)
-                        val originalIndex = baseOptions.indexOf(selectedItem)
-                        when (originalIndex + skip) {
-                            0 -> showQRCode(guid)
-                            1 -> share2Clipboard(guid)
-                            2 -> shareFullContent(guid)
-                            3 -> editServer(guid, profile)
-                            4 -> removeServer(guid, position)
-                            else -> ownerActivity.toast("else")
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(AppConfig.TAG, "Error when sharing server", e)
-            }
-        }.show()
+        bottomSheetDialog.setContentView(scrollView)
+        bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
+        bottomSheetDialog.show()
     }
 
-    // --- دالة تصدير الكونفج إلى ملف (.ashor) مع فتح مدير الملفات ---
     private fun exportEncryptedFile(guid: String) {
         if (AngConfigManager.share2Clipboard(ownerActivity, guid) != 0) {
             ownerActivity.toastError(R.string.toast_failure)
@@ -180,17 +237,11 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 return
             }
             
-            // تشفير الكونفج
             val encryptedConf = V2rayCrypt.encrypt(conf)
             
             if (encryptedConf.isNotEmpty()) {
-                // حفظ النص المشفر في المتغير
                 pendingEncryptedConfigToSave = encryptedConf
-                
-                // تحديد اسم الملف الافتراضي
                 val fileName = "Config_${System.currentTimeMillis()}.ashor"
-                
-                // فتح نافذة اختيار مكان الحفظ
                 saveEncryptedFileLauncher.launch(fileName)
             } else {
                 ownerActivity.toastError(R.string.toast_failure)
@@ -201,7 +252,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }
     }
 
-    // --- دالة نسخ الكونفج المشفر للحافظة ---
     private fun shareEncryptedClipboard(guid: String) {
         if (AngConfigManager.share2Clipboard(ownerActivity, guid) != 0) {
             ownerActivity.toastError(R.string.toast_failure)
@@ -232,23 +282,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }
     }
 
-    /**
-     * Displays QR code for the server configuration
-     */
-    private fun showQRCode(guid: String) {
-        val ivBinding = ItemQrcodeBinding.inflate(LayoutInflater.from(ownerActivity))
-        ivBinding.ivQcode.setImageBitmap(AngConfigManager.share2QRCode(guid))
-        if (share_method.isNotEmpty()) {
-            ivBinding.ivQcode.contentDescription = share_method[0]
-        } else {
-            ivBinding.ivQcode.contentDescription = "QR Code"
-        }
-        AlertDialog.Builder(ownerActivity).setView(ivBinding.root).show()
-    }
-
-    /**
-     * Shares server configuration to clipboard
-     */
     private fun share2Clipboard(guid: String) {
         if (AngConfigManager.share2Clipboard(ownerActivity, guid) == 0) {
             ownerActivity.toastSuccess(R.string.toast_success)
@@ -257,9 +290,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }
     }
 
-    /**
-     * Shares full server configuration content to clipboard
-     */
     private fun shareFullContent(guid: String) {
         ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
             val result = AngConfigManager.shareFullContent2Clipboard(ownerActivity, guid)
@@ -273,9 +303,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }
     }
 
-    /**
-     * Edits server configuration
-     */
     private fun editServer(guid: String, profile: ProfileItem) {
         val intent = Intent().putExtra("guid", guid)
             .putExtra("isRunning", mainViewModel.isRunning.value)
@@ -284,20 +311,15 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             EConfigType.CUSTOM -> {
                 ownerActivity.startActivity(intent.setClass(ownerActivity, ServerCustomConfigActivity::class.java))
             }
-
             EConfigType.POLICYGROUP -> {
                 ownerActivity.startActivity(intent.setClass(ownerActivity, ServerGroupActivity::class.java))
             }
-
             else -> {
                 ownerActivity.startActivity(intent.setClass(ownerActivity, ServerActivity::class.java))
             }
         }
     }
 
-    /**
-     * Removes server configuration
-     */
     private fun removeServer(guid: String, position: Int) {
         if (guid == MmkvManager.getSelectServer()) {
             ownerActivity.toast(R.string.toast_action_not_allowed)
@@ -309,9 +331,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 .setPositiveButton(android.R.string.ok) { _, _ ->
                     removeServerSub(guid, position)
                 }
-                .setNegativeButton(android.R.string.cancel) { _, _ ->
-                    //do noting
-                }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> }
                 .show()
         } else {
             removeServerSub(guid, position)
@@ -338,15 +358,10 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
     }
 
     private inner class ActivityAdapterListener : MainAdapterListener {
-        override fun onEdit(guid: String, position: Int) {
-        }
-
-        override fun onShare(url: String) {
-        }
-
-        override fun onRefreshData() {
-        }
-
+        override fun onEdit(guid: String, position: Int) {}
+        override fun onShare(url: String) {}
+        override fun onRefreshData() {}
+        
         override fun onRemove(guid: String, position: Int) {
             removeServer(guid, position)
         }
@@ -360,17 +375,8 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }
 
         override fun onShare(guid: String, profile: ProfileItem, position: Int, more: Boolean) {
-            val isCustom = profile.configType == EConfigType.CUSTOM || profile.configType == EConfigType.POLICYGROUP
-
-            val (shareOptions, skip) = if (more) {
-                val options = if (isCustom) share_method_more.asList().takeLast(3) else share_method_more.asList()
-                options to if (isCustom) 2 else 0
-            } else {
-                val options = if (isCustom) share_method.asList().takeLast(1) else share_method.asList()
-                options to if (isCustom) 2 else 0
-            }
-
-            shareServer(guid, profile, position, shareOptions, skip)
+            // استدعاء واجهة المشاركة السفلية الفاخرة بدلاً من المربعات القديمة
+            shareServer(guid, profile, position)
         }
     }
 }
