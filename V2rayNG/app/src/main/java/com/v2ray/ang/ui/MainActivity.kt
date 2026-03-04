@@ -116,14 +116,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val displayMetrics = resources.displayMetrics
         screenWidth = displayMetrics.widthPixels
         
-        // إعطاء العرض لثلاث شاشات بدلاً من اثنتين
-        binding.homeContentContainer.layoutParams.width = screenWidth
+        // إعطاء العرض الدقيق لكل شاشة من الشاشات الثلاث
         binding.greenScreenContainer.layoutParams.width = screenWidth
-        
+        binding.homeContentContainer.layoutParams.width = screenWidth
         val settingsWrapper = binding.root.findViewById<View>(R.id.settings_wrapper)
         settingsWrapper?.layoutParams?.width = screenWidth
 
-        // زرع واجهة الإعدادات مباشرة في الشاشة الثالثة (بدون فتح نافذة جديدة)
+        // زرع واجهة الإعدادات بداخل الحاوية
         supportFragmentManager.beginTransaction()
             .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
             .commit()
@@ -149,23 +148,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
 
         // =========================================================
-        // النظام الذكي للسحب لـ 3 شاشات (Snap to Page)
+        // خوارزمية السحب الذكية المتوافقة مع اللغة العربية (RTL)
         // =========================================================
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
-                // حساب رقم الصفحة الأقرب (0=ملفاتي، 1=المحرك، 2=الإعدادات)
-                val page = (scrollX.toFloat() / screenWidth.toFloat()).roundToInt()
+                // حساب رقم الصفحة الأقرب (0=المحرك، 1=ملفاتي، 2=الإعدادات)
+                val page = ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 2)
                 val targetScrollX = page * screenWidth
 
                 binding.mainScrollView.post { 
                     binding.mainScrollView.smoothScrollTo(targetScrollX, 0) 
                 }
                 
-                // تحديث الزر السفلي ليتوافق مع السحب
                 when (page) {
-                    0 -> bottomNav?.selectedItemId = R.id.nav_servers
-                    1 -> bottomNav?.selectedItemId = R.id.nav_home
+                    0 -> bottomNav?.selectedItemId = R.id.nav_home
+                    1 -> bottomNav?.selectedItemId = R.id.nav_servers
                     2 -> bottomNav?.selectedItemId = R.id.nav_settings
                 }
                 return@setOnTouchListener true
@@ -175,15 +173,18 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         bottomNav?.setOnItemSelectedListener { item ->
             when (item.itemId) {
-                R.id.nav_servers -> { // الشاشة 0
+                R.id.nav_home -> { 
+                    // الرئيسية (المحرك) موجودة في الشاشة 0
                     binding.mainScrollView.smoothScrollTo(0, 0)
                     true
                 }
-                R.id.nav_home -> { // الشاشة 1 (المحرك)
+                R.id.nav_servers -> { 
+                    // ملفاتي (السيرفرات) موجودة في الشاشة 1
                     binding.mainScrollView.smoothScrollTo(screenWidth, 0)
                     true
                 }
-                R.id.nav_settings -> { // الشاشة 2 (الإعدادات المدمجة)
+                R.id.nav_settings -> { 
+                    // الإعدادات موجودة في الشاشة 2
                     binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
                     true 
                 }
@@ -191,10 +192,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
         }
 
-        // فتح التطبيق مباشرة على شاشة المحرك
+        // فتح التطبيق على الشاشة الرئيسية (المحرك) بشكل افتراضي
         bottomNav?.selectedItemId = R.id.nav_home
         binding.mainScrollView.post {
-            binding.mainScrollView.scrollTo(screenWidth, 0)
+            binding.mainScrollView.scrollTo(0, 0)
         }
 
         setupToolbar(binding.toolbar, false, getString(R.string.title_server))
@@ -216,9 +217,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 } else {
                     val currentScroll = binding.mainScrollView.scrollX
-                    // إذا كان في شاشة الإعدادات أو الملفات، إرجاعه للمحرك عند ضغط زر الرجوع
-                    if (currentScroll != screenWidth) {
-                         binding.mainScrollView.smoothScrollTo(screenWidth, 0)
+                    // إذا كان في شاشة الإعدادات أو الملفات، إرجاعه للمحرك عند الرجوع
+                    if (currentScroll != 0) {
+                         binding.mainScrollView.smoothScrollTo(0, 0)
                          bottomNav?.selectedItemId = R.id.nav_home 
                     } else {
                         isEnabled = false
