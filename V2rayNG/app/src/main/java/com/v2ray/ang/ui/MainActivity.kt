@@ -44,7 +44,9 @@ import com.google.android.material.navigation.NavigationView
 import com.google.android.material.tabs.TabLayoutMediator
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
+import com.v2ray.ang.contracts.MainAdapterListener
 import com.v2ray.ang.databinding.ActivityMainBinding
+import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.extension.toast
@@ -71,7 +73,7 @@ import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 
-class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener {
+class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener, MainAdapterListener {
     private val binding by lazy {
         ActivityMainBinding.inflate(layoutInflater)
     }
@@ -322,7 +324,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         // 1. قسم الاستيراد السريع
         addSectionTitle("الاستيراد السريع")
-        createOptionButton("استيراد من الحافظة (عادي)", android.R.drawable.ic_menu_paste) {
+        createOptionButton("استيراد من الحافظة (عادي)", android.R.drawable.ic_menu_add) {
             if (importClipboard()) bottomSheetDialog.dismiss()
         }
         createOptionButton("استيراد من حافظة مشفرة", android.R.drawable.ic_lock_idle_lock) {
@@ -348,6 +350,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
         bottomSheetDialog.show()
     }
+
 
     private fun runSpeedTest() {
         val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
@@ -837,9 +840,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         return super.onCreateOptionsMenu(menu)
     }
 
-    // هنا نستدعي زر الإضافة الفاخر ونمنع الأخطاء!
     override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
-        R.id.import_custom_bottom_sheet -> {
+        R.id.import_qrcode -> {
             showAddBottomSheet()
             true
         }
@@ -976,6 +978,89 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    private fun importConfigLocal(): Boolean {
+        try { showFileChooser() } catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to import config from local file", e); return false }
+        return true
+    }
+
+    private fun importConfigViaSub(): Boolean {
+        showLoading()
+        lifecycleScope.launch(Dispatchers.IO) {
+            val count = mainViewModel.updateConfigViaSubAll()
+            delay(500L)
+            launch(Dispatchers.Main) {
+                if (count > 0) { toast(getString(R.string.title_update_config_count, count)); mainViewModel.reloadServerList() } 
+                else { toastError(R.string.toast_failure) }
+                hideLoading()
+            }
+        }
+        return true
+    }
+
+    private fun exportAll() {
+        showLoading()
+        lifecycleScope.launch(Dispatchers.IO) {
+            val ret = mainViewModel.exportAllServer()
+            launch(Dispatchers.Main) {
+                if (ret > 0) toast(getString(R.string.title_export_config_count, ret)) else toastError(R.string.toast_failure)
+                hideLoading()
+            }
+        }
+    }
+
+    private fun delAllConfig() {
+        AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                showLoading()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val ret = mainViewModel.removeAllServer()
+                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_config_count, ret)); hideLoading() }
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null).show()
+    }
+
+    private fun delDuplicateConfig() {
+        AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                showLoading()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val ret = mainViewModel.removeDuplicateServer()
+                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_duplicate_config_count, ret)); hideLoading() }
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null).show()
+    }
+
+    private fun delInvalidConfig() {
+        AlertDialog.Builder(this).setMessage(R.string.del_invalid_config_comfirm)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                showLoading()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val ret = mainViewModel.removeInvalidServer()
+                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_config_count, ret)); hideLoading() }
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null).show()
+    }
+
+    private fun sortByTestResults() {
+        showLoading()
+        lifecycleScope.launch(Dispatchers.IO) {
+            mainViewModel.sortByTestResults()
+            launch(Dispatchers.Main) { mainViewModel.reloadServerList(); hideLoading() }
+        }
+    }
+
+    private fun showFileChooser() {
+        launchFileChooser { uri -> if (uri != null) readContentFromUri(uri) }
+    }
+
+    private fun readContentFromUri(uri: Uri) {
+        try { contentResolver.openInputStream(uri).use { input -> importBatchConfig(input?.bufferedReader()?.readText()) } } 
+        catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to read content from URI", e) }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_BUTTON_B) { moveTaskToBack(false); return true }
         return super.onKeyDown(keyCode, event)
@@ -996,6 +1081,36 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
         binding.drawerLayout.closeDrawer(GravityCompat.START)
         return true
+    }
+
+    // متطلبات واجهة MainAdapterListener المطلوبة للـ Adapter
+    override fun onSelectServer(guid: String) {
+        mainViewModel.setSelectServer(guid)
+        toast(R.string.toast_success)
+        groupPagerAdapter.notifyDataSetChanged()
+    }
+
+    override fun onEdit(guid: String, position: Int, profile: ProfileItem) {
+        if (!V2rayCrypt.isProtected(this, guid)) {
+            startActivity(Intent().putExtra("guid", guid).putExtra("subscriptionId", profile.subscriptionId).setClass(this, ServerActivity::class.java))
+        } else {
+            toast("هذا السيرفر محمي ولا يمكن تعديله")
+        }
+    }
+
+    override fun onRemove(guid: String, position: Int) {
+        AlertDialog.Builder(this)
+            .setMessage(R.string.del_config_comfirm)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                mainViewModel.removeServer(guid)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+    
+    // الدالة المعطلة مؤقتاً لتجنب الأخطاء (سيتم إضافتها لاحقاً في Fragment)
+    override fun onShare(guid: String, profile: ProfileItem, position: Int, isMore: Boolean) {
+        // سيتم معالجتها في ServerGroupFragment
     }
 
     override fun onDestroy() {
