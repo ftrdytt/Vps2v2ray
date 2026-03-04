@@ -116,13 +116,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val displayMetrics = resources.displayMetrics
         screenWidth = displayMetrics.widthPixels
         
-        // إعطاء العرض الدقيق لكل شاشة من الشاشات الثلاث
+        // الترتيب الصحيح للأبعاد
         binding.greenScreenContainer.layoutParams.width = screenWidth
         binding.homeContentContainer.layoutParams.width = screenWidth
         val settingsWrapper = binding.root.findViewById<View>(R.id.settings_wrapper)
         settingsWrapper?.layoutParams?.width = screenWidth
 
-        // زرع واجهة الإعدادات بداخل الحاوية
+        // زرع واجهة الإعدادات
         supportFragmentManager.beginTransaction()
             .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
             .commit()
@@ -148,12 +148,30 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
 
         // =========================================================
-        // خوارزمية السحب الذكية المتوافقة مع اللغة العربية (RTL)
+        // خوارزمية الربط الذكية المتوافقة مع الـ RTL 100%
+        // الصفحة 0 = المحرك ، الصفحة 1 = السيرفرات ، الصفحة 2 = الإعدادات
         // =========================================================
+        bottomNav?.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_home -> { 
+                    binding.mainScrollView.smoothScrollTo(0, 0)
+                    true
+                }
+                R.id.nav_servers -> { 
+                    binding.mainScrollView.smoothScrollTo(screenWidth, 0)
+                    true
+                }
+                R.id.nav_settings -> { 
+                    binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
+                    true 
+                }
+                else -> false
+            }
+        }
+
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
-                // حساب رقم الصفحة الأقرب (0=المحرك، 1=ملفاتي، 2=الإعدادات)
                 val page = ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 2)
                 val targetScrollX = page * screenWidth
 
@@ -169,27 +187,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 return@setOnTouchListener true
             }
             false
-        }
-
-        bottomNav?.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_home -> { 
-                    // الرئيسية (المحرك) موجودة في الشاشة 0
-                    binding.mainScrollView.smoothScrollTo(0, 0)
-                    true
-                }
-                R.id.nav_servers -> { 
-                    // ملفاتي (السيرفرات) موجودة في الشاشة 1
-                    binding.mainScrollView.smoothScrollTo(screenWidth, 0)
-                    true
-                }
-                R.id.nav_settings -> { 
-                    // الإعدادات موجودة في الشاشة 2
-                    binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
-                    true 
-                }
-                else -> false
-            }
         }
 
         // فتح التطبيق على الشاشة الرئيسية (المحرك) بشكل افتراضي
@@ -217,8 +214,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     binding.drawerLayout.closeDrawer(GravityCompat.START)
                 } else {
                     val currentScroll = binding.mainScrollView.scrollX
-                    // إذا كان في شاشة الإعدادات أو الملفات، إرجاعه للمحرك عند الرجوع
-                    if (currentScroll != 0) {
+                    // إذا كان في أي شاشة غير المحرك (0)، إرجاعه للمحرك
+                    if (currentScroll > 0) {
                          binding.mainScrollView.smoothScrollTo(0, 0)
                          bottomNav?.selectedItemId = R.id.nav_home 
                     } else {
