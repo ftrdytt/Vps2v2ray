@@ -51,15 +51,22 @@
             android:backgroundTint="#FF9800"/>
     </androidx.cardview.widget.CardView>
 
+    <TextView
+        android:id="@+id/tv_request_host"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/server_lab_request_host"
+        android:textColor="#B0BEC5"
+        android:textSize="12sp"
+        android:layout_marginStart="4dp"
+        android:layout_marginBottom="4dp"/>
     <com.google.android.material.textfield.TextInputLayout
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="16dp"
-        android:hint="@string/server_lab_request_host"
         app:boxStrokeColor="#FF9800"
-        app:hintTextColor="#FF9800"
-        android:textColorHint="#B0BEC5"
+        app:hintEnabled="false"
         app:boxCornerRadiusTopStart="12dp"
         app:boxCornerRadiusTopEnd="12dp"
         app:boxCornerRadiusBottomStart="12dp"
@@ -72,15 +79,22 @@
             android:textColor="#FFFFFF" />
     </com.google.android.material.textfield.TextInputLayout>
 
+    <TextView
+        android:id="@+id/tv_path"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/server_lab_path"
+        android:textColor="#B0BEC5"
+        android:textSize="12sp"
+        android:layout_marginStart="4dp"
+        android:layout_marginBottom="4dp"/>
     <com.google.android.material.textfield.TextInputLayout
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginBottom="16dp"
-        android:hint="@string/server_lab_path"
         app:boxStrokeColor="#FF9800"
-        app:hintTextColor="#FF9800"
-        android:textColorHint="#B0BEC5"
+        app:hintEnabled="false"
         app:boxCornerRadiusTopStart="12dp"
         app:boxCornerRadiusTopEnd="12dp"
         app:boxCornerRadiusBottomStart="12dp"
@@ -98,14 +112,20 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/server_lab_xhttp_extra"
+            android:textColor="#B0BEC5"
+            android:textSize="12sp"
+            android:layout_marginStart="4dp"
+            android:layout_marginBottom="4dp"/>
         <com.google.android.material.textfield.TextInputLayout
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/server_lab_xhttp_extra"
             app:boxStrokeColor="#FF9800"
-            app:hintTextColor="#FF9800"
-            android:textColorHint="#B0BEC5"
+            app:hintEnabled="false"
             app:boxCornerRadiusTopStart="12dp"
             app:boxCornerRadiusTopEnd="12dp"
             app:boxCornerRadiusBottomStart="12dp"
