@@ -242,9 +242,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // =======================================================
-    // واجهة الإضافة المنبثقة الفاخرة (Bottom Sheet Dialog)
-    // =======================================================
     private fun showAddBottomSheet() {
         val bottomSheetDialog = BottomSheetDialog(this)
         
@@ -322,7 +319,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             container.addView(layout)
         }
 
-        // 1. قسم الاستيراد السريع
         addSectionTitle("الاستيراد السريع")
         createOptionButton("استيراد من الحافظة (عادي)", android.R.drawable.ic_menu_add) {
             if (importClipboard()) bottomSheetDialog.dismiss()
@@ -334,7 +330,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             importEncryptedFile()
         }
 
-        // 2. قسم الإضافة اليدوية (البروتوكولات)
         addSectionTitle("الإضافة اليدوية (البروتوكولات)")
         createOptionButton("VLESS", android.R.drawable.ic_menu_edit) { importManually(EConfigType.VLESS.value) }
         createOptionButton("VMess", android.R.drawable.ic_menu_edit) { importManually(EConfigType.VMESS.value) }
@@ -350,7 +345,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
         bottomSheetDialog.show()
     }
-
 
     private fun runSpeedTest() {
         val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
@@ -1083,9 +1077,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         return true
     }
 
+    // =======================================================
     // متطلبات واجهة MainAdapterListener المطلوبة للـ Adapter
+    // =======================================================
+    
     override fun onSelectServer(guid: String) {
-        mainViewModel.setSelectServer(guid)
+        MmkvManager.setSelectServer(guid)
         toast(R.string.toast_success)
         groupPagerAdapter.notifyDataSetChanged()
     }
@@ -1108,10 +1105,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             .show()
     }
     
-    // الدالة المعطلة مؤقتاً لتجنب الأخطاء (سيتم إضافتها لاحقاً في Fragment)
-    override fun onShare(guid: String, profile: ProfileItem, position: Int, isMore: Boolean) {
-        // سيتم معالجتها في ServerGroupFragment
-    }
+    override fun onShare(guid: String, profile: ProfileItem, position: Int, isMore: Boolean) {}
+    override fun onEdit(guid: String, position: Int) {}
+    override fun onShare(url: String) {}
+    override fun onRefreshData() {}
 
     override fun onDestroy() {
         tabMediator?.detach()
