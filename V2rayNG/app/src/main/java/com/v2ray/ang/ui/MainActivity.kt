@@ -21,6 +21,7 @@ import android.view.ViewGroup
 import android.view.Window
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,9 +44,7 @@ import com.google.android.material.navigation.NavigationView
 import com.google.android.material.tabs.TabLayoutMediator
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
-import com.v2ray.ang.contracts.MainAdapterListener
 import com.v2ray.ang.databinding.ActivityMainBinding
-import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.extension.toast
@@ -72,7 +71,7 @@ import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 
-class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener, MainAdapterListener {
+class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener {
     private val binding by lazy {
         ActivityMainBinding.inflate(layoutInflater)
     }
@@ -197,7 +196,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         setupToolbar(binding.toolbar, false, "اشور لود")
 
-        // تمرير المستمع (this) إلى المهايئ
         groupPagerAdapter = GroupPagerAdapter(this, emptyList())
         binding.viewPager.adapter = groupPagerAdapter
         binding.viewPager.isUserInputEnabled = true
@@ -243,28 +241,29 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     // =======================================================
-    // واجهة المشاركة المنبثقة الفاخرة (Bottom Sheet Dialog)
+    // واجهة الإضافة المنبثقة الفاخرة (Bottom Sheet Dialog)
     // =======================================================
-    override fun onShare(guid: String, profile: ProfileItem, position: Int, isMore: Boolean) {
-        val isProtected = V2rayCrypt.isProtected(this, guid)
-        
+    private fun showAddBottomSheet() {
         val bottomSheetDialog = BottomSheetDialog(this)
-        val view = layoutInflater.inflate(R.layout.bottom_sheet_share_custom, null)
         
-        val container = view.findViewById<LinearLayout>(R.id.share_container)
-        container.setBackgroundColor(Color.parseColor("#141417")) // لون ليلي
-        
-        // عنوان القائمة
+        val scrollView = ScrollView(this)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#141417"))
+            setPadding(0, 0, 0, 40)
+        }
+        scrollView.addView(container)
+
         val title = TextView(this).apply {
-            text = "خيارات التصدير والمشاركة"
-            textSize = 18f
+            text = "إضافة تكوين جديد"
+            textSize = 20f
             setTextColor(Color.parseColor("#FF9800"))
             setPadding(40, 40, 40, 20)
             textAlignment = View.TEXT_ALIGNMENT_CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
         }
         container.addView(title)
-        
-        // خط فاصل
+
         val divider = View(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 2).apply {
                 setMargins(40, 0, 40, 20)
@@ -273,7 +272,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
         container.addView(divider)
 
-        // دالة مساعدة لإنشاء الأزرار بشكل أنيق
+        fun addSectionTitle(textStr: String) {
+            val sectionTitle = TextView(this).apply {
+                text = textStr
+                textSize = 14f
+                setTextColor(Color.parseColor("#80FFFFFF"))
+                setPadding(50, 30, 50, 10)
+                setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            container.addView(sectionTitle)
+        }
+
         fun createOptionButton(textStr: String, iconRes: Int, onClick: () -> Unit) {
             val layout = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -282,12 +291,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 isClickable = true
                 isFocusable = true
-                
-                // تأثير الضغط
                 val outValue = android.util.TypedValue()
                 theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
                 setBackgroundResource(outValue.resourceId)
-                
                 setOnClickListener {
                     onClick()
                     bottomSheetDialog.dismiss()
@@ -296,8 +302,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
             val icon = ImageView(this).apply {
                 setImageResource(iconRes)
-                setColorFilter(Color.parseColor("#B0BEC5"))
-                layoutParams = LinearLayout.LayoutParams(64, 64)
+                setColorFilter(Color.parseColor("#FF9800"))
+                layoutParams = LinearLayout.LayoutParams(56, 56)
             }
 
             val textView = TextView(this).apply {
@@ -314,93 +320,33 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             container.addView(layout)
         }
 
-        // خيار التصدير المشفر
-        createOptionButton("تصدير إلى ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) {
-            shareEncryptedFile(guid)
+        // 1. قسم الاستيراد السريع
+        addSectionTitle("الاستيراد السريع")
+        createOptionButton("استيراد من الحافظة (عادي)", android.R.drawable.ic_menu_paste) {
+            if (importClipboard()) bottomSheetDialog.dismiss()
         }
-        
-        createOptionButton("تصدير إلى الحافظة مشفر", android.R.drawable.ic_menu_copy) {
-            shareEncryptedClipboard(guid)
+        createOptionButton("استيراد من حافظة مشفرة", android.R.drawable.ic_lock_idle_lock) {
+            if (importClipboardEncrypted()) bottomSheetDialog.dismiss()
         }
-
-        if (!isProtected) {
-            // الخيارات العادية تظهر فقط إذا لم يكن محميًا
-            createOptionButton("تصدير إلى الحافظة (عادي)", android.R.drawable.ic_menu_edit) {
-                mainViewModel.share2Clipboard(guid)
-            }
-            createOptionButton("تصدير التكوين الكامل للحافظة", android.R.drawable.ic_menu_share) {
-                mainViewModel.shareFull2Clipboard(guid)
-            }
+        createOptionButton("إضافة ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) {
+            importEncryptedFile()
         }
 
-        // إضافة View فارغ في الأسفل للمسافة
-        val space = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 40)
-        }
-        container.addView(space)
+        // 2. قسم الإضافة اليدوية (البروتوكولات)
+        addSectionTitle("الإضافة اليدوية (البروتوكولات)")
+        createOptionButton("VLESS", android.R.drawable.ic_menu_edit) { importManually(EConfigType.VLESS.value) }
+        createOptionButton("VMess", android.R.drawable.ic_menu_edit) { importManually(EConfigType.VMESS.value) }
+        createOptionButton("Trojan", android.R.drawable.ic_menu_edit) { importManually(EConfigType.TROJAN.value) }
+        createOptionButton("Shadowsocks", android.R.drawable.ic_menu_edit) { importManually(EConfigType.SHADOWSOCKS.value) }
+        createOptionButton("SOCKS", android.R.drawable.ic_menu_edit) { importManually(EConfigType.SOCKS.value) }
+        createOptionButton("HTTP", android.R.drawable.ic_menu_edit) { importManually(EConfigType.HTTP.value) }
+        createOptionButton("Wireguard", android.R.drawable.ic_menu_edit) { importManually(EConfigType.WIREGUARD.value) }
+        createOptionButton("Hysteria2", android.R.drawable.ic_menu_edit) { importManually(EConfigType.HYSTERIA2.value) }
+        createOptionButton("مجموعة سياسات (Policy Group)", android.R.drawable.ic_menu_agenda) { importManually(EConfigType.POLICYGROUP.value) }
 
-        bottomSheetDialog.setContentView(view)
+        bottomSheetDialog.setContentView(scrollView)
         bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
         bottomSheetDialog.show()
-    }
-    
-    // دوال للمشاركة المشفرة
-    private fun shareEncryptedClipboard(guid: String) {
-        val configStr = MmkvManager.decodeServerConfig(guid)
-        if (!configStr.isNullOrEmpty()) {
-            val encryptedStr = V2rayCrypt.encrypt(configStr)
-            Utils.setClipboard(this, encryptedStr)
-            toast("تم نسخ الكود المشفر بنجاح!")
-        } else {
-            toastError("خطأ في التصدير")
-        }
-    }
-
-    private fun shareEncryptedFile(guid: String) {
-        try {
-            val configStr = MmkvManager.decodeServerConfig(guid)
-            if (!configStr.isNullOrEmpty()) {
-                val encryptedStr = V2rayCrypt.encrypt(configStr)
-                val fileName = "Config_${System.currentTimeMillis()}.ashor"
-                val file = java.io.File(getExternalFilesDir(null), fileName)
-                file.writeText(encryptedStr)
-
-                val uri = androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
-                val intent = Intent(Intent.ACTION_SEND).apply {
-                    type = "*/*"
-                    putExtra(Intent.EXTRA_STREAM, uri)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                startActivity(Intent.createChooser(intent, "مشاركة الملف المشفر"))
-            }
-        } catch (e: Exception) {
-            toastError("فشل تصدير الملف")
-        }
-    }
-    
-    // تطبيق باقي متطلبات واجهة المستمع (MainAdapterListener)
-    override fun onSelectServer(guid: String) {
-        mainViewModel.setSelectServer(guid)
-        toast(R.string.toast_success)
-        groupPagerAdapter.notifyDataSetChanged()
-    }
-
-    override fun onEdit(guid: String, position: Int, profile: ProfileItem) {
-        if (!V2rayCrypt.isProtected(this, guid)) {
-            startActivity(Intent().putExtra("guid", guid).putExtra("subscriptionId", profile.subscriptionId).setClass(this, ServerActivity::class.java))
-        } else {
-            toast("هذا السيرفر محمي ولا يمكن تعديله")
-        }
-    }
-
-    override fun onRemove(guid: String, position: Int) {
-        AlertDialog.Builder(this)
-            .setMessage(R.string.del_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                mainViewModel.removeServer(guid)
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
     }
 
     private fun runSpeedTest() {
@@ -891,38 +837,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         return super.onCreateOptionsMenu(menu)
     }
 
+    // هنا نستدعي زر الإضافة الفاخر ونمنع الأخطاء!
     override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
-        R.id.import_qrcode -> { importQRcode(); true }
-        R.id.import_clipboard -> { importClipboard(); true }
-        R.id.import_clipboard_encrypted -> { importClipboardEncrypted(); true }
-        R.id.import_encrypted_file -> { importEncryptedFile(); true }
-        R.id.import_local -> { importConfigLocal(); true }
-        R.id.import_manually_policy_group -> { importManually(EConfigType.POLICYGROUP.value); true }
-        R.id.import_manually_vmess -> { importManually(EConfigType.VMESS.value); true }
-        R.id.import_manually_vless -> { importManually(EConfigType.VLESS.value); true }
-        R.id.import_manually_ss -> { importManually(EConfigType.SHADOWSOCKS.value); true }
-        R.id.import_manually_socks -> { importManually(EConfigType.SOCKS.value); true }
-        R.id.import_manually_http -> { importManually(EConfigType.HTTP.value); true }
-        R.id.import_manually_trojan -> { importManually(EConfigType.TROJAN.value); true }
-        R.id.import_manually_wireguard -> { importManually(EConfigType.WIREGUARD.value); true }
-        R.id.import_manually_hysteria2 -> { importManually(EConfigType.HYSTERIA2.value); true }
-        R.id.export_all -> { exportAll(); true }
-        R.id.ping_all -> {
-            toast(getString(R.string.connection_test_testing_count, mainViewModel.serversCache.count()))
-            mainViewModel.testAllTcping()
+        R.id.import_custom_bottom_sheet -> {
+            showAddBottomSheet()
             true
         }
-        R.id.real_ping_all -> {
-            toast(getString(R.string.connection_test_testing_count, mainViewModel.serversCache.count()))
-            mainViewModel.testAllRealPing()
-            true
-        }
-        R.id.service_restart -> { restartV2Ray(); true }
-        R.id.del_all_config -> { delAllConfig(); true }
-        R.id.del_duplicate_config -> { delDuplicateConfig(); true }
-        R.id.del_invalid_config -> { delInvalidConfig(); true }
-        R.id.sort_by_test_results -> { sortByTestResults(); true }
-        R.id.sub_update -> { importConfigViaSub(); true }
         else -> super.onOptionsItemSelected(item)
     }
 
@@ -932,11 +852,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         } else {
             startActivity(Intent().putExtra("createConfigType", createConfigType).putExtra("subscriptionId", mainViewModel.subscriptionId).setClass(this, ServerActivity::class.java))
         }
-    }
-
-    private fun importQRcode(): Boolean {
-        launchQRCodeScanner { scanResult -> if (scanResult != null) importBatchConfig(scanResult) }
-        return true
     }
 
     private fun importClipboard(): Boolean {
@@ -1059,89 +974,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 Log.e(AppConfig.TAG, "Failed to import batch config", e)
             }
         }
-    }
-
-    private fun importConfigLocal(): Boolean {
-        try { showFileChooser() } catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to import config from local file", e); return false }
-        return true
-    }
-
-    private fun importConfigViaSub(): Boolean {
-        showLoading()
-        lifecycleScope.launch(Dispatchers.IO) {
-            val count = mainViewModel.updateConfigViaSubAll()
-            delay(500L)
-            launch(Dispatchers.Main) {
-                if (count > 0) { toast(getString(R.string.title_update_config_count, count)); mainViewModel.reloadServerList() } 
-                else { toastError(R.string.toast_failure) }
-                hideLoading()
-            }
-        }
-        return true
-    }
-
-    private fun exportAll() {
-        showLoading()
-        lifecycleScope.launch(Dispatchers.IO) {
-            val ret = mainViewModel.exportAllServer()
-            launch(Dispatchers.Main) {
-                if (ret > 0) toast(getString(R.string.title_export_config_count, ret)) else toastError(R.string.toast_failure)
-                hideLoading()
-            }
-        }
-    }
-
-    private fun delAllConfig() {
-        AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                showLoading()
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val ret = mainViewModel.removeAllServer()
-                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_config_count, ret)); hideLoading() }
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null).show()
-    }
-
-    private fun delDuplicateConfig() {
-        AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                showLoading()
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val ret = mainViewModel.removeDuplicateServer()
-                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_duplicate_config_count, ret)); hideLoading() }
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null).show()
-    }
-
-    private fun delInvalidConfig() {
-        AlertDialog.Builder(this).setMessage(R.string.del_invalid_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                showLoading()
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val ret = mainViewModel.removeInvalidServer()
-                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_config_count, ret)); hideLoading() }
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null).show()
-    }
-
-    private fun sortByTestResults() {
-        showLoading()
-        lifecycleScope.launch(Dispatchers.IO) {
-            mainViewModel.sortByTestResults()
-            launch(Dispatchers.Main) { mainViewModel.reloadServerList(); hideLoading() }
-        }
-    }
-
-    private fun showFileChooser() {
-        launchFileChooser { uri -> if (uri != null) readContentFromUri(uri) }
-    }
-
-    private fun readContentFromUri(uri: Uri) {
-        try { contentResolver.openInputStream(uri).use { input -> importBatchConfig(input?.bufferedReader()?.readText()) } } 
-        catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to read content from URI", e) }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
