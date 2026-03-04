@@ -108,9 +108,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         mainViewModel.subscriptionIdChanged(subId)
     }
 
-    // =======================================================
-    // واجهة المشاركة المنبثقة الفاخرة (Bottom Sheet Dialog)
-    // =======================================================
     private fun shareServer(guid: String, profile: ProfileItem, position: Int) {
         val isProtected = V2rayCrypt.isProtected(requireContext(), guid)
 
@@ -119,23 +116,21 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         val scrollView = ScrollView(ownerActivity)
         val container = LinearLayout(ownerActivity).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#141417")) // لون ليلي فخم
+            setBackgroundColor(Color.parseColor("#141417")) 
             setPadding(0, 0, 0, 40)
         }
         scrollView.addView(container)
 
-        // العنوان
         val title = TextView(ownerActivity).apply {
             text = "خيارات التصدير والمشاركة"
             textSize = 18f
-            setTextColor(Color.parseColor("#FF9800")) // برتقالي
+            setTextColor(Color.parseColor("#FF9800")) 
             setPadding(40, 40, 40, 20)
             textAlignment = View.TEXT_ALIGNMENT_CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
         }
         container.addView(title)
         
-        // خط فاصل
         val divider = View(ownerActivity).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 2).apply {
                 setMargins(40, 0, 40, 20)
@@ -144,7 +139,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }
         container.addView(divider)
 
-        // دالة مساعدة لإنشاء الأزرار بشكل أنيق
         fun createOptionButton(textStr: String, iconRes: Int, onClick: () -> Unit) {
             val layout = LinearLayout(ownerActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -184,7 +178,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             container.addView(layout)
         }
 
-        // الخيارات الآمنة والمشفرة (تظهر دائماً)
         createOptionButton("تصدير إلى ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) {
             exportEncryptedFile(guid)
         }
@@ -193,12 +186,11 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             shareEncryptedClipboard(guid)
         }
 
-        // الخيارات العادية (تظهر فقط إذا لم يكن السيرفر محمياً)
         if (!isProtected) {
             val isCustom = profile.configType == EConfigType.CUSTOM || profile.configType == EConfigType.POLICYGROUP
             
-            // تم حذف زر QR Code نهائياً من هنا
-            createOptionButton("نسخ التكوين العادي للحافظة", android.R.drawable.ic_menu_paste) {
+            // تم استبدال ic_menu_paste بـ ic_menu_edit لتفادي خطأ الأندرويد
+            createOptionButton("نسخ التكوين العادي للحافظة", android.R.drawable.ic_menu_edit) {
                 share2Clipboard(guid)
             }
             
@@ -375,7 +367,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }
 
         override fun onShare(guid: String, profile: ProfileItem, position: Int, more: Boolean) {
-            // استدعاء واجهة المشاركة السفلية الفاخرة بدلاً من المربعات القديمة
             shareServer(guid, profile, position)
         }
     }
