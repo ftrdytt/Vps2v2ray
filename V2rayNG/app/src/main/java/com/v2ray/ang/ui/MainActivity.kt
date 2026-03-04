@@ -32,6 +32,7 @@ import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.core.view.isVisible
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
 import com.airbnb.lottie.LottieAnimationView
 import com.google.android.material.button.MaterialButton
@@ -190,9 +191,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             binding.mainScrollView.scrollTo(screenWidth * 2, 0)
         }
 
-        // =========================================================
-        // التعديل السحري: تغيير اسم التطبيق في الشريط العلوي!
-        // =========================================================
         setupToolbar(binding.toolbar, false, "اشور لود")
 
         groupPagerAdapter = GroupPagerAdapter(this, emptyList())
@@ -202,15 +200,18 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val toggle = ActionBarDrawerToggle(
             this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close
         )
-        // =========================================================
-        // التعديل السحري: إخفاء الثلاث خطوط العلوية تماماً!
-        // =========================================================
-        toggle.isDrawerIndicatorEnabled = false 
         
+        // إخفاء أيقونة الثلاث خطوط
+        toggle.isDrawerIndicatorEnabled = false 
         binding.drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
         binding.navView.setNavigationItemSelectedListener(this)
         
+        // =========================================================
+        // التعديل السحري الجديد: إغلاق القائمة الجانبية نهائياً ومنع السحب!
+        // =========================================================
+        binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
