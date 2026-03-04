@@ -1,121 +1,124 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical">
 
-    <LinearLayout
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/server_lab_network"
+        android:textColor="#B0BEC5"
+        android:textSize="12sp"
+        android:layout_marginStart="4dp"
+        android:layout_marginBottom="4dp"/>
+    <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/padding_spacing_dp16"
-        android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_more_function"
-            android:textAppearance="@style/TextAppearance.AppCompat.Subhead" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/padding_spacing_dp16"
-        android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_network" />
-
+        app:cardBackgroundColor="#1E1E22"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp"
+        android:layout_marginBottom="16dp">
         <Spinner
             android:id="@+id/sp_network"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/padding_spacing_dp8"
-            android:layout_marginBottom="@dimen/padding_spacing_dp8"
-            android:entries="@array/networks" />
-    </LinearLayout>
+            android:layout_height="50dp"
+            android:entries="@array/networks"
+            android:backgroundTint="#FF9800"/>
+    </androidx.cardview.widget.CardView>
 
-    <LinearLayout
+    <TextView
+        android:id="@+id/sp_header_type_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/server_lab_head_type"
+        android:textColor="#B0BEC5"
+        android:textSize="12sp"
+        android:layout_marginStart="4dp"
+        android:layout_marginBottom="4dp"/>
+    <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/padding_spacing_dp16"
-        android:orientation="vertical">
-
-        <TextView
-            android:id="@+id/sp_header_type_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_head_type" />
-
+        app:cardBackgroundColor="#1E1E22"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp"
+        android:layout_marginBottom="16dp">
         <Spinner
             android:id="@+id/sp_header_type"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/padding_spacing_dp8"
-            android:layout_marginBottom="@dimen/padding_spacing_dp8" />
-    </LinearLayout>
+            android:layout_height="50dp"
+            android:backgroundTint="#FF9800"/>
+    </androidx.cardview.widget.CardView>
 
-    <LinearLayout
+    <com.google.android.material.textfield.TextInputLayout
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/padding_spacing_dp16"
-        android:orientation="vertical">
-
-        <TextView
-            android:id="@+id/tv_request_host"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_request_host" />
-
-        <EditText
+        android:layout_marginBottom="16dp"
+        android:hint="@string/server_lab_request_host"
+        app:boxStrokeColor="#FF9800"
+        app:hintTextColor="#FF9800"
+        android:textColorHint="#B0BEC5"
+        app:boxCornerRadiusTopStart="12dp"
+        app:boxCornerRadiusTopEnd="12dp"
+        app:boxCornerRadiusBottomStart="12dp"
+        app:boxCornerRadiusBottomEnd="12dp">
+        <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/et_request_host"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="text" />
-    </LinearLayout>
+            android:inputType="text"
+            android:textColor="#FFFFFF" />
+    </com.google.android.material.textfield.TextInputLayout>
 
-
-    <LinearLayout
+    <com.google.android.material.textfield.TextInputLayout
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/padding_spacing_dp16"
-        android:orientation="vertical">
-
-        <TextView
-            android:id="@+id/tv_path"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_path" />
-
-        <EditText
+        android:layout_marginBottom="16dp"
+        android:hint="@string/server_lab_path"
+        app:boxStrokeColor="#FF9800"
+        app:hintTextColor="#FF9800"
+        android:textColorHint="#B0BEC5"
+        app:boxCornerRadiusTopStart="12dp"
+        app:boxCornerRadiusTopEnd="12dp"
+        app:boxCornerRadiusBottomStart="12dp"
+        app:boxCornerRadiusBottomEnd="12dp">
+        <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/et_path"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="text" />
-    </LinearLayout>
+            android:inputType="text"
+            android:textColor="#FFFFFF" />
+    </com.google.android.material.textfield.TextInputLayout>
 
     <LinearLayout
         android:id="@+id/layout_extra"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/padding_spacing_dp16"
         android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_xhttp_extra" />
-
-        <EditText
-            android:id="@+id/et_extra"
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="top"
-            android:inputType="textMultiLine"
-            android:maxLines="20"
-            android:minLines="4" />
+            android:hint="@string/server_lab_xhttp_extra"
+            app:boxStrokeColor="#FF9800"
+            app:hintTextColor="#FF9800"
+            android:textColorHint="#B0BEC5"
+            app:boxCornerRadiusTopStart="12dp"
+            app:boxCornerRadiusTopEnd="12dp"
+            app:boxCornerRadiusBottomStart="12dp"
+            app:boxCornerRadiusBottomEnd="12dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_extra"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="top"
+                android:inputType="textMultiLine"
+                android:maxLines="20"
+                android:minLines="4"
+                android:textColor="#FFFFFF" />
+        </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
-
 </LinearLayout>
