@@ -7,12 +7,14 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.text.InputType
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -213,33 +215,77 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         bottomSheetDialog.show()
     }
 
-    private fun showExpiryDialog(onExpirySelected: (Long) -> Unit) {
-        val options = arrayOf(
-            "ساعة واحدة",
-            "3 ساعات",
-            "يوم واحد (24 ساعة)",
-            "3 أيام",
-            "أسبوع واحد",
-            "شهر واحد (30 يوم)"
-        )
+    // =========================================================================
+    // التعديل الجديد: واجهة منبثقة مخصصة لإدخال (الأشهر، الأيام، الساعات)
+    // =========================================================================
+    private fun showCustomExpiryDialog(onExpirySelected: (Long) -> Unit) {
+        val layout = LinearLayout(ownerActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(50, 40, 50, 40)
+        }
 
-        val timesInMs = arrayOf(
-            1 * 60 * 60 * 1000L,
-            3 * 60 * 60 * 1000L,
-            24 * 60 * 60 * 1000L,
-            3 * 24 * 60 * 60 * 1000L,
-            7 * 24 * 60 * 60 * 1000L,
-            30 * 24 * 60 * 60 * 1000L
-        )
+        val titleView = TextView(ownerActivity).apply {
+            text = "أدخل مدة الصلاحية"
+            textSize = 18f
+            setTextColor(Color.parseColor("#FF9800"))
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(0, 0, 0, 30)
+            gravity = Gravity.CENTER
+        }
+        layout.addView(titleView)
 
-        AlertDialog.Builder(ownerActivity)
-            .setTitle("حدد مدة صلاحية الكود المشفر")
-            .setItems(options) { _, which ->
-                val expiryTimeMs = System.currentTimeMillis() + timesInMs[which]
+        // حقل الأشهر
+        val monthsInput = EditText(ownerActivity).apply {
+            hint = "عدد الأشهر (مثال: 1)"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.BLACK) // ليكون واضحاً في الـ Dialog العادي
+        }
+        layout.addView(monthsInput)
+
+        // حقل الأيام
+        val daysInput = EditText(ownerActivity).apply {
+            hint = "عدد الأيام (مثال: 15)"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.BLACK)
+        }
+        layout.addView(daysInput)
+
+        // حقل الساعات
+        val hoursInput = EditText(ownerActivity).apply {
+            hint = "عدد الساعات (مثال: 12)"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.BLACK)
+        }
+        layout.addView(hoursInput)
+
+        val builder = AlertDialog.Builder(ownerActivity)
+        builder.setView(layout)
+        builder.setPositiveButton("تأكيد") { dialog, _ ->
+            val m = monthsInput.text.toString().toLongOrNull() ?: 0L
+            val d = daysInput.text.toString().toLongOrNull() ?: 0L
+            val h = hoursInput.text.toString().toLongOrNull() ?: 0L
+
+            // تحويل كل شيء إلى مللي ثانية
+            val monthsMs = m * 30 * 24 * 60 * 60 * 1000L
+            val daysMs = d * 24 * 60 * 60 * 1000L
+            val hoursMs = h * 60 * 60 * 1000L
+
+            val totalDurationMs = monthsMs + daysMs + hoursMs
+
+            if (totalDurationMs > 0) {
+                // يتم إضافة المدة المحددة إلى التوقيت العالمي الحالي
+                val expiryTimeMs = System.currentTimeMillis() + totalDurationMs
                 onExpirySelected(expiryTimeMs)
+            } else {
+                ownerActivity.toastError("الرجاء إدخال مدة صحيحة أكبر من الصفر")
             }
-            .setNegativeButton("إلغاء", null)
-            .show()
+            dialog.dismiss()
+        }
+        builder.setNegativeButton("إلغاء") { dialog, _ -> dialog.cancel() }
+        builder.show()
     }
 
     private fun exportEncryptedFile(guid: String) {
@@ -257,7 +303,8 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 return
             }
 
-            showExpiryDialog { expiryTime ->
+            // استخدام واجهة الإدخال المخصصة الجديدة
+            showCustomExpiryDialog { expiryTime ->
                 val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime)
 
                 if (encryptedConf.isNotEmpty()) {
@@ -290,7 +337,8 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 return
             }
 
-            showExpiryDialog { expiryTime ->
+            // استخدام واجهة الإدخال المخصصة الجديدة
+            showCustomExpiryDialog { expiryTime ->
                 val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime)
 
                 if (encryptedConf.isNotEmpty()) {
