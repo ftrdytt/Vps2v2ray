@@ -121,7 +121,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         
         handleIntent(intent)
 
-        // محاولة المزامنة مع وقت الإنترنت فور فتح التطبيق
         lifecycleScope.launch(Dispatchers.IO) {
             NetworkTime.syncTime()
         }
@@ -670,9 +669,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             return
         }
 
-        // فحص الصلاحية قبل التشغيل (باستخدام وقت الإنترنت الحقيقي)
         val expiryTime = V2rayCrypt.getExpiryTime(this, selectedGuid)
-        if (expiryTime > 0 && NetworkTime.currentTimeMillis() > expiryTime) {
+        if (expiryTime > 0L && NetworkTime.currentTimeMillis() > expiryTime) {
             applyRunningState(isLoading = false, isRunning = false)
             AlertDialog.Builder(this)
                 .setTitle("تنبيه أمني")
@@ -776,15 +774,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     try {
                         mainViewModel.testCurrentServerRealPing()
                         
-                        // ========================================================
-                        // الحارس الآلي (Live Kill Switch)
-                        // يفحص الوقت من الإنترنت باستمرار، إذا انتهى الاشتراك يقطع الاتصال فوراً
-                        // ========================================================
                         val guid = MmkvManager.getSelectServer().orEmpty()
                         val expiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
-                        if (expiry > 0) {
+                        if (expiry > 0L) {
                             if (!NetworkTime.isInitialized) {
-                                NetworkTime.syncTime() // يقوم بالمزامنة الصامتة الآن لوجود انترنت
+                                NetworkTime.syncTime()
                             }
                             if (NetworkTime.currentTimeMillis() > expiry) {
                                 withContext(Dispatchers.Main) {
@@ -913,8 +907,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val decryptedData = result.first
             val expiryTimeMs = result.second
 
-            // الفحص ضد الإنترنت عند الاستيراد
-            if (expiryTimeMs > 0 && NetworkTime.currentTimeMillis() > expiryTimeMs) {
+            if (expiryTimeMs > 0L && NetworkTime.currentTimeMillis() > expiryTimeMs) {
                 AlertDialog.Builder(this)
                     .setTitle("تنبيه أمني")
                     .setMessage("عذراً، هذا التكوين منتهي الصلاحية ولا يمكن إضافته.")
@@ -960,7 +953,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val decryptedData = result.first
             val expiryTimeMs = result.second
 
-            if (expiryTimeMs > 0 && NetworkTime.currentTimeMillis() > expiryTimeMs) {
+            if (expiryTimeMs > 0L && NetworkTime.currentTimeMillis() > expiryTimeMs) {
                 AlertDialog.Builder(this)
                     .setTitle("تنبيه أمني")
                     .setMessage("عذراً، ملف التكوين هذا منتهي الصلاحية.")
@@ -990,7 +983,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     
                     if (newGuids.isNotEmpty()) {
                         V2rayCrypt.addProtectedGuids(this@MainActivity, newGuids)
-                        if (expiryTimeMs > 0) {
+                        if (expiryTimeMs > 0L) {
                             newGuids.forEach { guid ->
                                 V2rayCrypt.saveExpiryTime(this@MainActivity, guid, expiryTimeMs)
                             }
@@ -1216,4 +1209,20 @@ object V2rayCrypt {
             val actualData = data.replace("ENC://", "")
             val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
             val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
-            cipher.init(Cipher.DECRYPT_MODE, keySp
+            cipher.init(Cipher.DECRYPT_MODE, keySpec)
+            val decryptedBytes = cipher.doFinal(Base64.decode(actualData, Base64.NO_WRAP))
+            val decryptedString = String(decryptedBytes)
+
+            val parts = decryptedString.split("||", limit = 2)
+            if (parts.size == 2) {
+                val expiryTimeMs = parts[0].toLongOrNull() ?: 0L
+                val configData = parts[1]
+                return Pair(configData, expiryTimeMs)
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun saveExpiryTime(conte
