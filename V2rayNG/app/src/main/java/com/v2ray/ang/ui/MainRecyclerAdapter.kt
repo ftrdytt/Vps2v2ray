@@ -82,12 +82,11 @@ class MainRecyclerAdapter(
             }
 
             // ================================================================
-            // نظام التراخيص: العداد التنازلي الحي
+            // نظام العداد الحي المعتمد على NetworkTime لعدم اختراقه عبر وقت الجهاز
             // ================================================================
             val expiryTime = V2rayCrypt.getExpiryTime(context, guid)
             val tvExpiry = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_expiry_countdown)
             
-            // تنظيف أي مهام سابقة للعداد على هذه البطاقة
             holder.countdownJob?.cancel()
 
             if (isProtected && expiryTime > 0) {
@@ -95,7 +94,8 @@ class MainRecyclerAdapter(
                 
                 holder.countdownJob = coroutineScope.launch {
                     while (isActive) {
-                        val currentTime = System.currentTimeMillis()
+                        // السحر هنا: نستخدم التوقيت المستمد من الإنترنت لضمان صحة العداد
+                        val currentTime = NetworkTime.currentTimeMillis()
                         val diffMs = expiryTime - currentTime
                         
                         if (diffMs > 0) {
@@ -110,13 +110,13 @@ class MainRecyclerAdapter(
                             }
                             
                             tvExpiry?.text = timeText
-                            tvExpiry?.setTextColor(Color.parseColor("#FF9800")) // برتقالي
+                            tvExpiry?.setTextColor(Color.parseColor("#FF9800")) 
                         } else {
                             tvExpiry?.text = "منتهي الصلاحية"
-                            tvExpiry?.setTextColor(Color.parseColor("#E53935")) // أحمر
+                            tvExpiry?.setTextColor(Color.parseColor("#E53935")) 
                         }
                         
-                        delay(60000) // تحديث كل دقيقة (للحفاظ على البطارية)
+                        delay(60000) // تحديث تلقائي كل دقيقة
                     }
                 }
             } else {
@@ -229,7 +229,7 @@ class MainRecyclerAdapter(
     }
 
     open class BaseViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        var countdownJob: Job? = null // متغير لحفظ وإيقاف المؤقت
+        var countdownJob: Job? = null
 
         fun onItemSelected() {
             itemView.setBackgroundColor(Color.parseColor("#33FFFFFF")) 
@@ -259,7 +259,6 @@ class MainRecyclerAdapter(
 
     override fun onItemDismiss(position: Int) {}
     
-    // إيقاف العدادات عند تدمير القائمة لتوفير الذاكرة
     override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
         super.onDetachedFromRecyclerView(recyclerView)
         coroutineScope.cancel()
