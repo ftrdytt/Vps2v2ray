@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.v2ray.ang.AppConfig
@@ -22,6 +23,7 @@ import com.v2ray.ang.helper.ItemTouchHelperAdapter
 import com.v2ray.ang.helper.ItemTouchHelperViewHolder
 import com.v2ray.ang.viewmodel.MainViewModel
 import java.util.Collections
+import kotlinx.coroutines.*
 
 class MainRecyclerAdapter(
     private val mainViewModel: MainViewModel,
@@ -34,6 +36,7 @@ class MainRecyclerAdapter(
 
     private val doubleColumnDisplay = MmkvManager.decodeSettingsBool(AppConfig.PREF_DOUBLE_COLUMN_DISPLAY, false)
     private var data: MutableList<ServersCache> = mutableListOf()
+    private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     @SuppressLint("NotifyDataSetChanged")
     fun setData(newData: MutableList<ServersCache>?, position: Int = -1) {
@@ -55,13 +58,8 @@ class MainRecyclerAdapter(
             val profile = data[position].profile
 
             holder.itemView.setBackgroundColor(Color.TRANSPARENT)
-
-            // Name
             holder.itemMainBinding.tvName.text = profile.remarks
             
-            // ================================================================
-            // فحص السيرفر المحمي
-            // ================================================================
             val isProtected = V2rayCrypt.isProtected(context, guid)
 
             if (isProtected) {
@@ -75,7 +73,6 @@ class MainRecyclerAdapter(
                 (holder.itemMainBinding.tvType.parent as? androidx.cardview.widget.CardView)?.setCardBackgroundColor(Color.parseColor("#FF5722"))
             }
 
-            // TestResult
             val aff = MmkvManager.decodeServerAffiliationInfo(guid)
             holder.itemMainBinding.tvTestResult.text = aff?.getTestDelayString().orEmpty()
             if ((aff?.testDelayMillis ?: 0L) < 0L) {
@@ -85,38 +82,67 @@ class MainRecyclerAdapter(
             }
 
             // ================================================================
-            // السحر هنا: تأثيرات السيرفر المختار (خلفية شفافة + علامة التوثيق)
+            // نظام التراخيص: العداد التنازلي الحي
             // ================================================================
+            val expiryTime = V2rayCrypt.getExpiryTime(context, guid)
+            val tvExpiry = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_expiry_countdown)
+            
+            // تنظيف أي مهام سابقة للعداد على هذه البطاقة
+            holder.countdownJob?.cancel()
+
+            if (isProtected && expiryTime > 0) {
+                tvExpiry?.visibility = View.VISIBLE
+                
+                holder.countdownJob = coroutineScope.launch {
+                    while (isActive) {
+                        val currentTime = System.currentTimeMillis()
+                        val diffMs = expiryTime - currentTime
+                        
+                        if (diffMs > 0) {
+                            val days = diffMs / (1000 * 60 * 60 * 24)
+                            val hours = (diffMs / (1000 * 60 * 60)) % 24
+                            val minutes = (diffMs / (1000 * 60)) % 60
+                            
+                            val timeText = when {
+                                days > 0 -> "$days يوم و $hours ساعة"
+                                hours > 0 -> "$hours ساعة و $minutes دقيقة"
+                                else -> "$minutes دقيقة"
+                            }
+                            
+                            tvExpiry?.text = timeText
+                            tvExpiry?.setTextColor(Color.parseColor("#FF9800")) // برتقالي
+                        } else {
+                            tvExpiry?.text = "منتهي الصلاحية"
+                            tvExpiry?.setTextColor(Color.parseColor("#E53935")) // أحمر
+                        }
+                        
+                        delay(60000) // تحديث كل دقيقة (للحفاظ على البطارية)
+                    }
+                }
+            } else {
+                tvExpiry?.visibility = View.GONE
+            }
+            // ================================================================
+
             val lottieVerified = holder.itemMainBinding.root.findViewById<com.airbnb.lottie.LottieAnimationView>(R.id.lottie_verified)
             val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
 
             if (guid == MmkvManager.getSelectServer()) {
-                // إظهار الشريط الأخضر الجانبي
                 holder.itemMainBinding.layoutIndicator.visibility = View.VISIBLE
-                
-                // تلوين القسم السفلي (الاسم والأزرار) بأخضر شفاف فخم
                 bottomSection?.setBackgroundColor(Color.parseColor("#1A4CAF50")) 
-                
-                // إظهار وتشغيل حركة علامة التوثيق Lottie
                 lottieVerified?.visibility = View.VISIBLE
                 lottieVerified?.playAnimation()
-                
             } else {
-                // إذا لم يكن المختار: أعد كل شيء لحالته الطبيعية
                 holder.itemMainBinding.layoutIndicator.visibility = View.INVISIBLE
                 bottomSection?.setBackgroundColor(Color.TRANSPARENT)
-                
                 lottieVerified?.visibility = View.GONE
                 lottieVerified?.cancelAnimation()
             }
-            // ================================================================
 
-            // subscription remarks
             val subRemarks = getSubscriptionRemarks(profile)
             holder.itemMainBinding.tvSubscription.text = subRemarks
             holder.itemMainBinding.layoutSubscription.visibility = if (subRemarks.isEmpty()) View.GONE else View.VISIBLE
 
-            // layout (أزرار التحكم)
             if (doubleColumnDisplay) {
                 holder.itemMainBinding.layoutShare.visibility = View.GONE
                 holder.itemMainBinding.layoutEdit.visibility = View.GONE
@@ -203,6 +229,8 @@ class MainRecyclerAdapter(
     }
 
     open class BaseViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        var countdownJob: Job? = null // متغير لحفظ وإيقاف المؤقت
+
         fun onItemSelected() {
             itemView.setBackgroundColor(Color.parseColor("#33FFFFFF")) 
         }
@@ -230,4 +258,10 @@ class MainRecyclerAdapter(
     override fun onItemMoveCompleted() {}
 
     override fun onItemDismiss(position: Int) {}
+    
+    // إيقاف العدادات عند تدمير القائمة لتوفير الذاكرة
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        super.onDetachedFromRecyclerView(recyclerView)
+        coroutineScope.cancel()
+    }
 }
