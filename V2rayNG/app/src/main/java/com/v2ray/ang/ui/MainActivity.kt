@@ -10,7 +10,6 @@ import android.net.TrafficStats
 import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
-import android.util.Base64
 import android.util.Log
 import android.view.KeyEvent
 import android.view.Menu
@@ -58,6 +57,8 @@ import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.V2RayServiceManager
 import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.MainViewModel
+import com.v2ray.ang.handler.NetworkTime
+import com.v2ray.ang.handler.V2rayCrypt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -70,8 +71,6 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.URL
 import java.util.Locale
-import javax.crypto.Cipher
-import javax.crypto.spec.SecretKeySpec
 
 class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener, MainAdapterListener {
     private val binding by lazy {
@@ -1180,49 +1179,3 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         super.onDestroy()
     }
 }
-
-// =======================================================
-// خوارزمية التشفير والقائمة السرية
-// =======================================================
-object V2rayCrypt {
-    private const val SECRET_KEY = "DarkTunlKey12345" 
-    private const val PREFS_NAME = "V2rayProtectedConfigs"
-    private const val KEY_GUIDS = "ProtectedGuids"
-    private const val KEY_EXPIRY_PREFIX = "Expiry_"
-
-    fun encrypt(data: String, expiryTimeMs: Long): String {
-        return try {
-            val payload = "$expiryTimeMs||$data"
-            val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
-            val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
-            cipher.init(Cipher.ENCRYPT_MODE, keySpec)
-            val encryptedBytes = cipher.doFinal(payload.toByteArray())
-            "ENC://" + Base64.encodeToString(encryptedBytes, Base64.NO_WRAP)
-        } catch (e: Exception) {
-            ""
-        }
-    }
-
-    fun decryptAndCheckExpiry(context: Context, data: String): Pair<String, Long>? {
-        return try {
-            if (!data.startsWith("ENC://")) return null
-            val actualData = data.replace("ENC://", "")
-            val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
-            val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
-            cipher.init(Cipher.DECRYPT_MODE, keySpec)
-            val decryptedBytes = cipher.doFinal(Base64.decode(actualData, Base64.NO_WRAP))
-            val decryptedString = String(decryptedBytes)
-
-            val parts = decryptedString.split("||", limit = 2)
-            if (parts.size == 2) {
-                val expiryTimeMs = parts[0].toLongOrNull() ?: 0L
-                val configData = parts[1]
-                return Pair(configData, expiryTimeMs)
-            }
-            null
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    fun saveExpiryTime(conte
