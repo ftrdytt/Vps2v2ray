@@ -5,7 +5,7 @@ import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.LinearLayout // السطر الذي كان مفقوداً وتمت إضافته!
+import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.v2ray.ang.AppConfig
@@ -87,30 +87,27 @@ class MainRecyclerAdapter(
             // ================================================================
             // السحر هنا: تأثيرات السيرفر المختار (خلفية شفافة + علامة التوثيق)
             // ================================================================
+            val lottieVerified = holder.itemMainBinding.root.findViewById<com.airbnb.lottie.LottieAnimationView>(R.id.lottie_verified)
+            val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
+
             if (guid == MmkvManager.getSelectServer()) {
                 // إظهار الشريط الأخضر الجانبي
                 holder.itemMainBinding.layoutIndicator.visibility = View.VISIBLE
                 
                 // تلوين القسم السفلي (الاسم والأزرار) بأخضر شفاف فخم
-                val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
                 bottomSection?.setBackgroundColor(Color.parseColor("#1A4CAF50")) 
                 
                 // إظهار وتشغيل حركة علامة التوثيق Lottie
-                val lottieVerified = holder.itemMainBinding.root.findViewById<com.airbnb.lottie.LottieAnimationView>(R.id.lottie_verified)
                 lottieVerified?.visibility = View.VISIBLE
                 lottieVerified?.playAnimation()
                 
             } else {
                 // إذا لم يكن المختار: أعد كل شيء لحالته الطبيعية
                 holder.itemMainBinding.layoutIndicator.visibility = View.INVISIBLE
-                
-                val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
                 bottomSection?.setBackgroundColor(Color.TRANSPARENT)
                 
-                val lottieVerified = holder.itemMainBinding.root.findViewById<com.airbnb.lottie.LottieAnimationView>(R.id.lottie_verified)
                 lottieVerified?.visibility = View.GONE
                 lottieVerified?.cancelAnimation()
-                lottieVerified?.progress = 0f
             }
             // ================================================================
 
