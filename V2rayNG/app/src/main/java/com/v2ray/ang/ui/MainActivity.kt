@@ -764,6 +764,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
             
         } else {
+            // ========================================================
+            // التعديل السحري: قتل عمليات الفحص وتصفير العدادات فوراً وبشكل قاطع
+            // ========================================================
+            pingJob?.cancel()
+            speedTestJob?.cancel()
+            resetSpeedButtonJob?.cancel() 
+            stopTrafficMonitor()
+            
             binding.fab.setImageResource(R.drawable.ic_play_24dp)
             binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
             binding.fab.contentDescription = getString(R.string.tasker_start_service)
@@ -776,12 +784,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.cancelAnimation()
             lottieEngine?.progress = 0f
             
-            stopTrafficMonitor()
-            
-            pingJob?.cancel()
-            speedTestJob?.cancel()
-            resetSpeedButtonJob?.cancel() 
-            
+            // فرض قيمة الصفر على المؤشر مباشرةً لتفادي أي تحديث متأخر من البنج
             gaugePing?.setPing(0f) 
             gaugeSpeed?.setSpeed(0f)
             
@@ -792,6 +795,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             btnTest?.isEnabled = true
             btnTest?.text = "قياس سرعة الإنترنت" 
             btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
+            // ========================================================
         }
     }
 
@@ -1077,10 +1081,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         return true
     }
 
-    // =======================================================
     // متطلبات واجهة MainAdapterListener المطلوبة للـ Adapter
-    // =======================================================
-    
     override fun onSelectServer(guid: String) {
         MmkvManager.setSelectServer(guid)
         toast(R.string.toast_success)
