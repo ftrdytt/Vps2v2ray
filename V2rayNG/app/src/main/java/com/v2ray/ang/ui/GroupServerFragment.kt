@@ -215,9 +215,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         bottomSheetDialog.show()
     }
 
-    // =========================================================================
-    // التعديل الجديد: واجهة منبثقة مخصصة لإدخال (الأشهر، الأيام، الساعات)
-    // =========================================================================
     private fun showCustomExpiryDialog(onExpirySelected: (Long) -> Unit) {
         val layout = LinearLayout(ownerActivity).apply {
             orientation = LinearLayout.VERTICAL
@@ -234,16 +231,14 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }
         layout.addView(titleView)
 
-        // حقل الأشهر
         val monthsInput = EditText(ownerActivity).apply {
             hint = "عدد الأشهر (مثال: 1)"
             inputType = InputType.TYPE_CLASS_NUMBER
             setHintTextColor(Color.GRAY)
-            setTextColor(Color.BLACK) // ليكون واضحاً في الـ Dialog العادي
+            setTextColor(Color.BLACK) 
         }
         layout.addView(monthsInput)
 
-        // حقل الأيام
         val daysInput = EditText(ownerActivity).apply {
             hint = "عدد الأيام (مثال: 15)"
             inputType = InputType.TYPE_CLASS_NUMBER
@@ -252,7 +247,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         }
         layout.addView(daysInput)
 
-        // حقل الساعات
         val hoursInput = EditText(ownerActivity).apply {
             hint = "عدد الساعات (مثال: 12)"
             inputType = InputType.TYPE_CLASS_NUMBER
@@ -268,7 +262,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             val d = daysInput.text.toString().toLongOrNull() ?: 0L
             val h = hoursInput.text.toString().toLongOrNull() ?: 0L
 
-            // تحويل كل شيء إلى مللي ثانية
             val monthsMs = m * 30 * 24 * 60 * 60 * 1000L
             val daysMs = d * 24 * 60 * 60 * 1000L
             val hoursMs = h * 60 * 60 * 1000L
@@ -276,8 +269,8 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             val totalDurationMs = monthsMs + daysMs + hoursMs
 
             if (totalDurationMs > 0) {
-                // يتم إضافة المدة المحددة إلى التوقيت العالمي الحالي
-                val expiryTimeMs = System.currentTimeMillis() + totalDurationMs
+                // استخدام NetworkTime بدلاً من System للضمان المطلق
+                val expiryTimeMs = NetworkTime.currentTimeMillis() + totalDurationMs
                 onExpirySelected(expiryTimeMs)
             } else {
                 ownerActivity.toastError("الرجاء إدخال مدة صحيحة أكبر من الصفر")
@@ -303,13 +296,12 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 return
             }
 
-            // استخدام واجهة الإدخال المخصصة الجديدة
             showCustomExpiryDialog { expiryTime ->
                 val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime)
 
                 if (encryptedConf.isNotEmpty()) {
                     pendingEncryptedConfigToSave = encryptedConf
-                    val fileName = "Config_${System.currentTimeMillis()}.ashor"
+                    val fileName = "Config_${NetworkTime.currentTimeMillis()}.ashor"
                     saveEncryptedFileLauncher.launch(fileName)
                 } else {
                     ownerActivity.toastError(R.string.toast_failure)
@@ -337,7 +329,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 return
             }
 
-            // استخدام واجهة الإدخال المخصصة الجديدة
             showCustomExpiryDialog { expiryTime ->
                 val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime)
 
