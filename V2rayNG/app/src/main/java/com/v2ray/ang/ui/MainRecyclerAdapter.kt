@@ -81,31 +81,27 @@ class MainRecyclerAdapter(
                 holder.itemMainBinding.tvTestResult.setTextColor(Color.parseColor("#00E676"))
             }
 
-            // ================================================================
-            // نظام العداد الحي المعتمد على NetworkTime لعدم اختراقه عبر وقت الجهاز
-            // ================================================================
             val expiryTime = V2rayCrypt.getExpiryTime(context, guid)
             val tvExpiry = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_expiry_countdown)
             
             holder.countdownJob?.cancel()
 
-            if (isProtected && expiryTime > 0) {
+            if (isProtected && expiryTime > 0L) {
                 tvExpiry?.visibility = View.VISIBLE
                 
                 holder.countdownJob = coroutineScope.launch {
                     while (isActive) {
-                        // السحر هنا: نستخدم التوقيت المستمد من الإنترنت لضمان صحة العداد
                         val currentTime = NetworkTime.currentTimeMillis()
                         val diffMs = expiryTime - currentTime
                         
-                        if (diffMs > 0) {
-                            val days = diffMs / (1000 * 60 * 60 * 24)
-                            val hours = (diffMs / (1000 * 60 * 60)) % 24
-                            val minutes = (diffMs / (1000 * 60)) % 60
+                        if (diffMs > 0L) {
+                            val days = diffMs / (1000L * 60L * 60L * 24L)
+                            val hours = (diffMs / (1000L * 60L * 60L)) % 24L
+                            val minutes = (diffMs / (1000L * 60L)) % 60L
                             
                             val timeText = when {
-                                days > 0 -> "$days يوم و $hours ساعة"
-                                hours > 0 -> "$hours ساعة و $minutes دقيقة"
+                                days > 0L -> "$days يوم و $hours ساعة"
+                                hours > 0L -> "$hours ساعة و $minutes دقيقة"
                                 else -> "$minutes دقيقة"
                             }
                             
@@ -116,13 +112,12 @@ class MainRecyclerAdapter(
                             tvExpiry?.setTextColor(Color.parseColor("#E53935")) 
                         }
                         
-                        delay(60000) // تحديث تلقائي كل دقيقة
+                        delay(60000L)
                     }
                 }
             } else {
                 tvExpiry?.visibility = View.GONE
             }
-            // ================================================================
 
             val lottieVerified = holder.itemMainBinding.root.findViewById<com.airbnb.lottie.LottieAnimationView>(R.id.lottie_verified)
             val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
