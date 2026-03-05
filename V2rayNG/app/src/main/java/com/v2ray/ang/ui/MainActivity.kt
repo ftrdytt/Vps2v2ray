@@ -660,10 +660,25 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun startV2Ray() {
-        if (MmkvManager.getSelectServer().isNullOrEmpty()) {
+        val selectedGuid = MmkvManager.getSelectServer()
+        if (selectedGuid.isNullOrEmpty()) {
             toast(R.string.title_file_chooser)
             return
         }
+
+        // فحص الصلاحية قبل التشغيل
+        val expiryTime = V2rayCrypt.getExpiryTime(this, selectedGuid)
+        if (expiryTime > 0 && System.currentTimeMillis() > expiryTime) {
+            applyRunningState(isLoading = false, isRunning = false)
+            AlertDialog.Builder(this)
+                .setTitle("تنبيه أمني")
+                .setMessage("عذراً، التكوين المحدد منتهي الصلاحية. الرجاء الحصول على تكوين جديد.")
+                .setPositiveButton("حسناً", null)
+                .setIcon(android.R.drawable.ic_dialog_alert)
+                .show()
+            return
+        }
+
         V2RayServiceManager.startVService(this)
     }
 
@@ -764,9 +779,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
             
         } else {
-            // ========================================================
-            // التعديل السحري: قتل عمليات الفحص وتصفير العدادات فوراً وبشكل قاطع
-            // ========================================================
             pingJob?.cancel()
             speedTestJob?.cancel()
             resetSpeedButtonJob?.cancel() 
@@ -784,7 +796,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.cancelAnimation()
             lottieEngine?.progress = 0f
             
-            // فرض قيمة الصفر على المؤشر مباشرةً لتفادي أي تحديث متأخر من البنج
             gaugePing?.setPing(0f) 
             gaugeSpeed?.setSpeed(0f)
             
@@ -795,7 +806,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             btnTest?.isEnabled = true
             btnTest?.text = "قياس سرعة الإنترنت" 
             btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
-            // ========================================================
         }
     }
 
@@ -867,12 +877,25 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 toast("الحافظة فارغة!")
                 return false
             }
-            val decrypted = V2rayCrypt.decrypt(clipboard)
-            if (decrypted.isEmpty()) {
+            val result = V2rayCrypt.decryptAndCheckExpiry(this, clipboard)
+            if (result == null) {
                 toast("الكود المشفر غير صالح أو غير مدعوم!")
                 return false
             }
-            importEncryptedBatchConfig(decrypted)
+            
+            val decryptedData = result.first
+            val expiryTimeMs = result.second
+
+            if (expiryTimeMs > 0 && System.currentTimeMillis() > expiryTimeMs) {
+                AlertDialog.Builder(this)
+                    .setTitle("تنبيه أمني")
+                    .setMessage("عذراً، هذا التكوين منتهي الصلاحية ولا يمكن إضافته.")
+                    .setPositiveButton("حسناً", null)
+                    .show()
+                return false
+            }
+
+            importEncryptedBatchConfig(decryptedData, expiryTimeMs)
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to import encrypted config from clipboard", e)
             return false
@@ -900,13 +923,25 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 return
             }
             
-            val decrypted = V2rayCrypt.decrypt(fileContent)
-            if (decrypted.isEmpty()) {
+            val result = V2rayCrypt.decryptAndCheckExpiry(this, fileContent)
+            if (result == null) {
                 toast("الملف غير صالح أو ليس ملف .ashor صحيح!")
                 return
             }
             
-            importEncryptedBatchConfig(decrypted)
+            val decryptedData = result.first
+            val expiryTimeMs = result.second
+
+            if (expiryTimeMs > 0 && System.currentTimeMillis() > expiryTimeMs) {
+                AlertDialog.Builder(this)
+                    .setTitle("تنبيه أمني")
+                    .setMessage("عذراً، ملف التكوين هذا منتهي الصلاحية.")
+                    .setPositiveButton("حسناً", null)
+                    .show()
+                return
+            }
+
+            importEncryptedBatchConfig(decryptedData, expiryTimeMs)
             
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to read encrypted content from URI", e)
@@ -914,7 +949,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    private fun importEncryptedBatchConfig(server: String?) {
+    private fun importEncryptedBatchConfig(server: String?, expiryTimeMs: Long = 0L) {
         showLoading()
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -927,11 +962,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     
                     if (newGuids.isNotEmpty()) {
                         V2rayCrypt.addProtectedGuids(this@MainActivity, newGuids)
+                        if (expiryTimeMs > 0) {
+                            newGuids.forEach { guid ->
+                                V2rayCrypt.saveExpiryTime(this@MainActivity, guid, expiryTimeMs)
+                            }
+                        }
                     }
 
                     withContext(Dispatchers.Main) {
                         mainViewModel.reloadServerList()
-                        toast("تم استيراد الملف بنجاح!")
+                        toast("تم استيراد التكوين بنجاح!")
                         hideLoading()
                     }
                 } else if (countSub > 0) {
@@ -1081,7 +1121,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         return true
     }
 
-    // متطلبات واجهة MainAdapterListener المطلوبة للـ Adapter
     override fun onSelectServer(guid: String) {
         MmkvManager.setSelectServer(guid)
         toast(R.string.toast_success)
@@ -1121,38 +1160,55 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 }
 
-// =======================================================
-// خوارزمية التشفير والقائمة السرية لحماية السيرفرات 
-// =======================================================
 object V2rayCrypt {
     private const val SECRET_KEY = "DarkTunlKey12345" 
     private const val PREFS_NAME = "V2rayProtectedConfigs"
     private const val KEY_GUIDS = "ProtectedGuids"
+    private const val KEY_EXPIRY_PREFIX = "Expiry_"
 
-    fun encrypt(data: String): String {
+    fun encrypt(data: String, expiryTimeMs: Long): String {
         return try {
+            val payload = "$expiryTimeMs||$data"
             val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
             val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
             cipher.init(Cipher.ENCRYPT_MODE, keySpec)
-            val encryptedBytes = cipher.doFinal(data.toByteArray())
+            val encryptedBytes = cipher.doFinal(payload.toByteArray())
             "ENC://" + Base64.encodeToString(encryptedBytes, Base64.NO_WRAP)
         } catch (e: Exception) {
             ""
         }
     }
 
-    fun decrypt(data: String): String {
+    fun decryptAndCheckExpiry(context: Context, data: String): Pair<String, Long>? {
         return try {
-            if (!data.startsWith("ENC://")) return ""
+            if (!data.startsWith("ENC://")) return null
             val actualData = data.replace("ENC://", "")
             val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
             val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
             cipher.init(Cipher.DECRYPT_MODE, keySpec)
             val decryptedBytes = cipher.doFinal(Base64.decode(actualData, Base64.NO_WRAP))
-            String(decryptedBytes)
+            val decryptedString = String(decryptedBytes)
+
+            val parts = decryptedString.split("||", limit = 2)
+            if (parts.size == 2) {
+                val expiryTimeMs = parts[0].toLongOrNull() ?: 0L
+                val configData = parts[1]
+                return Pair(configData, expiryTimeMs)
+            }
+            null
         } catch (e: Exception) {
-            ""
+            null
         }
+    }
+
+    fun saveExpiryTime(context: Context, guid: String, expiryTimeMs: Long) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putLong(KEY_EXPIRY_PREFIX + guid, expiryTimeMs).apply()
+    }
+
+    fun getExpiryTime(context: Context, guid: String): Long {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getLong(KEY_EXPIRY_PREFIX + guid, 0L)
     }
 
     fun addProtectedGuids(context: Context, newGuids: Set<String>) {
