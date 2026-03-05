@@ -326,7 +326,6 @@ object MmkvManager {
     }
 
     fun decodeSettingsString(key: String): String? {
-        // التعديل السحري: إجبار التطبيق على استخدام روابط Cloudflare و Microsoft للفحص السريع دائماً
         if (key == AppConfig.PREF_DELAY_TEST_URL) {
             return AppConfig.DELAY_TEST_URL
         }
@@ -334,7 +333,6 @@ object MmkvManager {
     }
 
     fun decodeSettingsString(key: String, defaultValue: String?): String? {
-        // التعديل السحري أيضاً هنا لضمان عدم استخدام الروابط القديمة من الذاكرة المخبأة
         if (key == AppConfig.PREF_DELAY_TEST_URL) {
             return AppConfig.DELAY_TEST_URL
         }
