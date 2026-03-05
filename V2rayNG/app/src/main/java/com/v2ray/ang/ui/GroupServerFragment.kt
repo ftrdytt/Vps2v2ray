@@ -262,14 +262,13 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             val d = daysInput.text.toString().toLongOrNull() ?: 0L
             val h = hoursInput.text.toString().toLongOrNull() ?: 0L
 
-            val monthsMs = m * 30 * 24 * 60 * 60 * 1000L
-            val daysMs = d * 24 * 60 * 60 * 1000L
-            val hoursMs = h * 60 * 60 * 1000L
+            val monthsMs = m * 30L * 24L * 60L * 60L * 1000L
+            val daysMs = d * 24L * 60L * 60L * 1000L
+            val hoursMs = h * 60L * 60L * 1000L
 
             val totalDurationMs = monthsMs + daysMs + hoursMs
 
-            if (totalDurationMs > 0) {
-                // استخدام NetworkTime بدلاً من System للضمان المطلق
+            if (totalDurationMs > 0L) {
                 val expiryTimeMs = NetworkTime.currentTimeMillis() + totalDurationMs
                 onExpirySelected(expiryTimeMs)
             } else {
