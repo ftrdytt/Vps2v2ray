@@ -121,6 +121,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         
         handleIntent(intent)
 
+        // محاولة المزامنة مع وقت الإنترنت فور فتح التطبيق
+        lifecycleScope.launch(Dispatchers.IO) {
+            NetworkTime.syncTime()
+        }
+
         val displayMetrics = resources.displayMetrics
         screenWidth = displayMetrics.widthPixels
         
@@ -238,8 +243,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         setupViewModel()
         mainViewModel.reloadServerList()
 
-        checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {
-        }
+        checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
     private fun showAddBottomSheet() {
@@ -666,9 +670,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             return
         }
 
-        // فحص الصلاحية قبل التشغيل
+        // فحص الصلاحية قبل التشغيل (باستخدام وقت الإنترنت الحقيقي)
         val expiryTime = V2rayCrypt.getExpiryTime(this, selectedGuid)
-        if (expiryTime > 0 && System.currentTimeMillis() > expiryTime) {
+        if (expiryTime > 0 && NetworkTime.currentTimeMillis() > expiryTime) {
             applyRunningState(isLoading = false, isRunning = false)
             AlertDialog.Builder(this)
                 .setTitle("تنبيه أمني")
@@ -771,10 +775,33 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 while (true) {
                     try {
                         mainViewModel.testCurrentServerRealPing()
+                        
+                        // ========================================================
+                        // الحارس الآلي (Live Kill Switch)
+                        // يفحص الوقت من الإنترنت باستمرار، إذا انتهى الاشتراك يقطع الاتصال فوراً
+                        // ========================================================
+                        val guid = MmkvManager.getSelectServer().orEmpty()
+                        val expiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
+                        if (expiry > 0) {
+                            if (!NetworkTime.isInitialized) {
+                                NetworkTime.syncTime() // يقوم بالمزامنة الصامتة الآن لوجود انترنت
+                            }
+                            if (NetworkTime.currentTimeMillis() > expiry) {
+                                withContext(Dispatchers.Main) {
+                                    V2RayServiceManager.stopVService(this@MainActivity)
+                                    AlertDialog.Builder(this@MainActivity)
+                                        .setTitle("انتهى الاشتراك")
+                                        .setMessage("تم إيقاف المحرك لأن مدة صلاحية هذا التكوين قد انتهت.")
+                                        .setPositiveButton("حسناً", null)
+                                        .setCancelable(false)
+                                        .show()
+                                }
+                            }
+                        }
                     } catch (e: Exception) {
                         Log.e(AppConfig.TAG, "Ping Error", e)
                     }
-                    delay(1500) 
+                    delay(3000) 
                 }
             }
             
@@ -886,7 +913,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val decryptedData = result.first
             val expiryTimeMs = result.second
 
-            if (expiryTimeMs > 0 && System.currentTimeMillis() > expiryTimeMs) {
+            // الفحص ضد الإنترنت عند الاستيراد
+            if (expiryTimeMs > 0 && NetworkTime.currentTimeMillis() > expiryTimeMs) {
                 AlertDialog.Builder(this)
                     .setTitle("تنبيه أمني")
                     .setMessage("عذراً، هذا التكوين منتهي الصلاحية ولا يمكن إضافته.")
@@ -932,7 +960,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val decryptedData = result.first
             val expiryTimeMs = result.second
 
-            if (expiryTimeMs > 0 && System.currentTimeMillis() > expiryTimeMs) {
+            if (expiryTimeMs > 0 && NetworkTime.currentTimeMillis() > expiryTimeMs) {
                 AlertDialog.Builder(this)
                     .setTitle("تنبيه أمني")
                     .setMessage("عذراً، ملف التكوين هذا منتهي الصلاحية.")
@@ -1160,6 +1188,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 }
 
+// =======================================================
+// خوارزمية التشفير والقائمة السرية
+// =======================================================
 object V2rayCrypt {
     private const val SECRET_KEY = "DarkTunlKey12345" 
     private const val PREFS_NAME = "V2rayProtectedConfigs"
@@ -1185,42 +1216,4 @@ object V2rayCrypt {
             val actualData = data.replace("ENC://", "")
             val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
             val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
-            cipher.init(Cipher.DECRYPT_MODE, keySpec)
-            val decryptedBytes = cipher.doFinal(Base64.decode(actualData, Base64.NO_WRAP))
-            val decryptedString = String(decryptedBytes)
-
-            val parts = decryptedString.split("||", limit = 2)
-            if (parts.size == 2) {
-                val expiryTimeMs = parts[0].toLongOrNull() ?: 0L
-                val configData = parts[1]
-                return Pair(configData, expiryTimeMs)
-            }
-            null
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    fun saveExpiryTime(context: Context, guid: String, expiryTimeMs: Long) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putLong(KEY_EXPIRY_PREFIX + guid, expiryTimeMs).apply()
-    }
-
-    fun getExpiryTime(context: Context, guid: String): Long {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getLong(KEY_EXPIRY_PREFIX + guid, 0L)
-    }
-
-    fun addProtectedGuids(context: Context, newGuids: Set<String>) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val current = prefs.getStringSet(KEY_GUIDS, mutableSetOf()) ?: mutableSetOf()
-        val updated = current.toMutableSet().apply { addAll(newGuids) }
-        prefs.edit().putStringSet(KEY_GUIDS, updated).apply()
-    }
-
-    fun isProtected(context: Context, guid: String): Boolean {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val current = prefs.getStringSet(KEY_GUIDS, emptySet()) ?: emptySet()
-        return current.contains(guid)
-    }
-}
+            cipher.init(Cipher.DECRYPT_MODE, keySp
