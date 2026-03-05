@@ -59,25 +59,20 @@ class MainRecyclerAdapter(
             holder.itemMainBinding.tvName.text = profile.remarks
             
             // ================================================================
-            // فحص هل السيرفر محمي أم لا باستخدام القائمة السرية
+            // فحص السيرفر المحمي
             // ================================================================
             val isProtected = V2rayCrypt.isProtected(context, guid)
 
             if (isProtected) {
-                // إذا كان محمياً: إخفاء التفاصيل
                 holder.itemMainBinding.tvStatistics.visibility = View.GONE
                 holder.itemMainBinding.tvType.text = "Secure Config" 
-                // تغيير لون البادج للسيرفر المحمي ليعطي طابع الأمان (أحمر داكن مثلاً)
                 (holder.itemMainBinding.tvType.parent as? androidx.cardview.widget.CardView)?.setCardBackgroundColor(Color.parseColor("#D32F2F"))
             } else {
-                // إذا لم يكن محمياً: إظهار التفاصيل العادية
                 holder.itemMainBinding.tvStatistics.visibility = View.VISIBLE
                 holder.itemMainBinding.tvStatistics.text = getAddress(profile)
                 holder.itemMainBinding.tvType.text = profile.configType.name
-                // إرجاع لون البادج الطبيعي (برتقالي)
                 (holder.itemMainBinding.tvType.parent as? androidx.cardview.widget.CardView)?.setCardBackgroundColor(Color.parseColor("#FF5722"))
             }
-            // ================================================================
 
             // TestResult
             val aff = MmkvManager.decodeServerAffiliationInfo(guid)
@@ -85,22 +80,36 @@ class MainRecyclerAdapter(
             if ((aff?.testDelayMillis ?: 0L) < 0L) {
                 holder.itemMainBinding.tvTestResult.setTextColor(ContextCompat.getColor(context, R.color.colorPingRed))
             } else {
-                // استخدام لون أخضر نيون قوي للبنق ليتناسب مع التصميم الليلي
                 holder.itemMainBinding.tvTestResult.setTextColor(Color.parseColor("#00E676"))
             }
 
             // ================================================================
-            // السحر هنا: إظهار أو إخفاء الشريط الأخضر المضيء (Indicator) للسيرفر النشط!
+            // السحر هنا: تأثيرات السيرفر المختار (خلفية شفافة + علامة التوثيق)
             // ================================================================
             if (guid == MmkvManager.getSelectServer()) {
-                // إذا كان هذا هو السيرفر المختار، أظهر الشريط الأخضر!
+                // إظهار الشريط الأخضر الجانبي
                 holder.itemMainBinding.layoutIndicator.visibility = View.VISIBLE
-                // إضافة إضاءة خفيفة للبطاقة لتمييزها أكثر
-                holder.itemMainBinding.infoContainer.setBackgroundColor(Color.parseColor("#1Affffff"))
+                
+                // تلوين القسم السفلي (الاسم والأزرار) بأخضر شفاف فخم
+                val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
+                bottomSection?.setBackgroundColor(Color.parseColor("#1A4CAF50")) 
+                
+                // إظهار وتشغيل حركة علامة التوثيق Lottie
+                val lottieVerified = holder.itemMainBinding.root.findViewById<com.airbnb.lottie.LottieAnimationView>(R.id.lottie_verified)
+                lottieVerified?.visibility = View.VISIBLE
+                lottieVerified?.playAnimation()
+                
             } else {
-                // إذا لم يكن هو المختار، اخفِ الشريط
+                // إذا لم يكن المختار: أعد كل شيء لحالته الطبيعية
                 holder.itemMainBinding.layoutIndicator.visibility = View.INVISIBLE
-                holder.itemMainBinding.infoContainer.setBackgroundColor(Color.TRANSPARENT)
+                
+                val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
+                bottomSection?.setBackgroundColor(Color.TRANSPARENT)
+                
+                val lottieVerified = holder.itemMainBinding.root.findViewById<com.airbnb.lottie.LottieAnimationView>(R.id.lottie_verified)
+                lottieVerified?.visibility = View.GONE
+                lottieVerified?.cancelAnimation()
+                lottieVerified?.progress = 0f
             }
             // ================================================================
 
@@ -124,9 +133,6 @@ class MainRecyclerAdapter(
                 holder.itemMainBinding.layoutRemove.visibility = View.VISIBLE
                 holder.itemMainBinding.layoutMore.visibility = View.GONE
 
-                // ================================================================
-                // إذا كان محمياً: إخفاء زر التعديل لمنع السرقة
-                // ================================================================
                 if (isProtected) {
                     holder.itemMainBinding.layoutEdit.visibility = View.GONE
                 } else {
@@ -138,7 +144,6 @@ class MainRecyclerAdapter(
                 }
 
                 holder.itemMainBinding.layoutEdit.setOnClickListener {
-                    // حماية إضافية
                     if (!isProtected) {
                         adapterListener?.onEdit(guid, position, profile)
                     }
@@ -154,21 +159,10 @@ class MainRecyclerAdapter(
         }
     }
 
-    /**
-     * Gets the server address information
-     * Hides part of IP or domain information for privacy protection
-     * @param profile The server configuration
-     * @return Formatted address string
-     */
     private fun getAddress(profile: ProfileItem): String {
         return profile.description.nullIfBlank() ?: AngConfigManager.generateDescription(profile)
     }
 
-    /**
-     * Gets the subscription remarks information
-     * @param profile The server configuration
-     * @return Subscription remarks string, or empty string if none
-     */
     private fun getSubscriptionRemarks(profile: ProfileItem): String {
         val subRemarks =
             if (mainViewModel.subscriptionId.isEmpty())
@@ -212,7 +206,6 @@ class MainRecyclerAdapter(
 
     open class BaseViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         fun onItemSelected() {
-            // تغيير لون الخلفية أثناء سحب البطاقة (Drag & Drop)
             itemView.setBackgroundColor(Color.parseColor("#33FFFFFF")) 
         }
 
@@ -236,10 +229,7 @@ class MainRecyclerAdapter(
         return true
     }
 
-    override fun onItemMoveCompleted() {
-        // do nothing
-    }
+    override fun onItemMoveCompleted() {}
 
-    override fun onItemDismiss(position: Int) {
-    }
+    override fun onItemDismiss(position: Int) {}
 }
