@@ -70,13 +70,13 @@
 
                     <com.airbnb.lottie.LottieAnimationView
                         android:id="@+id/lottie_verified"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
-                        android:layout_marginStart="8dp"
+                        android:layout_width="38dp"
+                        android:layout_height="38dp"
+                        android:layout_marginStart="4dp"
                         android:visibility="gone"
                         app:lottie_fileName="verified_badge.json"
-                        app:lottie_autoPlay="false"
-                        app:lottie_loop="false" />
+                        app:lottie_autoPlay="true"
+                        app:lottie_loop="true" />
 
                     <View
                         android:layout_width="0dp"
@@ -234,6 +234,8 @@
                                 app:tint="#B0BEC5" />
                         </LinearLayout>
                     </LinearLayout>
-                </LinearLayout> </LinearLayout> </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
     </androidx.cardview.widget.CardView>
 </LinearLayout>
