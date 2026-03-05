@@ -189,7 +189,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         if (!isProtected) {
             val isCustom = profile.configType == EConfigType.CUSTOM || profile.configType == EConfigType.POLICYGROUP
             
-            // تم استبدال ic_menu_paste بـ ic_menu_edit لتفادي خطأ الأندرويد
             createOptionButton("نسخ التكوين العادي للحافظة", android.R.drawable.ic_menu_edit) {
                 share2Clipboard(guid)
             }
@@ -214,30 +213,62 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         bottomSheetDialog.show()
     }
 
+    private fun showExpiryDialog(onExpirySelected: (Long) -> Unit) {
+        val options = arrayOf(
+            "ساعة واحدة",
+            "3 ساعات",
+            "يوم واحد (24 ساعة)",
+            "3 أيام",
+            "أسبوع واحد",
+            "شهر واحد (30 يوم)"
+        )
+
+        val timesInMs = arrayOf(
+            1 * 60 * 60 * 1000L,
+            3 * 60 * 60 * 1000L,
+            24 * 60 * 60 * 1000L,
+            3 * 24 * 60 * 60 * 1000L,
+            7 * 24 * 60 * 60 * 1000L,
+            30 * 24 * 60 * 60 * 1000L
+        )
+
+        AlertDialog.Builder(ownerActivity)
+            .setTitle("حدد مدة صلاحية الكود المشفر")
+            .setItems(options) { _, which ->
+                val expiryTimeMs = System.currentTimeMillis() + timesInMs[which]
+                onExpirySelected(expiryTimeMs)
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
+
     private fun exportEncryptedFile(guid: String) {
         if (AngConfigManager.share2Clipboard(ownerActivity, guid) != 0) {
             ownerActivity.toastError(R.string.toast_failure)
             return
         }
-        
+
         try {
             val clipboard = ownerActivity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val conf = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
-            
+
             if (conf.isNullOrEmpty()) {
                 ownerActivity.toastError(R.string.toast_failure)
                 return
             }
-            
-            val encryptedConf = V2rayCrypt.encrypt(conf)
-            
-            if (encryptedConf.isNotEmpty()) {
-                pendingEncryptedConfigToSave = encryptedConf
-                val fileName = "Config_${System.currentTimeMillis()}.ashor"
-                saveEncryptedFileLauncher.launch(fileName)
-            } else {
-                ownerActivity.toastError(R.string.toast_failure)
+
+            showExpiryDialog { expiryTime ->
+                val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime)
+
+                if (encryptedConf.isNotEmpty()) {
+                    pendingEncryptedConfigToSave = encryptedConf
+                    val fileName = "Config_${System.currentTimeMillis()}.ashor"
+                    saveEncryptedFileLauncher.launch(fileName)
+                } else {
+                    ownerActivity.toastError(R.string.toast_failure)
+                }
             }
+
         } catch (e: Exception) {
             ownerActivity.toastError(R.string.toast_failure)
             Log.e(AppConfig.TAG, "Error exporting encrypted file", e)
@@ -249,24 +280,26 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             ownerActivity.toastError(R.string.toast_failure)
             return
         }
-        
+
         try {
             val clipboard = ownerActivity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val conf = clipboard.primaryClip?.getItemAt(0)?.text?.toString()
-            
+
             if (conf.isNullOrEmpty()) {
                 ownerActivity.toastError(R.string.toast_failure)
                 return
             }
-            
-            val encryptedConf = V2rayCrypt.encrypt(conf)
-            
-            if (encryptedConf.isNotEmpty()) {
-                val clip = ClipData.newPlainText("Encrypted V2ray Config", encryptedConf)
-                clipboard.setPrimaryClip(clip)
-                ownerActivity.toast("تم نسخ التكوين المشفر بنجاح!")
-            } else {
-                ownerActivity.toastError(R.string.toast_failure)
+
+            showExpiryDialog { expiryTime ->
+                val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime)
+
+                if (encryptedConf.isNotEmpty()) {
+                    val clip = ClipData.newPlainText("Encrypted V2ray Config", encryptedConf)
+                    clipboard.setPrimaryClip(clip)
+                    ownerActivity.toast("تم نسخ التكوين المشفر بمدة صلاحية محددة!")
+                } else {
+                    ownerActivity.toastError(R.string.toast_failure)
+                }
             }
         } catch (e: Exception) {
             ownerActivity.toastError(R.string.toast_failure)
