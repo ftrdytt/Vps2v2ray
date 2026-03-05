@@ -39,13 +39,15 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingTop="14dp"
-                android:paddingHorizontal="14dp"> <LinearLayout
+                android:orientation="vertical"> 
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:gravity="center_vertical"
+                    android:paddingTop="14dp"
+                    android:paddingHorizontal="14dp">
 
                     <androidx.cardview.widget.CardView
                         android:layout_width="wrap_content"
@@ -97,144 +99,141 @@
                     android:layout_height="1dp"
                     android:layout_marginTop="10dp"
                     android:background="#15FFFFFF" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/layout_bottom_section"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="bottom"
-                android:paddingHorizontal="14dp"
-                android:paddingTop="10dp"
-                android:paddingBottom="14dp"
-                android:background="@android:color/transparent">
 
                 <LinearLayout
-                    android:layout_width="0dp"
+                    android:id="@+id/layout_bottom_section"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/tv_name"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:maxLines="2"
-                        android:minLines="1"
-                        android:ellipsize="end"
-                        android:textColor="#F5F5F5"
-                        android:textSize="17sp"
-                        android:textStyle="bold"
-                        tools:text="سيرفر ألماني سريع جداً" />
+                    android:orientation="horizontal"
+                    android:gravity="bottom"
+                    android:paddingHorizontal="14dp"
+                    android:paddingTop="10dp"
+                    android:paddingBottom="14dp"
+                    android:background="@android:color/transparent">
 
                     <LinearLayout
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:layout_marginTop="6dp"
-                        android:gravity="center_vertical">
-
-                        <androidx.constraintlayout.widget.ConstraintLayout
-                            android:id="@+id/layout_subscription"
-                            android:layout_width="16dp"
-                            android:layout_height="16dp"
-                            android:layout_marginEnd="6dp"
-                            android:background="@drawable/ic_circle"
-                            android:backgroundTint="#00BCD4"> 
-                            <TextView
-                                android:id="@+id/tv_subscription"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:textColor="#FFFFFF"
-                                android:textSize="9sp"
-                                android:textStyle="bold"
-                                app:layout_constraintBottom_toBottomOf="parent"
-                                app:layout_constraintEnd_toEndOf="parent"
-                                app:layout_constraintStart_toStartOf="parent"
-                                app:layout_constraintTop_toTopOf="parent" />
-                        </androidx.constraintlayout.widget.ConstraintLayout>
+                        android:layout_weight="1"
+                        android:orientation="vertical">
 
                         <TextView
-                            android:id="@+id/tv_statistics"
+                            android:id="@+id/tv_name"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:lines="1"
-                            android:textColor="#9E9E9E"
-                            android:textSize="13sp"
-                            android:fontFamily="sans-serif-light"
-                            tools:text="81 : ***.46.101.111" />
-                    </LinearLayout>
-                </LinearLayout>
+                            android:maxLines="2"
+                            android:minLines="1"
+                            android:ellipsize="end"
+                            android:textColor="#F5F5F5"
+                            android:textSize="17sp"
+                            android:textStyle="bold"
+                            tools:text="سيرفر ألماني سريع جداً" />
 
-                <LinearLayout
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:gravity="bottom"
-                    android:orientation="horizontal">
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical">
 
-                    <LinearLayout
-                        android:id="@+id/layout_share"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:padding="6dp">
-                        <ImageView
-                            android:layout_width="22dp"
-                            android:layout_height="22dp"
-                            app:srcCompat="@drawable/ic_share_24dp"
-                            app:tint="#B0BEC5" />
-                    </LinearLayout>
+                            <androidx.constraintlayout.widget.ConstraintLayout
+                                android:id="@+id/layout_subscription"
+                                android:layout_width="16dp"
+                                android:layout_height="16dp"
+                                android:layout_marginEnd="6dp"
+                                android:background="@drawable/ic_circle"
+                                android:backgroundTint="#00BCD4"> 
+                                <TextView
+                                    android:id="@+id/tv_subscription"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:textColor="#FFFFFF"
+                                    android:textSize="9sp"
+                                    android:textStyle="bold"
+                                    app:layout_constraintBottom_toBottomOf="parent"
+                                    app:layout_constraintEnd_toEndOf="parent"
+                                    app:layout_constraintStart_toStartOf="parent"
+                                    app:layout_constraintTop_toTopOf="parent" />
+                            </androidx.constraintlayout.widget.ConstraintLayout>
 
-                    <LinearLayout
-                        android:id="@+id/layout_edit"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:padding="6dp">
-                        <ImageView
-                            android:layout_width="22dp"
-                            android:layout_height="22dp"
-                            app:srcCompat="@drawable/ic_edit_24dp"
-                            app:tint="#B0BEC5" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:id="@+id/layout_remove"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:padding="6dp">
-                        <ImageView
-                            android:layout_width="22dp"
-                            android:layout_height="22dp"
-                            app:srcCompat="@drawable/ic_delete_24dp"
-                            app:tint="#E53935" /> 
+                            <TextView
+                                android:id="@+id/tv_statistics"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:lines="1"
+                                android:textColor="#9E9E9E"
+                                android:textSize="13sp"
+                                android:fontFamily="sans-serif-light"
+                                tools:text="81 : ***.46.101.111" />
+                        </LinearLayout>
                     </LinearLayout>
 
                     <LinearLayout
-                        android:id="@+id/layout_more"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:padding="6dp">
-                        <ImageView
-                            android:layout_width="22dp"
-                            android:layout_height="22dp"
-                            app:srcCompat="@drawable/ic_more_vert_24dp"
-                            app:tint="#B0BEC5" />
-                    </LinearLayout>
-                </LinearLayout>
-            </LinearLayout>
+                        android:gravity="bottom"
+                        android:orientation="horizontal">
 
-        </LinearLayout>
+                        <LinearLayout
+                            android:id="@+id/layout_share"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:padding="6dp">
+                            <ImageView
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                app:srcCompat="@drawable/ic_share_24dp"
+                                app:tint="#B0BEC5" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/layout_edit"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:padding="6dp">
+                            <ImageView
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                app:srcCompat="@drawable/ic_edit_24dp"
+                                app:tint="#B0BEC5" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/layout_remove"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:padding="6dp">
+                            <ImageView
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                app:srcCompat="@drawable/ic_delete_24dp"
+                                app:tint="#E53935" /> 
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/layout_more"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:padding="6dp">
+                            <ImageView
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                app:srcCompat="@drawable/ic_more_vert_24dp"
+                                app:tint="#B0BEC5" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout> </LinearLayout> </LinearLayout>
     </androidx.cardview.widget.CardView>
 </LinearLayout>
