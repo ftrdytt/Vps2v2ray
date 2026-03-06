@@ -113,6 +113,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    // هذه الدوال المساعدة لفتح وإغلاق التحميل لكي تستخدمها الـ Fragments
+    fun showLoadingDialog() {
+        showLoading()
+    }
+
+    fun hideLoadingDialog() {
+        hideLoading()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         
@@ -412,13 +421,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             if (totalDurationMs > 0L) {
                 val newExpiryTimeMs = NetworkTime.currentTimeMillis(this) + totalDurationMs
                 
-                showLoading()
+                showLoadingDialog()
                 lifecycleScope.launch(Dispatchers.IO) {
                     val success = CloudflareAPI.updateExpiry(licenseId, newExpiryTimeMs)
                     withContext(Dispatchers.Main) {
-                        hideLoading()
+                        hideLoadingDialog()
                         if (success) {
-                            // التحديث المحلي الشامل: نحدث كل الملفات التي تحمل نفس الـ LicenseID
                             val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
                             allProtected.forEach { pGuid ->
                                 if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) {
@@ -439,12 +447,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
         
         builder.setNeutralButton("إيقاف الكود فوراً") { dialog, _ ->
-            showLoading()
+            showLoadingDialog()
             lifecycleScope.launch(Dispatchers.IO) {
                 val expiredTime = NetworkTime.currentTimeMillis(this@MainActivity) - 100000L
                 val success = CloudflareAPI.updateExpiry(licenseId, expiredTime)
                 withContext(Dispatchers.Main) {
-                    hideLoading()
+                    hideLoadingDialog()
                     if (success) {
                         val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
                         allProtected.forEach { pGuid ->
@@ -794,8 +802,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 if (licenseId.isNotEmpty() && licenseId != "LEGACY") {
                     val liveExpiry = CloudflareAPI.checkLiveExpiry(licenseId)
                     
-                    if (liveExpiry >= 0L) { // 0 = محذوف/منتهي، >0 = رخصة ممددة
-                        // التحديث الشامل: تحديث كل الكودات المتشابهة في الهاتف
+                    if (liveExpiry >= 0L) {
                         val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
                         allProtected.forEach { pGuid ->
                             if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) {
@@ -805,7 +812,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     }
                 }
 
-                // الفحص القاتل (يعتمد على التحديث المحلي أو السحابي الأخير)
                 val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, selectedGuid)
                 val isExpired = (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry)
 
@@ -913,7 +919,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             startTrafficMonitor()
             
             pingJob?.cancel()
-            var lastCloudflareCheck = 0L // لتقليل استهلاك Cloudflare
+            var lastCloudflareCheck = 0L 
 
             pingJob = lifecycleScope.launch {
                 delay(1000) 
@@ -924,7 +930,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val guid = MmkvManager.getSelectServer().orEmpty()
                         val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
                         
-                        // فحص خلفي لسيرفر Cloudflare كل 5 دقائق لمراقبة التمديد أو الحظر
                         if (licenseId.isNotEmpty() && licenseId != "LEGACY") {
                             if (System.currentTimeMillis() - lastCloudflareCheck > 5 * 60 * 1000L) {
                                 lastCloudflareCheck = System.currentTimeMillis()
@@ -940,7 +945,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             }
                         }
 
-                        // الحارس الآلي لقتل الاتصال
                         val expiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
                         if (expiry > 0L) {
                             if (!NetworkTime.isInitialized) {
@@ -1203,4 +1207,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     hideLoading()
                 }
             } catch (e: Exception) {
-                withContext(Dispatche
+                withContext(Dispatchers.Main) { toastError(R.string.toast_failure); hideLoading() }
+                Log.e(AppConfig.TAG, "Failed to import batch config", e)
+            }
+        }
+    }
+
+    private fun importConfigLocal(): Boolean {
+        try { showFileChooser() 
