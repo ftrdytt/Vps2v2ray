@@ -59,11 +59,7 @@ import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.MainViewModel
 import com.v2ray.ang.handler.NetworkTime
 import com.v2ray.ang.handler.V2rayCrypt
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
@@ -121,7 +117,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         handleIntent(intent)
 
         lifecycleScope.launch(Dispatchers.IO) {
-            NetworkTime.syncTime()
+            NetworkTime.syncTime(this@MainActivity)
         }
 
         val displayMetrics = resources.displayMetrics
@@ -669,7 +665,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
 
         val expiryTime = V2rayCrypt.getExpiryTime(this, selectedGuid)
-        if (expiryTime > 0L && NetworkTime.currentTimeMillis() > expiryTime) {
+        if (expiryTime > 0L && NetworkTime.currentTimeMillis(this) > expiryTime) {
             applyRunningState(isLoading = false, isRunning = false)
             AlertDialog.Builder(this)
                 .setTitle("تنبيه أمني")
@@ -768,27 +764,30 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
-                delay(2000) 
-                while (true) {
+                delay(1000) 
+                while (isActive) {
                     try {
                         mainViewModel.testCurrentServerRealPing()
                         
+                        // الحارس الآلي: يقوم بالتحقق الصارم والمستمر
                         val guid = MmkvManager.getSelectServer().orEmpty()
                         val expiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
+                        
                         if (expiry > 0L) {
                             if (!NetworkTime.isInitialized) {
-                                NetworkTime.syncTime()
+                                NetworkTime.syncTime(this@MainActivity)
                             }
-                            if (NetworkTime.currentTimeMillis() > expiry) {
+                            if (NetworkTime.currentTimeMillis(this@MainActivity) > expiry) {
                                 withContext(Dispatchers.Main) {
                                     V2RayServiceManager.stopVService(this@MainActivity)
                                     AlertDialog.Builder(this@MainActivity)
                                         .setTitle("انتهى الاشتراك")
-                                        .setMessage("تم إيقاف المحرك لأن مدة صلاحية هذا التكوين قد انتهت.")
+                                        .setMessage("تم إيقاف المحرك لأن مدة صلاحية هذا التكوين قد انتهت.\nيرجى تجديد الاشتراك.")
                                         .setPositiveButton("حسناً", null)
                                         .setCancelable(false)
                                         .show()
                                 }
+                                cancel() // تدمير حلقة الفحص بعد الإيقاف
                             }
                         }
                     } catch (e: Exception) {
@@ -906,7 +905,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val decryptedData = result.first
             val expiryTimeMs = result.second
 
-            if (expiryTimeMs > 0L && NetworkTime.currentTimeMillis() > expiryTimeMs) {
+            if (expiryTimeMs > 0L && NetworkTime.currentTimeMillis(this) > expiryTimeMs) {
                 AlertDialog.Builder(this)
                     .setTitle("تنبيه أمني")
                     .setMessage("عذراً، هذا التكوين منتهي الصلاحية ولا يمكن إضافته.")
@@ -952,7 +951,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val decryptedData = result.first
             val expiryTimeMs = result.second
 
-            if (expiryTimeMs > 0L && NetworkTime.currentTimeMillis() > expiryTimeMs) {
+            if (expiryTimeMs > 0L && NetworkTime.currentTimeMillis(this) > expiryTimeMs) {
                 AlertDialog.Builder(this)
                     .setTitle("تنبيه أمني")
                     .setMessage("عذراً، ملف التكوين هذا منتهي الصلاحية.")
