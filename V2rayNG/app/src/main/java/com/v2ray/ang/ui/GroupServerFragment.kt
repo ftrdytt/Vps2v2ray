@@ -39,10 +39,12 @@ import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.NetworkTime
 import com.v2ray.ang.handler.V2rayCrypt
+import com.v2ray.ang.handler.CloudflareAPI
 import com.v2ray.ang.helper.SimpleItemTouchHelperCallback
 import com.v2ray.ang.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
     private val ownerActivity: MainActivity
@@ -298,14 +300,27 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             }
 
             showCustomExpiryDialog { expiryTime ->
-                val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime)
-
-                if (encryptedConf.isNotEmpty()) {
-                    pendingEncryptedConfigToSave = encryptedConf
-                    val fileName = "Config_${NetworkTime.currentTimeMillis(ownerActivity)}.ashor"
-                    saveEncryptedFileLauncher.launch(fileName)
-                } else {
-                    ownerActivity.toastError(R.string.toast_failure)
+                // إنشاء License ID موحد لهذا الملف
+                val licenseId = "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16)
+                
+                ownerActivity.showLoading()
+                ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
+                    val uploaded = CloudflareAPI.updateExpiry(licenseId, expiryTime)
+                    withContext(Dispatchers.Main) {
+                        ownerActivity.hideLoading()
+                        if (uploaded) {
+                            val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, licenseId)
+                            if (encryptedConf.isNotEmpty()) {
+                                pendingEncryptedConfigToSave = encryptedConf
+                                val fileName = "Config_${NetworkTime.currentTimeMillis(ownerActivity)}.ashor"
+                                saveEncryptedFileLauncher.launch(fileName)
+                            } else {
+                                ownerActivity.toastError(R.string.toast_failure)
+                            }
+                        } else {
+                            ownerActivity.toastError("فشل الاتصال بكلاود فلير، لم يتم التصدير.")
+                        }
+                    }
                 }
             }
 
@@ -331,14 +346,26 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             }
 
             showCustomExpiryDialog { expiryTime ->
-                val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime)
-
-                if (encryptedConf.isNotEmpty()) {
-                    val clip = ClipData.newPlainText("Encrypted V2ray Config", encryptedConf)
-                    clipboard.setPrimaryClip(clip)
-                    ownerActivity.toast("تم نسخ التكوين المشفر بمدة صلاحية محددة!")
-                } else {
-                    ownerActivity.toastError(R.string.toast_failure)
+                val licenseId = "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16)
+                
+                ownerActivity.showLoading()
+                ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
+                    val uploaded = CloudflareAPI.updateExpiry(licenseId, expiryTime)
+                    withContext(Dispatchers.Main) {
+                        ownerActivity.hideLoading()
+                        if (uploaded) {
+                            val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, licenseId)
+                            if (encryptedConf.isNotEmpty()) {
+                                val clip = ClipData.newPlainText("Encrypted V2ray Config", encryptedConf)
+                                clipboard.setPrimaryClip(clip)
+                                ownerActivity.toast("تم نسخ التكوين المشفر وجاهز للمشاركة!")
+                            } else {
+                                ownerActivity.toastError(R.string.toast_failure)
+                            }
+                        } else {
+                            ownerActivity.toastError("فشل الاتصال بكلاود فلير، لم يتم التصدير.")
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
