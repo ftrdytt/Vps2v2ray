@@ -7,9 +7,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
+import kotlin.math.max
 
 // =======================================================
-// خوارزمية التشفير والقائمة السرية (Global)
+// خوارزمية التشفير والقائمة السرية
 // =======================================================
 object V2rayCrypt {
     private const val SECRET_KEY = "DarkTunlKey12345" 
@@ -77,16 +78,19 @@ object V2rayCrypt {
 }
 
 // =======================================================
-// خوارزمية جلب التوقيت الحقيقي من الإنترنت (Global)
+// خوارزمية جلب التوقيت المضادة للتلاعب (Anti-Rewind Time)
 // =======================================================
 object NetworkTime {
     var isInitialized = false
     private var networkTimeOffset: Long = 0L
+    private const val PREFS_NAME = "NetworkTimePrefs"
+    private const val KEY_LAST_TIME = "LastTrustedTime"
 
-    suspend fun syncTime() {
+    suspend fun syncTime(context: Context) {
         withContext(Dispatchers.IO) {
             try {
-                val url = java.net.URL("https://www.google.com")
+                // نستخدم سيرفر Cloudflare السريع جداً للحصول على استجابة في أجزاء من الثانية
+                val url = java.net.URL("http://cp.cloudflare.com/generate_204")
                 val connection = url.openConnection() as java.net.HttpURLConnection
                 connection.requestMethod = "HEAD"
                 connection.connectTimeout = 3000
@@ -97,6 +101,10 @@ object NetworkTime {
                 if (serverTime > 0) {
                     networkTimeOffset = serverTime - android.os.SystemClock.elapsedRealtime()
                     isInitialized = true
+                    
+                    // السحر 1: حفظ التوقيت الحقيقي لمنع المستخدم من العودة للماضي
+                    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    prefs.edit().putLong(KEY_LAST_TIME, serverTime).apply()
                 }
             } catch (e: Exception) {
                 Log.e("NetworkTime", "Failed to sync internet time")
@@ -104,11 +112,25 @@ object NetworkTime {
         }
     }
 
-    fun currentTimeMillis(): Long {
-        return if (isInitialized) {
+    fun currentTimeMillis(context: Context): Long {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val lastTrusted = prefs.getLong(KEY_LAST_TIME, 0L)
+        
+        val calculatedTime = if (isInitialized) {
             android.os.SystemClock.elapsedRealtime() + networkTimeOffset
         } else {
             System.currentTimeMillis() 
         }
+        
+        // السحر 2: نأخذ دائماً الوقت (الأكبر) بين الوقت الحالي وآخر وقت محفوظ.
+        // هذا يعني أنه من المستحيل إرجاع التاريخ للوراء حتى لو أطفأ الإنترنت!
+        val finalTime = max(calculatedTime, lastTrusted)
+        
+        // تحديث الذاكرة السرية للوقت باستمرار
+        if (finalTime > lastTrusted + 60000) {
+            prefs.edit().putLong(KEY_LAST_TIME, finalTime).apply()
+        }
+        
+        return finalTime
     }
 }
