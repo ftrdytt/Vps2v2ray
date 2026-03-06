@@ -116,6 +116,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
 
     private fun shareServer(guid: String, profile: ProfileItem, position: Int) {
         val isProtected = V2rayCrypt.isProtected(requireContext(), guid)
+        val isAdmin = V2rayCrypt.isAdmin(requireContext(), guid)
 
         val bottomSheetDialog = BottomSheetDialog(ownerActivity)
         
@@ -184,15 +185,16 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             container.addView(layout)
         }
 
-        createOptionButton("تصدير إلى ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) {
-            exportEncryptedFile(guid)
-        }
-        
-        createOptionButton("تصدير إلى الحافظة مشفر", android.R.drawable.ic_lock_idle_lock) {
-            shareEncryptedClipboard(guid)
-        }
+        // إذا كان عميل عادي محمي، لا يرى أي خيارات. يجب أن يكون غير محمي، أو أدمن.
+        if (!isProtected || isAdmin) {
+            createOptionButton("تصدير إلى ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) {
+                exportEncryptedFile(guid)
+            }
+            
+            createOptionButton("تصدير إلى الحافظة مشفر", android.R.drawable.ic_lock_idle_lock) {
+                shareEncryptedClipboard(guid)
+            }
 
-        if (!isProtected) {
             val isCustom = profile.configType == EConfigType.CUSTOM || profile.configType == EConfigType.POLICYGROUP
             
             createOptionButton("نسخ التكوين العادي للحافظة", android.R.drawable.ic_menu_edit) {
@@ -209,6 +211,11 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 editServer(guid, profile)
             }
             
+            createOptionButton("حذف التكوين", android.R.drawable.ic_menu_delete) {
+                removeServer(guid, position)
+            }
+        } else {
+            // للمستخدم الذي أضاف ملف مشفر
             createOptionButton("حذف التكوين", android.R.drawable.ic_menu_delete) {
                 removeServer(guid, position)
             }
@@ -308,11 +315,17 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                     withContext(Dispatchers.Main) {
                         ownerActivity.hideLoadingDialog()
                         if (uploaded) {
+                            // التعديل الجبار: تسجيل الملف في هاتف الأدمن كملف "أدمن"
+                            V2rayCrypt.addAdminGuid(ownerActivity, guid)
+                            V2rayCrypt.saveLicenseId(ownerActivity, guid, licenseId)
+                            V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
+                            
                             val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, licenseId)
                             if (encryptedConf.isNotEmpty()) {
                                 pendingEncryptedConfigToSave = encryptedConf
                                 val fileName = "Config_${NetworkTime.currentTimeMillis(ownerActivity)}.ashor"
                                 saveEncryptedFileLauncher.launch(fileName)
+                                mainViewModel.reloadServerList() // تحديث القائمة لظهور الأيقونة الزرقاء
                             } else {
                                 ownerActivity.toastError(R.string.toast_failure)
                             }
@@ -353,11 +366,17 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                     withContext(Dispatchers.Main) {
                         ownerActivity.hideLoadingDialog()
                         if (uploaded) {
+                            // التعديل الجبار
+                            V2rayCrypt.addAdminGuid(ownerActivity, guid)
+                            V2rayCrypt.saveLicenseId(ownerActivity, guid, licenseId)
+                            V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
+
                             val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, licenseId)
                             if (encryptedConf.isNotEmpty()) {
                                 val clip = ClipData.newPlainText("Encrypted V2ray Config", encryptedConf)
                                 clipboard.setPrimaryClip(clip)
                                 ownerActivity.toast("تم نسخ التكوين المشفر وجاهز للمشاركة!")
+                                mainViewModel.reloadServerList()
                             } else {
                                 ownerActivity.toastError(R.string.toast_failure)
                             }
