@@ -271,7 +271,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             val totalDurationMs = monthsMs + daysMs + hoursMs
 
             if (totalDurationMs > 0L) {
-                val expiryTimeMs = NetworkTime.currentTimeMillis() + totalDurationMs
+                val expiryTimeMs = NetworkTime.currentTimeMillis(ownerActivity) + totalDurationMs
                 onExpirySelected(expiryTimeMs)
             } else {
                 ownerActivity.toastError("الرجاء إدخال مدة صحيحة أكبر من الصفر")
@@ -302,7 +302,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
 
                 if (encryptedConf.isNotEmpty()) {
                     pendingEncryptedConfigToSave = encryptedConf
-                    val fileName = "Config_${NetworkTime.currentTimeMillis()}.ashor"
+                    val fileName = "Config_${NetworkTime.currentTimeMillis(ownerActivity)}.ashor"
                     saveEncryptedFileLauncher.launch(fileName)
                 } else {
                     ownerActivity.toastError(R.string.toast_failure)
