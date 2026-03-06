@@ -154,21 +154,26 @@ class MainRecyclerAdapter(
                 holder.itemMainBinding.layoutRemove.visibility = View.VISIBLE
                 holder.itemMainBinding.layoutMore.visibility = View.GONE
 
-                if (isProtected) {
-                    holder.itemMainBinding.layoutEdit.visibility = View.GONE
-                } else {
-                    holder.itemMainBinding.layoutEdit.visibility = View.VISIBLE
-                }
+                // السحر: جعلنا زر التعديل (القلم) يظهر دائماً
+                holder.itemMainBinding.layoutEdit.visibility = View.VISIBLE
 
                 holder.itemMainBinding.layoutShare.setOnClickListener {
                     adapterListener?.onShare(guid, profile, position, false)
                 }
 
+                // عند الضغط على زر التعديل
                 holder.itemMainBinding.layoutEdit.setOnClickListener {
-                    if (!isProtected) {
+                    if (isProtected) {
+                        // إذا كان محمياً، نفتح لوحة تحكم الأدمن السحابية الخاصة بك!
+                        if (context is MainActivity) {
+                            context.showExtendLicenseDialog(guid)
+                        }
+                    } else {
+                        // إذا كان عادياً، نفتح صفحة تعديل السيرفر العادية
                         adapterListener?.onEdit(guid, position, profile)
                     }
                 }
+                
                 holder.itemMainBinding.layoutRemove.setOnClickListener {
                     adapterListener?.onRemove(guid, position)
                 }
