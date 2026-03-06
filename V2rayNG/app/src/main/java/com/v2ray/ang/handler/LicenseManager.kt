@@ -14,16 +14,16 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.math.max
 
 // =======================================================
-// خوارزمية التشفير والرخص الموحدة (License ID)
+// خوارزمية التشفير والرخص وصلاحيات الأدمن
 // =======================================================
 object V2rayCrypt {
     private const val SECRET_KEY = "DarkTunlKey12345" 
     private const val PREFS_NAME = "V2rayProtectedConfigs"
     private const val KEY_GUIDS = "ProtectedGuids"
+    private const val KEY_ADMIN_GUIDS = "AdminGuids" // سجل ملفات الأدمن
     private const val KEY_EXPIRY_PREFIX = "Expiry_"
     private const val KEY_LICENSE_PREFIX = "License_"
 
-    // دمج وقت الانتهاء ورقم الرخصة الموحد داخل التشفير
     fun encrypt(data: String, expiryTimeMs: Long, licenseId: String): String {
         return try {
             val payload = "$expiryTimeMs||$licenseId||$data"
@@ -37,7 +37,6 @@ object V2rayCrypt {
         }
     }
 
-    // استخراج الداتا والوقت ورقم الرخصة
     fun decryptAndCheckExpiry(data: String): Triple<String, Long, String>? {
         return try {
             if (!data.startsWith("ENC://")) return null
@@ -55,7 +54,6 @@ object V2rayCrypt {
                 val configData = parts[2]
                 return Triple(configData, expiryTimeMs, licenseId)
             } else if (parts.size == 2) {
-                // لدعم الملفات التي أنشأتها قبل قليل (التوافقية)
                 val expiryTimeMs = parts[0].toLongOrNull() ?: 0L
                 val configData = parts[1]
                 return Triple(configData, expiryTimeMs, "LEGACY")
@@ -86,6 +84,7 @@ object V2rayCrypt {
         return prefs.getString(KEY_LICENSE_PREFIX + guid, "") ?: ""
     }
 
+    // للمستخدمين العاديين
     fun addProtectedGuids(context: Context, newGuids: Set<String>) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val current = prefs.getStringSet(KEY_GUIDS, mutableSetOf()) ?: mutableSetOf()
@@ -101,11 +100,22 @@ object V2rayCrypt {
     fun isProtected(context: Context, guid: String): Boolean {
         return getAllProtectedGuids(context).contains(guid)
     }
+
+    // لك كأدمن
+    fun addAdminGuid(context: Context, guid: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(KEY_ADMIN_GUIDS, mutableSetOf()) ?: mutableSetOf()
+        val updated = current.toMutableSet().apply { add(guid) }
+        prefs.edit().putStringSet(KEY_ADMIN_GUIDS, updated).apply()
+    }
+
+    fun isAdmin(context: Context, guid: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val current = prefs.getStringSet(KEY_ADMIN_GUIDS, emptySet()) ?: emptySet()
+        return current.contains(guid)
+    }
 }
 
-// =======================================================
-// خوارزمية جلب التوقيت المضادة للتلاعب (تمنع إرجاع الوقت)
-// =======================================================
 object NetworkTime {
     var isInitialized = false
     private var networkTimeOffset: Long = 0L
@@ -151,9 +161,6 @@ object NetworkTime {
     }
 }
 
-// =======================================================
-// خوارزمية الاتصال بلوحة تحكم Cloudflare
-// =======================================================
 object CloudflareAPI {
     private const val BASE_URL = "https://vpn-license.rauter505.workers.dev"
     private const val ADMIN_KEY = "ashor_vip_admin_999"
