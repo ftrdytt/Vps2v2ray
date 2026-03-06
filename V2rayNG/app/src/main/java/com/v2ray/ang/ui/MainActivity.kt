@@ -350,17 +350,23 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     // ====================================================================
-    // لوحة تحكم الأدمن: واجهة تعديل وتمديد الوقت عن بُعد للملفات المشفرة
+    // لوحة تحكم الأدمن: تعديل وتمديد الوقت المركزي
     // ====================================================================
     fun showExtendLicenseDialog(guid: String) {
+        val licenseId = V2rayCrypt.getLicenseId(this, guid)
+        if (licenseId.isEmpty() || licenseId == "LEGACY") {
+            toastError("هذا الكود قديم ولا يدعم التمديد المركزي. يرجى إنشاء كود جديد.")
+            return
+        }
+
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(50, 40, 50, 40)
         }
 
         val titleView = TextView(this).apply {
-            text = "لوحة التحكم: تعديل الصلاحية"
-            textSize = 18f
+            text = "لوحة التحكم: تعديل الصلاحية للجميع"
+            textSize = 17f
             setTextColor(Color.parseColor("#4CAF50"))
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(0, 0, 0, 30)
@@ -394,7 +400,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         val builder = AlertDialog.Builder(this)
         builder.setView(layout)
-        builder.setPositiveButton("حفظ التعديل للجميع") { dialog, _ ->
+        builder.setPositiveButton("تمديد للجميع") { dialog, _ ->
             val m = monthsInput.text.toString().toLongOrNull() ?: 0L
             val d = daysInput.text.toString().toLongOrNull() ?: 0L
             val h = hoursInput.text.toString().toLongOrNull() ?: 0L
@@ -406,17 +412,21 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             if (totalDurationMs > 0L) {
                 val newExpiryTimeMs = NetworkTime.currentTimeMillis(this) + totalDurationMs
                 
-                // تحديث الوقت على السيرفر المركزي
                 showLoading()
                 lifecycleScope.launch(Dispatchers.IO) {
-                    val success = CloudflareAPI.updateExpiry(guid, newExpiryTimeMs)
+                    val success = CloudflareAPI.updateExpiry(licenseId, newExpiryTimeMs)
                     withContext(Dispatchers.Main) {
                         hideLoading()
                         if (success) {
-                            // تحديث الوقت محلياً أيضاً لكي يظهر لك فوراً
-                            V2rayCrypt.saveExpiryTime(this@MainActivity, guid, newExpiryTimeMs)
+                            // التحديث المحلي الشامل: نحدث كل الملفات التي تحمل نفس الـ LicenseID
+                            val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
+                            allProtected.forEach { pGuid ->
+                                if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) {
+                                    V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, newExpiryTimeMs)
+                                }
+                            }
                             toastSuccess("تم تمديد الوقت بنجاح لجميع المستخدمين!")
-                            mainViewModel.reloadServerList() // تحديث القائمة
+                            mainViewModel.reloadServerList() 
                         } else {
                             toastError("فشل الاتصال بلوحة التحكم السحابية.")
                         }
@@ -429,15 +439,19 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
         
         builder.setNeutralButton("إيقاف الكود فوراً") { dialog, _ ->
-            // إيقاف الكود بجعل وقته في الماضي
             showLoading()
             lifecycleScope.launch(Dispatchers.IO) {
                 val expiredTime = NetworkTime.currentTimeMillis(this@MainActivity) - 100000L
-                val success = CloudflareAPI.updateExpiry(guid, expiredTime)
+                val success = CloudflareAPI.updateExpiry(licenseId, expiredTime)
                 withContext(Dispatchers.Main) {
                     hideLoading()
                     if (success) {
-                        V2rayCrypt.saveExpiryTime(this@MainActivity, guid, expiredTime)
+                        val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
+                        allProtected.forEach { pGuid ->
+                            if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) {
+                                V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, expiredTime)
+                            }
+                        }
                         toastSuccess("تم إيقاف الكود وقطع الاتصال عن الجميع!")
                         mainViewModel.reloadServerList()
                     } else {
@@ -765,9 +779,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // =======================================================
-    // فحص الوقت من السيرفر السحابي عند التشغيل (Online Check)
-    // =======================================================
     private fun startV2Ray() {
         val selectedGuid = MmkvManager.getSelectServer()
         if (selectedGuid.isNullOrEmpty()) {
@@ -779,15 +790,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             applyRunningState(isLoading = true, isRunning = false)
             
             lifecycleScope.launch(Dispatchers.IO) {
-                // جلب الوقت الجديد من Cloudflare
-                val liveExpiry = CloudflareAPI.checkLiveExpiry(selectedGuid)
-                
-                // إذا تم جلب وقت جديد (السيرفر ليس معطلاً)، نقوم بتحديث الذاكرة
-                if (liveExpiry > 0L) {
-                    V2rayCrypt.saveExpiryTime(this@MainActivity, selectedGuid, liveExpiry)
+                val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, selectedGuid)
+                if (licenseId.isNotEmpty() && licenseId != "LEGACY") {
+                    val liveExpiry = CloudflareAPI.checkLiveExpiry(licenseId)
+                    
+                    if (liveExpiry >= 0L) { // 0 = محذوف/منتهي، >0 = رخصة ممددة
+                        // التحديث الشامل: تحديث كل الكودات المتشابهة في الهاتف
+                        val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
+                        allProtected.forEach { pGuid ->
+                            if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) {
+                                V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, liveExpiry)
+                            }
+                        }
+                    }
                 }
 
-                // التحقق من الانتهاء
+                // الفحص القاتل (يعتمد على التحديث المحلي أو السحابي الأخير)
                 val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, selectedGuid)
                 val isExpired = (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry)
 
@@ -800,7 +818,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             .setPositiveButton("حسناً", null)
                             .setIcon(android.R.drawable.ic_dialog_alert)
                             .show()
-                        // تحديث واجهة العداد التنازلي ليصبح أحمر فوراً
                         mainViewModel.reloadServerList()
                     } else {
                         V2RayServiceManager.startVService(this@MainActivity)
@@ -808,7 +825,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
         } else {
-            // السيرفرات العادية غير المحمية
             V2RayServiceManager.startVService(this)
         }
     }
@@ -897,6 +913,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             startTrafficMonitor()
             
             pingJob?.cancel()
+            var lastCloudflareCheck = 0L // لتقليل استهلاك Cloudflare
+
             pingJob = lifecycleScope.launch {
                 delay(1000) 
                 while (isActive) {
@@ -904,8 +922,26 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         mainViewModel.testCurrentServerRealPing()
                         
                         val guid = MmkvManager.getSelectServer().orEmpty()
-                        val expiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
+                        val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
                         
+                        // فحص خلفي لسيرفر Cloudflare كل 5 دقائق لمراقبة التمديد أو الحظر
+                        if (licenseId.isNotEmpty() && licenseId != "LEGACY") {
+                            if (System.currentTimeMillis() - lastCloudflareCheck > 5 * 60 * 1000L) {
+                                lastCloudflareCheck = System.currentTimeMillis()
+                                val liveExpiry = CloudflareAPI.checkLiveExpiry(licenseId)
+                                if (liveExpiry >= 0L) {
+                                    val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
+                                    allProtected.forEach { pGuid ->
+                                        if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) {
+                                            V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, liveExpiry)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // الحارس الآلي لقتل الاتصال
+                        val expiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
                         if (expiry > 0L) {
                             if (!NetworkTime.isInitialized) {
                                 NetworkTime.syncTime(this@MainActivity)
@@ -1029,7 +1065,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 toast("الحافظة فارغة!")
                 return false
             }
-            val result = V2rayCrypt.decryptAndCheckExpiry(this, clipboard)
+            val result = V2rayCrypt.decryptAndCheckExpiry(clipboard)
             if (result == null) {
                 toast("الكود المشفر غير صالح أو غير مدعوم!")
                 return false
@@ -1037,6 +1073,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             val decryptedData = result.first
             val expiryTimeMs = result.second
+            val licenseId = result.third
 
             if (expiryTimeMs > 0L && NetworkTime.currentTimeMillis(this) > expiryTimeMs) {
                 AlertDialog.Builder(this)
@@ -1047,7 +1084,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 return false
             }
 
-            importEncryptedBatchConfig(decryptedData, expiryTimeMs)
+            importEncryptedBatchConfig(decryptedData, expiryTimeMs, licenseId)
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to import encrypted config from clipboard", e)
             return false
@@ -1075,7 +1112,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 return
             }
             
-            val result = V2rayCrypt.decryptAndCheckExpiry(this, fileContent)
+            val result = V2rayCrypt.decryptAndCheckExpiry(fileContent)
             if (result == null) {
                 toast("الملف غير صالح أو ليس ملف .ashor صحيح!")
                 return
@@ -1083,6 +1120,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             val decryptedData = result.first
             val expiryTimeMs = result.second
+            val licenseId = result.third
 
             if (expiryTimeMs > 0L && NetworkTime.currentTimeMillis(this) > expiryTimeMs) {
                 AlertDialog.Builder(this)
@@ -1093,7 +1131,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 return
             }
 
-            importEncryptedBatchConfig(decryptedData, expiryTimeMs)
+            importEncryptedBatchConfig(decryptedData, expiryTimeMs, licenseId)
             
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to read encrypted content from URI", e)
@@ -1101,7 +1139,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    private fun importEncryptedBatchConfig(server: String?, expiryTimeMs: Long = 0L) {
+    private fun importEncryptedBatchConfig(server: String?, expiryTimeMs: Long = 0L, licenseId: String = "") {
         showLoading()
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -1114,12 +1152,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     
                     if (newGuids.isNotEmpty()) {
                         V2rayCrypt.addProtectedGuids(this@MainActivity, newGuids)
-                        if (expiryTimeMs > 0L) {
-                            newGuids.forEach { guid ->
+                        newGuids.forEach { guid ->
+                            if (expiryTimeMs > 0L) {
                                 V2rayCrypt.saveExpiryTime(this@MainActivity, guid, expiryTimeMs)
-                                
-                                // المزامنة مع كلاود فلير للمرة الأولى (لكي يتم حفظه في قاعدة البيانات السحابية)
-                                CloudflareAPI.updateExpiry(guid, expiryTimeMs)
+                            }
+                            if (licenseId.isNotEmpty()) {
+                                V2rayCrypt.saveLicenseId(this@MainActivity, guid, licenseId)
                             }
                         }
                     }
@@ -1165,146 +1203,4 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     hideLoading()
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { toastError(R.string.toast_failure); hideLoading() }
-                Log.e(AppConfig.TAG, "Failed to import batch config", e)
-            }
-        }
-    }
-
-    private fun importConfigLocal(): Boolean {
-        try { showFileChooser() } catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to import config from local file", e); return false }
-        return true
-    }
-
-    private fun importConfigViaSub(): Boolean {
-        showLoading()
-        lifecycleScope.launch(Dispatchers.IO) {
-            val count = mainViewModel.updateConfigViaSubAll()
-            delay(500L)
-            launch(Dispatchers.Main) {
-                if (count > 0) { toast(getString(R.string.title_update_config_count, count)); mainViewModel.reloadServerList() } 
-                else { toastError(R.string.toast_failure) }
-                hideLoading()
-            }
-        }
-        return true
-    }
-
-    private fun exportAll() {
-        showLoading()
-        lifecycleScope.launch(Dispatchers.IO) {
-            val ret = mainViewModel.exportAllServer()
-            launch(Dispatchers.Main) {
-                if (ret > 0) toast(getString(R.string.title_export_config_count, ret)) else toastError(R.string.toast_failure)
-                hideLoading()
-            }
-        }
-    }
-
-    private fun delAllConfig() {
-        AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                showLoading()
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val ret = mainViewModel.removeAllServer()
-                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_config_count, ret)); hideLoading() }
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null).show()
-    }
-
-    private fun delDuplicateConfig() {
-        AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                showLoading()
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val ret = mainViewModel.removeDuplicateServer()
-                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_duplicate_config_count, ret)); hideLoading() }
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null).show()
-    }
-
-    private fun delInvalidConfig() {
-        AlertDialog.Builder(this).setMessage(R.string.del_invalid_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                showLoading()
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val ret = mainViewModel.removeInvalidServer()
-                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_config_count, ret)); hideLoading() }
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null).show()
-    }
-
-    private fun sortByTestResults() {
-        showLoading()
-        lifecycleScope.launch(Dispatchers.IO) {
-            mainViewModel.sortByTestResults()
-            launch(Dispatchers.Main) { mainViewModel.reloadServerList(); hideLoading() }
-        }
-    }
-
-    private fun showFileChooser() {
-        launchFileChooser { uri -> if (uri != null) readContentFromUri(uri) }
-    }
-
-    private fun readContentFromUri(uri: Uri) {
-        try { contentResolver.openInputStream(uri).use { input -> importBatchConfig(input?.bufferedReader()?.readText()) } } 
-        catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to read content from URI", e) }
-    }
-
-    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_BUTTON_B) { moveTaskToBack(false); return true }
-        return super.onKeyDown(keyCode, event)
-    }
-
-    override fun onNavigationItemSelected(item: MenuItem): Boolean {
-        when (item.itemId) {
-            R.id.sub_setting -> requestActivityLauncher.launch(Intent(this, SubSettingActivity::class.java))
-            R.id.per_app_proxy_settings -> requestActivityLauncher.launch(Intent(this, PerAppProxyActivity::class.java))
-            R.id.routing_setting -> requestActivityLauncher.launch(Intent(this, RoutingSettingActivity::class.java))
-            R.id.user_asset_setting -> requestActivityLauncher.launch(Intent(this, UserAssetActivity::class.java))
-            R.id.settings -> requestActivityLauncher.launch(Intent(this, SettingsActivity::class.java))
-            R.id.promotion -> Utils.openUri(this, "${Utils.decode(AppConfig.APP_PROMOTION_URL)}?t=${System.currentTimeMillis()}")
-            R.id.logcat -> startActivity(Intent(this, LogcatActivity::class.java))
-            R.id.check_for_update -> startActivity(Intent(this, CheckUpdateActivity::class.java))
-            R.id.backup_restore -> requestActivityLauncher.launch(Intent(this, BackupActivity::class.java))
-            R.id.about -> startActivity(Intent(this, AboutActivity::class.java))
-        }
-        binding.drawerLayout.closeDrawer(GravityCompat.START)
-        return true
-    }
-
-    override fun onSelectServer(guid: String) {
-        MmkvManager.setSelectServer(guid)
-        toast(R.string.toast_success)
-        groupPagerAdapter.notifyDataSetChanged()
-    }
-
-    override fun onEdit(guid: String, position: Int, profile: ProfileItem) {}
-
-    override fun onRemove(guid: String, position: Int) {
-        AlertDialog.Builder(this)
-            .setMessage(R.string.del_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                mainViewModel.removeServer(guid)
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
-    
-    override fun onShare(guid: String, profile: ProfileItem, position: Int, isMore: Boolean) {}
-    override fun onEdit(guid: String, position: Int) {}
-    override fun onShare(url: String) {}
-    override fun onRefreshData() {}
-
-    override fun onDestroy() {
-        tabMediator?.detach()
-        pingJob?.cancel() 
-        trafficJob?.cancel()
-        speedTestJob?.cancel()
-        resetSpeedButtonJob?.cancel()
-        super.onDestroy()
-    }
-}
+                withContext(Dispatche
