@@ -5,6 +5,10 @@ import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 import kotlin.math.max
@@ -78,7 +82,7 @@ object V2rayCrypt {
 }
 
 // =======================================================
-// خوارزمية جلب التوقيت المضادة للتلاعب (Anti-Rewind Time)
+// خوارزمية جلب التوقيت المضادة للتلاعب
 // =======================================================
 object NetworkTime {
     var isInitialized = false
@@ -89,9 +93,8 @@ object NetworkTime {
     suspend fun syncTime(context: Context) {
         withContext(Dispatchers.IO) {
             try {
-                // نستخدم سيرفر Cloudflare السريع جداً للحصول على استجابة في أجزاء من الثانية
-                val url = java.net.URL("http://cp.cloudflare.com/generate_204")
-                val connection = url.openConnection() as java.net.HttpURLConnection
+                val url = URL("http://cp.cloudflare.com/generate_204")
+                val connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "HEAD"
                 connection.connectTimeout = 3000
                 connection.readTimeout = 3000
@@ -102,7 +105,6 @@ object NetworkTime {
                     networkTimeOffset = serverTime - android.os.SystemClock.elapsedRealtime()
                     isInitialized = true
                     
-                    // السحر 1: حفظ التوقيت الحقيقي لمنع المستخدم من العودة للماضي
                     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                     prefs.edit().putLong(KEY_LAST_TIME, serverTime).apply()
                 }
@@ -122,15 +124,69 @@ object NetworkTime {
             System.currentTimeMillis() 
         }
         
-        // السحر 2: نأخذ دائماً الوقت (الأكبر) بين الوقت الحالي وآخر وقت محفوظ.
-        // هذا يعني أنه من المستحيل إرجاع التاريخ للوراء حتى لو أطفأ الإنترنت!
         val finalTime = max(calculatedTime, lastTrusted)
         
-        // تحديث الذاكرة السرية للوقت باستمرار
         if (finalTime > lastTrusted + 60000) {
             prefs.edit().putLong(KEY_LAST_TIME, finalTime).apply()
         }
         
         return finalTime
+    }
+}
+
+// =======================================================
+// خوارزمية الاتصال بلوحة تحكم Cloudflare الخاصة بك
+// =======================================================
+object CloudflareAPI {
+    // رابط سيرفرك الذي صنعته للتو!
+    private const val BASE_URL = "https://vpn-license.rauter505.workers.dev"
+    private const val ADMIN_KEY = "ashor_vip_admin_999" // الباسورد السري
+
+    // فحص الوقت المتبقي للمستخدم من الإنترنت
+    suspend fun checkLiveExpiry(guid: String): Long {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("$BASE_URL/check?guid=$guid")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                
+                if (conn.responseCode == 200) {
+                    val reader = BufferedReader(InputStreamReader(conn.inputStream))
+                    val response = reader.readText()
+                    // استخراج الوقت من الرد
+                    val match = "\"expiryTime\":\\s*(\\d+)".toRegex().find(response)
+                    match?.groupValues?.get(1)?.toLong() ?: -1L
+                } else {
+                    -1L // خطأ
+                }
+            } catch (e: Exception) {
+                -1L // في حال عدم وجود انترنت نعتمد على الوقت المحلي
+            }
+        }
+    }
+
+    // إرسال أمر التمديد (لوحة التحكم)
+    suspend fun updateExpiry(guid: String, newExpiryMs: Long): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("$BASE_URL/update")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Admin-Key", ADMIN_KEY)
+                conn.doOutput = true
+
+                val jsonInputString = "{\"guid\": \"$guid\", \"expiryTime\": $newExpiryMs}"
+                conn.outputStream.use { os ->
+                    val input = jsonInputString.toByteArray(Charsets.UTF_8)
+                    os.write(input, 0, input.size)
+                }
+
+                conn.responseCode == 200
+            } catch (e: Exception) {
+                false
+            }
+        }
     }
 }
