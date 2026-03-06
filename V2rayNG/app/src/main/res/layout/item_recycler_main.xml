@@ -186,6 +186,22 @@
                         android:orientation="horizontal">
 
                         <LinearLayout
+                            android:id="@+id/layout_admin_control"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:visibility="gone"
+                            android:padding="6dp">
+                            <ImageView
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                android:src="@android:drawable/ic_menu_recent_history"
+                                app:tint="#2196F3" />
+                        </LinearLayout>
+
+                        <LinearLayout
                             android:id="@+id/layout_share"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
