@@ -14,17 +14,19 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.math.max
 
 // =======================================================
-// خوارزمية التشفير والقائمة السرية
+// خوارزمية التشفير والرخص الموحدة (License ID)
 // =======================================================
 object V2rayCrypt {
     private const val SECRET_KEY = "DarkTunlKey12345" 
     private const val PREFS_NAME = "V2rayProtectedConfigs"
     private const val KEY_GUIDS = "ProtectedGuids"
     private const val KEY_EXPIRY_PREFIX = "Expiry_"
+    private const val KEY_LICENSE_PREFIX = "License_"
 
-    fun encrypt(data: String, expiryTimeMs: Long): String {
+    // دمج وقت الانتهاء ورقم الرخصة الموحد داخل التشفير
+    fun encrypt(data: String, expiryTimeMs: Long, licenseId: String): String {
         return try {
-            val payload = "$expiryTimeMs||$data"
+            val payload = "$expiryTimeMs||$licenseId||$data"
             val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
             val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
             cipher.init(Cipher.ENCRYPT_MODE, keySpec)
@@ -35,7 +37,8 @@ object V2rayCrypt {
         }
     }
 
-    fun decryptAndCheckExpiry(context: Context, data: String): Pair<String, Long>? {
+    // استخراج الداتا والوقت ورقم الرخصة
+    fun decryptAndCheckExpiry(data: String): Triple<String, Long, String>? {
         return try {
             if (!data.startsWith("ENC://")) return null
             val actualData = data.replace("ENC://", "")
@@ -45,11 +48,17 @@ object V2rayCrypt {
             val decryptedBytes = cipher.doFinal(Base64.decode(actualData, Base64.NO_WRAP))
             val decryptedString = String(decryptedBytes)
 
-            val parts = decryptedString.split("||", limit = 2)
-            if (parts.size == 2) {
+            val parts = decryptedString.split("||", limit = 3)
+            if (parts.size == 3) {
+                val expiryTimeMs = parts[0].toLongOrNull() ?: 0L
+                val licenseId = parts[1]
+                val configData = parts[2]
+                return Triple(configData, expiryTimeMs, licenseId)
+            } else if (parts.size == 2) {
+                // لدعم الملفات التي أنشأتها قبل قليل (التوافقية)
                 val expiryTimeMs = parts[0].toLongOrNull() ?: 0L
                 val configData = parts[1]
-                return Pair(configData, expiryTimeMs)
+                return Triple(configData, expiryTimeMs, "LEGACY")
             }
             null
         } catch (e: Exception) {
@@ -67,6 +76,16 @@ object V2rayCrypt {
         return prefs.getLong(KEY_EXPIRY_PREFIX + guid, 0L)
     }
 
+    fun saveLicenseId(context: Context, guid: String, licenseId: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_LICENSE_PREFIX + guid, licenseId).apply()
+    }
+
+    fun getLicenseId(context: Context, guid: String): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_LICENSE_PREFIX + guid, "") ?: ""
+    }
+
     fun addProtectedGuids(context: Context, newGuids: Set<String>) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val current = prefs.getStringSet(KEY_GUIDS, mutableSetOf()) ?: mutableSetOf()
@@ -74,15 +93,18 @@ object V2rayCrypt {
         prefs.edit().putStringSet(KEY_GUIDS, updated).apply()
     }
 
-    fun isProtected(context: Context, guid: String): Boolean {
+    fun getAllProtectedGuids(context: Context): Set<String> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val current = prefs.getStringSet(KEY_GUIDS, emptySet()) ?: emptySet()
-        return current.contains(guid)
+        return prefs.getStringSet(KEY_GUIDS, emptySet()) ?: emptySet()
+    }
+
+    fun isProtected(context: Context, guid: String): Boolean {
+        return getAllProtectedGuids(context).contains(guid)
     }
 }
 
 // =======================================================
-// خوارزمية جلب التوقيت المضادة للتلاعب
+// خوارزمية جلب التوقيت المضادة للتلاعب (تمنع إرجاع الوقت)
 // =======================================================
 object NetworkTime {
     var isInitialized = false
@@ -104,7 +126,6 @@ object NetworkTime {
                 if (serverTime > 0) {
                     networkTimeOffset = serverTime - android.os.SystemClock.elapsedRealtime()
                     isInitialized = true
-                    
                     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                     prefs.edit().putLong(KEY_LAST_TIME, serverTime).apply()
                 }
@@ -117,36 +138,30 @@ object NetworkTime {
     fun currentTimeMillis(context: Context): Long {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val lastTrusted = prefs.getLong(KEY_LAST_TIME, 0L)
-        
         val calculatedTime = if (isInitialized) {
             android.os.SystemClock.elapsedRealtime() + networkTimeOffset
         } else {
             System.currentTimeMillis() 
         }
-        
         val finalTime = max(calculatedTime, lastTrusted)
-        
         if (finalTime > lastTrusted + 60000) {
             prefs.edit().putLong(KEY_LAST_TIME, finalTime).apply()
         }
-        
         return finalTime
     }
 }
 
 // =======================================================
-// خوارزمية الاتصال بلوحة تحكم Cloudflare الخاصة بك
+// خوارزمية الاتصال بلوحة تحكم Cloudflare
 // =======================================================
 object CloudflareAPI {
-    // رابط سيرفرك الذي صنعته للتو!
     private const val BASE_URL = "https://vpn-license.rauter505.workers.dev"
-    private const val ADMIN_KEY = "ashor_vip_admin_999" // الباسورد السري
+    private const val ADMIN_KEY = "ashor_vip_admin_999"
 
-    // فحص الوقت المتبقي للمستخدم من الإنترنت
-    suspend fun checkLiveExpiry(guid: String): Long {
+    suspend fun checkLiveExpiry(licenseId: String): Long {
         return withContext(Dispatchers.IO) {
             try {
-                val url = URL("$BASE_URL/check?guid=$guid")
+                val url = URL("$BASE_URL/check?guid=$licenseId")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 5000
                 conn.readTimeout = 5000
@@ -154,20 +169,18 @@ object CloudflareAPI {
                 if (conn.responseCode == 200) {
                     val reader = BufferedReader(InputStreamReader(conn.inputStream))
                     val response = reader.readText()
-                    // استخراج الوقت من الرد
                     val match = "\"expiryTime\":\\s*(\\d+)".toRegex().find(response)
                     match?.groupValues?.get(1)?.toLong() ?: -1L
                 } else {
-                    -1L // خطأ
+                    -1L 
                 }
             } catch (e: Exception) {
-                -1L // في حال عدم وجود انترنت نعتمد على الوقت المحلي
+                -1L 
             }
         }
     }
 
-    // إرسال أمر التمديد (لوحة التحكم)
-    suspend fun updateExpiry(guid: String, newExpiryMs: Long): Boolean {
+    suspend fun updateExpiry(licenseId: String, newExpiryMs: Long): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val url = URL("$BASE_URL/update")
@@ -177,12 +190,11 @@ object CloudflareAPI {
                 conn.setRequestProperty("Admin-Key", ADMIN_KEY)
                 conn.doOutput = true
 
-                val jsonInputString = "{\"guid\": \"$guid\", \"expiryTime\": $newExpiryMs}"
+                val jsonInputString = "{\"guid\": \"$licenseId\", \"expiryTime\": $newExpiryMs}"
                 conn.outputStream.use { os ->
                     val input = jsonInputString.toByteArray(Charsets.UTF_8)
                     os.write(input, 0, input.size)
                 }
-
                 conn.responseCode == 200
             } catch (e: Exception) {
                 false
