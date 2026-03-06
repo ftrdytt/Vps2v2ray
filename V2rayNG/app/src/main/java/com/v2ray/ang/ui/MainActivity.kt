@@ -10,7 +10,9 @@ import android.net.TrafficStats
 import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
+import android.text.InputType
 import android.util.Log
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
@@ -18,6 +20,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -50,6 +53,7 @@ import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
+import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
@@ -59,6 +63,7 @@ import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.MainViewModel
 import com.v2ray.ang.handler.NetworkTime
 import com.v2ray.ang.handler.V2rayCrypt
+import com.v2ray.ang.handler.CloudflareAPI
 import kotlinx.coroutines.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -343,6 +348,109 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
         bottomSheetDialog.show()
     }
+
+    // ====================================================================
+    // لوحة تحكم الأدمن: واجهة تعديل وتمديد الوقت عن بُعد للملفات المشفرة
+    // ====================================================================
+    fun showExtendLicenseDialog(guid: String) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(50, 40, 50, 40)
+        }
+
+        val titleView = TextView(this).apply {
+            text = "لوحة التحكم: تعديل الصلاحية"
+            textSize = 18f
+            setTextColor(Color.parseColor("#4CAF50"))
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(0, 0, 0, 30)
+            gravity = Gravity.CENTER
+        }
+        layout.addView(titleView)
+
+        val monthsInput = EditText(this).apply {
+            hint = "إضافة/تعديل الأشهر"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.BLACK) 
+        }
+        layout.addView(monthsInput)
+
+        val daysInput = EditText(this).apply {
+            hint = "إضافة/تعديل الأيام"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.BLACK)
+        }
+        layout.addView(daysInput)
+
+        val hoursInput = EditText(this).apply {
+            hint = "إضافة/تعديل الساعات"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.BLACK)
+        }
+        layout.addView(hoursInput)
+
+        val builder = AlertDialog.Builder(this)
+        builder.setView(layout)
+        builder.setPositiveButton("حفظ التعديل للجميع") { dialog, _ ->
+            val m = monthsInput.text.toString().toLongOrNull() ?: 0L
+            val d = daysInput.text.toString().toLongOrNull() ?: 0L
+            val h = hoursInput.text.toString().toLongOrNull() ?: 0L
+
+            val totalDurationMs = (m * 30L * 24L * 60L * 60L * 1000L) + 
+                                  (d * 24L * 60L * 60L * 1000L) + 
+                                  (h * 60L * 60L * 1000L)
+
+            if (totalDurationMs > 0L) {
+                val newExpiryTimeMs = NetworkTime.currentTimeMillis(this) + totalDurationMs
+                
+                // تحديث الوقت على السيرفر المركزي
+                showLoading()
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val success = CloudflareAPI.updateExpiry(guid, newExpiryTimeMs)
+                    withContext(Dispatchers.Main) {
+                        hideLoading()
+                        if (success) {
+                            // تحديث الوقت محلياً أيضاً لكي يظهر لك فوراً
+                            V2rayCrypt.saveExpiryTime(this@MainActivity, guid, newExpiryTimeMs)
+                            toastSuccess("تم تمديد الوقت بنجاح لجميع المستخدمين!")
+                            mainViewModel.reloadServerList() // تحديث القائمة
+                        } else {
+                            toastError("فشل الاتصال بلوحة التحكم السحابية.")
+                        }
+                    }
+                }
+            } else {
+                toastError("الرجاء إدخال وقت صحيح")
+            }
+            dialog.dismiss()
+        }
+        
+        builder.setNeutralButton("إيقاف الكود فوراً") { dialog, _ ->
+            // إيقاف الكود بجعل وقته في الماضي
+            showLoading()
+            lifecycleScope.launch(Dispatchers.IO) {
+                val expiredTime = NetworkTime.currentTimeMillis(this@MainActivity) - 100000L
+                val success = CloudflareAPI.updateExpiry(guid, expiredTime)
+                withContext(Dispatchers.Main) {
+                    hideLoading()
+                    if (success) {
+                        V2rayCrypt.saveExpiryTime(this@MainActivity, guid, expiredTime)
+                        toastSuccess("تم إيقاف الكود وقطع الاتصال عن الجميع!")
+                        mainViewModel.reloadServerList()
+                    } else {
+                        toastError("فشل الاتصال.")
+                    }
+                }
+            }
+        }
+        
+        builder.setNegativeButton("إلغاء") { dialog, _ -> dialog.cancel() }
+        builder.show()
+    }
+    // ====================================================================
 
     private fun runSpeedTest() {
         val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
@@ -657,6 +765,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    // =======================================================
+    // فحص الوقت من السيرفر السحابي عند التشغيل (Online Check)
+    // =======================================================
     private fun startV2Ray() {
         val selectedGuid = MmkvManager.getSelectServer()
         if (selectedGuid.isNullOrEmpty()) {
@@ -664,19 +775,42 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             return
         }
 
-        val expiryTime = V2rayCrypt.getExpiryTime(this, selectedGuid)
-        if (expiryTime > 0L && NetworkTime.currentTimeMillis(this) > expiryTime) {
-            applyRunningState(isLoading = false, isRunning = false)
-            AlertDialog.Builder(this)
-                .setTitle("تنبيه أمني")
-                .setMessage("عذراً، التكوين المحدد منتهي الصلاحية. الرجاء الحصول على تكوين جديد.")
-                .setPositiveButton("حسناً", null)
-                .setIcon(android.R.drawable.ic_dialog_alert)
-                .show()
-            return
-        }
+        if (V2rayCrypt.isProtected(this, selectedGuid)) {
+            applyRunningState(isLoading = true, isRunning = false)
+            
+            lifecycleScope.launch(Dispatchers.IO) {
+                // جلب الوقت الجديد من Cloudflare
+                val liveExpiry = CloudflareAPI.checkLiveExpiry(selectedGuid)
+                
+                // إذا تم جلب وقت جديد (السيرفر ليس معطلاً)، نقوم بتحديث الذاكرة
+                if (liveExpiry > 0L) {
+                    V2rayCrypt.saveExpiryTime(this@MainActivity, selectedGuid, liveExpiry)
+                }
 
-        V2RayServiceManager.startVService(this)
+                // التحقق من الانتهاء
+                val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, selectedGuid)
+                val isExpired = (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry)
+
+                withContext(Dispatchers.Main) {
+                    if (isExpired) {
+                        applyRunningState(isLoading = false, isRunning = false)
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("تنبيه أمني")
+                            .setMessage("عذراً، التكوين المحدد منتهي الصلاحية. الرجاء الحصول على تكوين جديد أو الاتصال بالدعم للتمديد.")
+                            .setPositiveButton("حسناً", null)
+                            .setIcon(android.R.drawable.ic_dialog_alert)
+                            .show()
+                        // تحديث واجهة العداد التنازلي ليصبح أحمر فوراً
+                        mainViewModel.reloadServerList()
+                    } else {
+                        V2RayServiceManager.startVService(this@MainActivity)
+                    }
+                }
+            }
+        } else {
+            // السيرفرات العادية غير المحمية
+            V2RayServiceManager.startVService(this)
+        }
     }
 
     fun restartV2Ray() {
@@ -769,7 +903,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     try {
                         mainViewModel.testCurrentServerRealPing()
                         
-                        // الحارس الآلي: يقوم بالتحقق الصارم والمستمر
                         val guid = MmkvManager.getSelectServer().orEmpty()
                         val expiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
                         
@@ -787,7 +920,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                         .setCancelable(false)
                                         .show()
                                 }
-                                cancel() // تدمير حلقة الفحص بعد الإيقاف
+                                cancel() 
                             }
                         }
                     } catch (e: Exception) {
@@ -984,6 +1117,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         if (expiryTimeMs > 0L) {
                             newGuids.forEach { guid ->
                                 V2rayCrypt.saveExpiryTime(this@MainActivity, guid, expiryTimeMs)
+                                
+                                // المزامنة مع كلاود فلير للمرة الأولى (لكي يتم حفظه في قاعدة البيانات السحابية)
+                                CloudflareAPI.updateExpiry(guid, expiryTimeMs)
                             }
                         }
                     }
@@ -1146,13 +1282,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         groupPagerAdapter.notifyDataSetChanged()
     }
 
-    override fun onEdit(guid: String, position: Int, profile: ProfileItem) {
-        if (!V2rayCrypt.isProtected(this, guid)) {
-            startActivity(Intent().putExtra("guid", guid).putExtra("subscriptionId", profile.subscriptionId).setClass(this, ServerActivity::class.java))
-        } else {
-            toast("هذا السيرفر محمي ولا يمكن تعديله")
-        }
-    }
+    override fun onEdit(guid: String, position: Int, profile: ProfileItem) {}
 
     override fun onRemove(guid: String, position: Int) {
         AlertDialog.Builder(this)
