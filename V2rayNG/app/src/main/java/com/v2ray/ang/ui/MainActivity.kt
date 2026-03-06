@@ -357,9 +357,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         bottomSheetDialog.show()
     }
 
-    // ====================================================================
-    // لوحة تحكم الأدمن: تعديل وتمديد الوقت المركزي
-    // ====================================================================
     fun showExtendLicenseDialog(guid: String) {
         val licenseId = V2rayCrypt.getLicenseId(this, guid)
         if (licenseId.isEmpty() || licenseId == "LEGACY") {
@@ -432,6 +429,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                     V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, newExpiryTimeMs)
                                 }
                             }
+                            // تحديث الأدمن أيضاً
+                            V2rayCrypt.saveExpiryTime(this@MainActivity, guid, newExpiryTimeMs)
+                            
                             toastSuccess("تم تمديد الوقت بنجاح لجميع المستخدمين!")
                             mainViewModel.reloadServerList() 
                         } else {
@@ -459,6 +459,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, expiredTime)
                             }
                         }
+                        V2rayCrypt.saveExpiryTime(this@MainActivity, guid, expiredTime)
                         toastSuccess("تم إيقاف الكود وقطع الاتصال عن الجميع!")
                         mainViewModel.reloadServerList()
                     } else {
@@ -471,7 +472,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         builder.setNegativeButton("إلغاء") { dialog, _ -> dialog.cancel() }
         builder.show()
     }
-    // ====================================================================
 
     private fun runSpeedTest() {
         val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
@@ -786,6 +786,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    // السماح بالاتصال حتى لو كان منتهي لكي يتمكن من التحديث
     private fun startV2Ray() {
         val selectedGuid = MmkvManager.getSelectServer()
         if (selectedGuid.isNullOrEmpty()) {
@@ -793,45 +794,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             return
         }
 
-        if (V2rayCrypt.isProtected(this, selectedGuid)) {
-            applyRunningState(isLoading = true, isRunning = false)
-            
-            lifecycleScope.launch(Dispatchers.IO) {
-                val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, selectedGuid)
-                if (licenseId.isNotEmpty() && licenseId != "LEGACY") {
-                    val liveExpiry = CloudflareAPI.checkLiveExpiry(licenseId)
-                    
-                    if (liveExpiry >= 0L) {
-                        val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
-                        allProtected.forEach { pGuid ->
-                            if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) {
-                                V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, liveExpiry)
-                            }
-                        }
-                    }
-                }
-
-                val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, selectedGuid)
-                val isExpired = (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry)
-
-                withContext(Dispatchers.Main) {
-                    if (isExpired) {
-                        applyRunningState(isLoading = false, isRunning = false)
-                        AlertDialog.Builder(this@MainActivity)
-                            .setTitle("تنبيه أمني")
-                            .setMessage("عذراً، التكوين المحدد منتهي الصلاحية. الرجاء الحصول على تكوين جديد أو الاتصال بالدعم للتمديد.")
-                            .setPositiveButton("حسناً", null)
-                            .setIcon(android.R.drawable.ic_dialog_alert)
-                            .show()
-                        mainViewModel.reloadServerList()
-                    } else {
-                        V2RayServiceManager.startVService(this@MainActivity)
-                    }
-                }
-            }
-        } else {
-            V2RayServiceManager.startVService(this)
-        }
+        // نحن لا نمنعه من التشغيل هنا، بل نتركه يتصل بالسيرفر أولاً
+        // لكي يأخذ إنترنت مجاني ويستطيع التواصل مع Cloudflare للتحديث.
+        // وسنقوم بعمل الفحص الصارم داخل الـ pingJob بعد نجاح الاتصال!
+        
+        V2RayServiceManager.startVService(this)
     }
 
     fun restartV2Ray() {
@@ -928,9 +895,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         
                         val guid = MmkvManager.getSelectServer().orEmpty()
                         val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
+                        val isProtected = V2rayCrypt.isProtected(this@MainActivity, guid)
+                        val isAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid)
                         
-                        if (licenseId.isNotEmpty() && licenseId != "LEGACY") {
-                            if (System.currentTimeMillis() - lastCloudflareCheck > 5 * 60 * 1000L) {
+                        // فحص الوقت من كلاود فلير أثناء الاتصال لكي نرى إذا قام الأدمن بالتمديد
+                        if (licenseId.isNotEmpty() && licenseId != "LEGACY" && (isProtected || isAdmin)) {
+                            // يفحص كلاود فلير كل دقيقة واحدة للتأكد
+                            if (System.currentTimeMillis() - lastCloudflareCheck > 60000L) {
                                 lastCloudflareCheck = System.currentTimeMillis()
                                 val liveExpiry = CloudflareAPI.checkLiveExpiry(licenseId)
                                 if (liveExpiry >= 0L) {
@@ -940,16 +911,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                             V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, liveExpiry)
                                         }
                                     }
+                                    if (isAdmin) {
+                                        V2rayCrypt.saveExpiryTime(this@MainActivity, guid, liveExpiry)
+                                    }
                                 }
                             }
-                        }
 
-                        val expiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
-                        if (expiry > 0L) {
-                            if (!NetworkTime.isInitialized) {
-                                NetworkTime.syncTime(this@MainActivity)
-                            }
-                            if (NetworkTime.currentTimeMillis(this@MainActivity) > expiry) {
+                            // التحقق القاطع للوقت
+                            val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
+                            if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
                                 withContext(Dispatchers.Main) {
                                     V2RayServiceManager.stopVService(this@MainActivity)
                                     AlertDialog.Builder(this@MainActivity)
@@ -958,6 +928,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                         .setPositiveButton("حسناً", null)
                                         .setCancelable(false)
                                         .show()
+                                    mainViewModel.reloadServerList()
                                 }
                                 cancel() 
                             }
@@ -1078,15 +1049,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val expiryTimeMs = result.second
             val licenseId = result.third
 
-            if (expiryTimeMs > 0L && NetworkTime.currentTimeMillis(this) > expiryTimeMs) {
-                AlertDialog.Builder(this)
-                    .setTitle("تنبيه أمني")
-                    .setMessage("عذراً، هذا التكوين منتهي الصلاحية ولا يمكن إضافته.")
-                    .setPositiveButton("حسناً", null)
-                    .show()
-                return false
-            }
-
             importEncryptedBatchConfig(decryptedData, expiryTimeMs, licenseId)
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to import encrypted config from clipboard", e)
@@ -1124,15 +1086,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val decryptedData = result.first
             val expiryTimeMs = result.second
             val licenseId = result.third
-
-            if (expiryTimeMs > 0L && NetworkTime.currentTimeMillis(this) > expiryTimeMs) {
-                AlertDialog.Builder(this)
-                    .setTitle("تنبيه أمني")
-                    .setMessage("عذراً، ملف التكوين هذا منتهي الصلاحية.")
-                    .setPositiveButton("حسناً", null)
-                    .show()
-                return
-            }
 
             importEncryptedBatchConfig(decryptedData, expiryTimeMs, licenseId)
             
