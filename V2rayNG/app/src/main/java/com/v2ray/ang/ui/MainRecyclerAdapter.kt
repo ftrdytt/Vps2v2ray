@@ -93,7 +93,7 @@ class MainRecyclerAdapter(
                 
                 holder.countdownJob = coroutineScope.launch {
                     while (isActive) {
-                        val currentTime = NetworkTime.currentTimeMillis()
+                        val currentTime = NetworkTime.currentTimeMillis(context)
                         val diffMs = expiryTime - currentTime
                         
                         if (diffMs > 0L) {
