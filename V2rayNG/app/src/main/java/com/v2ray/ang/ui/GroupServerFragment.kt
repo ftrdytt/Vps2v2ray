@@ -300,14 +300,13 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             }
 
             showCustomExpiryDialog { expiryTime ->
-                // إنشاء License ID موحد لهذا الملف
                 val licenseId = "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16)
                 
-                ownerActivity.showLoading()
+                ownerActivity.showLoadingDialog()
                 ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
                     val uploaded = CloudflareAPI.updateExpiry(licenseId, expiryTime)
                     withContext(Dispatchers.Main) {
-                        ownerActivity.hideLoading()
+                        ownerActivity.hideLoadingDialog()
                         if (uploaded) {
                             val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, licenseId)
                             if (encryptedConf.isNotEmpty()) {
@@ -348,11 +347,11 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             showCustomExpiryDialog { expiryTime ->
                 val licenseId = "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16)
                 
-                ownerActivity.showLoading()
+                ownerActivity.showLoadingDialog()
                 ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
                     val uploaded = CloudflareAPI.updateExpiry(licenseId, expiryTime)
                     withContext(Dispatchers.Main) {
-                        ownerActivity.hideLoading()
+                        ownerActivity.hideLoadingDialog()
                         if (uploaded) {
                             val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, licenseId)
                             if (encryptedConf.isNotEmpty()) {
