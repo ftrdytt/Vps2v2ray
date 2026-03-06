@@ -62,12 +62,19 @@ class MainRecyclerAdapter(
             holder.itemView.setBackgroundColor(Color.TRANSPARENT)
             holder.itemMainBinding.tvName.text = profile.remarks
             
+            // تحديد نوع الملف
             val isProtected = V2rayCrypt.isProtected(context, guid)
+            val isAdmin = V2rayCrypt.isAdmin(context, guid)
 
-            if (isProtected) {
+            if (isProtected && !isAdmin) {
                 holder.itemMainBinding.tvStatistics.visibility = View.GONE
                 holder.itemMainBinding.tvType.text = "Secure Config" 
                 (holder.itemMainBinding.tvType.parent as? androidx.cardview.widget.CardView)?.setCardBackgroundColor(Color.parseColor("#D32F2F"))
+            } else if (isAdmin) {
+                holder.itemMainBinding.tvStatistics.visibility = View.VISIBLE
+                holder.itemMainBinding.tvStatistics.text = getAddress(profile)
+                holder.itemMainBinding.tvType.text = "Admin Panel"
+                (holder.itemMainBinding.tvType.parent as? androidx.cardview.widget.CardView)?.setCardBackgroundColor(Color.parseColor("#2196F3"))
             } else {
                 holder.itemMainBinding.tvStatistics.visibility = View.VISIBLE
                 holder.itemMainBinding.tvStatistics.text = getAddress(profile)
@@ -88,7 +95,7 @@ class MainRecyclerAdapter(
             
             holder.countdownJob?.cancel()
 
-            if (isProtected && expiryTime > 0L) {
+            if ((isProtected || isAdmin) && expiryTime > 0L) {
                 tvExpiry?.visibility = View.VISIBLE
                 
                 holder.countdownJob = coroutineScope.launch {
@@ -123,6 +130,7 @@ class MainRecyclerAdapter(
 
             val lottieVerified = holder.itemMainBinding.root.findViewById<com.airbnb.lottie.LottieAnimationView>(R.id.lottie_verified)
             val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
+            val layoutAdminControl = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_admin_control)
 
             if (guid == MmkvManager.getSelectServer()) {
                 holder.itemMainBinding.layoutIndicator.visibility = View.VISIBLE
@@ -144,34 +152,45 @@ class MainRecyclerAdapter(
                 holder.itemMainBinding.layoutShare.visibility = View.GONE
                 holder.itemMainBinding.layoutEdit.visibility = View.GONE
                 holder.itemMainBinding.layoutRemove.visibility = View.GONE
+                layoutAdminControl?.visibility = View.GONE
                 holder.itemMainBinding.layoutMore.visibility = View.VISIBLE
 
                 holder.itemMainBinding.layoutMore.setOnClickListener {
                     adapterListener?.onShare(guid, profile, position, true)
                 }
             } else {
-                holder.itemMainBinding.layoutShare.visibility = View.VISIBLE
-                holder.itemMainBinding.layoutRemove.visibility = View.VISIBLE
                 holder.itemMainBinding.layoutMore.visibility = View.GONE
 
-                // السحر: جعلنا زر التعديل (القلم) يظهر دائماً
-                holder.itemMainBinding.layoutEdit.visibility = View.VISIBLE
+                // التحكم بالأزرار (السحر)
+                if (isProtected && !isAdmin) {
+                    // العميل: إخفاء المشاركة، التعديل، والأدمن
+                    holder.itemMainBinding.layoutShare.visibility = View.GONE
+                    holder.itemMainBinding.layoutEdit.visibility = View.GONE
+                    layoutAdminControl?.visibility = View.GONE
+                } else if (isAdmin) {
+                    // الأدمن: إظهار التعديل، المشاركة، وساعة الأدمن الزرقاء
+                    holder.itemMainBinding.layoutShare.visibility = View.VISIBLE
+                    holder.itemMainBinding.layoutEdit.visibility = View.VISIBLE
+                    layoutAdminControl?.visibility = View.VISIBLE
+                } else {
+                    // العادي
+                    holder.itemMainBinding.layoutShare.visibility = View.VISIBLE
+                    holder.itemMainBinding.layoutEdit.visibility = View.VISIBLE
+                    layoutAdminControl?.visibility = View.GONE
+                }
+
+                layoutAdminControl?.setOnClickListener {
+                    if (context is MainActivity) {
+                        context.showExtendLicenseDialog(guid)
+                    }
+                }
 
                 holder.itemMainBinding.layoutShare.setOnClickListener {
                     adapterListener?.onShare(guid, profile, position, false)
                 }
 
-                // عند الضغط على زر التعديل
                 holder.itemMainBinding.layoutEdit.setOnClickListener {
-                    if (isProtected) {
-                        // إذا كان محمياً، نفتح لوحة تحكم الأدمن السحابية الخاصة بك!
-                        if (context is MainActivity) {
-                            context.showExtendLicenseDialog(guid)
-                        }
-                    } else {
-                        // إذا كان عادياً، نفتح صفحة تعديل السيرفر العادية
-                        adapterListener?.onEdit(guid, position, profile)
-                    }
+                    adapterListener?.onEdit(guid, position, profile)
                 }
                 
                 holder.itemMainBinding.layoutRemove.setOnClickListener {
