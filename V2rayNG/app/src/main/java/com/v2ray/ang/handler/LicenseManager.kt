@@ -5,6 +5,7 @@ import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
@@ -14,7 +15,7 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.math.max
 
 // =======================================================
-// خوارزمية التشفير والرخص وصلاحيات الأدمن
+// خوارزمية التشفير والرخص وصلاحيات الأدمن وقاعدة المشتركين
 // =======================================================
 object V2rayCrypt {
     private const val SECRET_KEY = "DarkTunlKey12345" 
@@ -23,6 +24,7 @@ object V2rayCrypt {
     private const val KEY_ADMIN_GUIDS = "AdminGuids" // سجل ملفات الأدمن
     private const val KEY_EXPIRY_PREFIX = "Expiry_"
     private const val KEY_LICENSE_PREFIX = "License_"
+    private const val KEY_SUBSCRIBERS_LIST_PREFIX = "Subscribers_" // قائمة المشتركين لكل سيرفر
 
     fun encrypt(data: String, expiryTimeMs: Long, licenseId: String): String {
         return try {
@@ -84,7 +86,6 @@ object V2rayCrypt {
         return prefs.getString(KEY_LICENSE_PREFIX + guid, "") ?: ""
     }
 
-    // للمستخدمين العاديين
     fun addProtectedGuids(context: Context, newGuids: Set<String>) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val current = prefs.getStringSet(KEY_GUIDS, mutableSetOf()) ?: mutableSetOf()
@@ -101,7 +102,6 @@ object V2rayCrypt {
         return getAllProtectedGuids(context).contains(guid)
     }
 
-    // لك كأدمن
     fun addAdminGuid(context: Context, guid: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val current = prefs.getStringSet(KEY_ADMIN_GUIDS, mutableSetOf()) ?: mutableSetOf()
@@ -114,6 +114,93 @@ object V2rayCrypt {
         val current = prefs.getStringSet(KEY_ADMIN_GUIDS, emptySet()) ?: emptySet()
         return current.contains(guid)
     }
+
+    // =======================================================
+    // نظام إدارة المشتركين المحلي (في هاتف الأدمن)
+    // =======================================================
+    
+    // حفظ مشترك جديد تابع لملف معين
+    fun saveSubscriberLocally(context: Context, parentGuid: String, subscriberLicenseId: String, subscriberName: String, expiryTimeMs: Long) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val key = KEY_SUBSCRIBERS_LIST_PREFIX + parentGuid
+        
+        // جلب القائمة الحالية أو إنشاء جديدة
+        val currentListJson = prefs.getString(key, "[]") ?: "[]"
+        try {
+            val jsonArray = org.json.JSONArray(currentListJson)
+            val newSub = JSONObject().apply {
+                put("licenseId", subscriberLicenseId)
+                put("name", subscriberName)
+                put("expiry", expiryTimeMs)
+            }
+            jsonArray.put(newSub)
+            prefs.edit().putString(key, jsonArray.toString()).apply()
+        } catch (e: Exception) {
+            Log.e("V2rayCrypt", "Failed to save subscriber", e)
+        }
+    }
+
+    // جلب قائمة المشتركين لملف معين
+    fun getSubscribers(context: Context, parentGuid: String): List<SubscriberData> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val key = KEY_SUBSCRIBERS_LIST_PREFIX + parentGuid
+        val currentListJson = prefs.getString(key, "[]") ?: "[]"
+        val list = mutableListOf<SubscriberData>()
+        try {
+            val jsonArray = org.json.JSONArray(currentListJson)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(
+                    SubscriberData(
+                        licenseId = obj.getString("licenseId"),
+                        name = obj.getString("name"),
+                        expiryTimeMs = obj.getLong("expiry")
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.e("V2rayCrypt", "Failed to get subscribers", e)
+        }
+        return list
+    }
+
+    // تحديث وقت مشترك معين محلياً
+    fun updateSubscriberExpiryLocally(context: Context, parentGuid: String, subscriberLicenseId: String, newExpiry: Long) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val key = KEY_SUBSCRIBERS_LIST_PREFIX + parentGuid
+        val currentListJson = prefs.getString(key, "[]") ?: "[]"
+        try {
+            val jsonArray = org.json.JSONArray(currentListJson)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                if (obj.getString("licenseId") == subscriberLicenseId) {
+                    obj.put("expiry", newExpiry)
+                    break
+                }
+            }
+            prefs.edit().putString(key, jsonArray.toString()).apply()
+        } catch (e: Exception) { }
+    }
+
+    // حذف المشترك
+    fun removeSubscriberLocally(context: Context, parentGuid: String, subscriberLicenseId: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val key = KEY_SUBSCRIBERS_LIST_PREFIX + parentGuid
+        val currentListJson = prefs.getString(key, "[]") ?: "[]"
+        try {
+            val jsonArray = org.json.JSONArray(currentListJson)
+            val newArray = org.json.JSONArray()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                if (obj.getString("licenseId") != subscriberLicenseId) {
+                    newArray.put(obj)
+                }
+            }
+            prefs.edit().putString(key, newArray.toString()).apply()
+        } catch (e: Exception) { }
+    }
+
+    data class SubscriberData(val licenseId: String, val name: String, val expiryTimeMs: Long)
 }
 
 object NetworkTime {
@@ -161,11 +248,15 @@ object NetworkTime {
     }
 }
 
+// =======================================================
+// التحديث السحابي الكامل: (وقت + كود السيرفر)
+// =======================================================
 object CloudflareAPI {
     private const val BASE_URL = "https://vpn-license.rauter505.workers.dev"
     private const val ADMIN_KEY = "ashor_vip_admin_999"
 
-    suspend fun checkLiveExpiry(licenseId: String): Long {
+    // الدالة المعدلة: تقوم بجلب الوقت، وإذا كان هناك "كود جديد" تجلبه أيضاً للمشترك
+    suspend fun checkLiveConfig(licenseId: String): Pair<Long, String?> {
         return withContext(Dispatchers.IO) {
             try {
                 val url = URL("$BASE_URL/check?guid=$licenseId")
@@ -176,18 +267,28 @@ object CloudflareAPI {
                 if (conn.responseCode == 200) {
                     val reader = BufferedReader(InputStreamReader(conn.inputStream))
                     val response = reader.readText()
-                    val match = "\"expiryTime\":\\s*(\\d+)".toRegex().find(response)
-                    match?.groupValues?.get(1)?.toLong() ?: -1L
+                    
+                    val obj = JSONObject(response)
+                    val expiry = if (obj.has("expiryTime")) obj.getLong("expiryTime") else -1L
+                    val configData = if (obj.has("configData") && !obj.isNull("configData")) obj.getString("configData") else null
+                    
+                    Pair(expiry, configData)
                 } else {
-                    -1L 
+                    Pair(-1L, null) 
                 }
             } catch (e: Exception) {
-                -1L 
+                Pair(-1L, null) 
             }
         }
     }
 
+    // هذه الدالة لتحديث الوقت فقط للرخص القديمة أو التمديد العادي
     suspend fun updateExpiry(licenseId: String, newExpiryMs: Long): Boolean {
+        return createOrUpdateSubscriber(licenseId, newExpiryMs, null)
+    }
+
+    // الدالة الشاملة: تقوم بإنشاء المشترك، تحديد وقته، ورفع كود السيرفر السري له
+    suspend fun createOrUpdateSubscriber(licenseId: String, newExpiryMs: Long, configData: String?): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val url = URL("$BASE_URL/update")
@@ -197,9 +298,17 @@ object CloudflareAPI {
                 conn.setRequestProperty("Admin-Key", ADMIN_KEY)
                 conn.doOutput = true
 
-                val jsonInputString = "{\"guid\": \"$licenseId\", \"expiryTime\": $newExpiryMs}"
+                val payload = JSONObject().apply {
+                    put("guid", licenseId)
+                    put("expiryTime", newExpiryMs)
+                    if (configData != null) {
+                        // تشفير النص بصيغة Base64 لحمايته من أي أخطاء أثناء النقل في الإنترنت
+                        put("configData", Base64.encodeToString(configData.toByteArray(), Base64.NO_WRAP))
+                    }
+                }
+
                 conn.outputStream.use { os ->
-                    val input = jsonInputString.toByteArray(Charsets.UTF_8)
+                    val input = payload.toString().toByteArray(Charsets.UTF_8)
                     os.write(input, 0, input.size)
                 }
                 conn.responseCode == 200
