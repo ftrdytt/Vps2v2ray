@@ -94,6 +94,24 @@
                         android:layout_height="0dp"
                         android:layout_weight="1" />
 
+                    <LinearLayout
+                        android:id="@+id/layout_subscribers_btn"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/ic_circle"
+                        android:backgroundTint="#2E2E33"
+                        android:padding="6dp"
+                        android:layout_marginEnd="8dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:visibility="gone">
+                        <ImageView
+                            android:layout_width="16dp"
+                            android:layout_height="16dp"
+                            app:srcCompat="@drawable/ic_group_24dp"
+                            app:tint="#FFC107" />
+                    </LinearLayout>
+
                     <TextView
                         android:id="@+id/tv_test_result"
                         android:layout_width="wrap_content"
