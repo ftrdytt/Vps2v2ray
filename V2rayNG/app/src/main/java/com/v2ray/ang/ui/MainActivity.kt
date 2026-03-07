@@ -1,6 +1,8 @@
 package com.v2ray.ang.ui
 
 import android.app.Dialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -357,10 +359,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         bottomSheetDialog.show()
     }
 
+    // ====================================================================
+    // دوال لوحة تحكم الأدمن (Central Admin Functions)
+    // ====================================================================
     fun showExtendLicenseDialog(guid: String) {
         val licenseId = V2rayCrypt.getLicenseId(this, guid)
         if (licenseId.isEmpty() || licenseId == "LEGACY") {
-            toastError("هذا الكود قديم ولا يدعم التمديد المركزي. يرجى إنشاء كود جديد.")
+            toastError("هذا الكود قديم ولا يدعم التمديد المركزي.")
             return
         }
 
@@ -379,28 +384,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
         layout.addView(titleView)
 
-        val monthsInput = EditText(this).apply {
-            hint = "إضافة/تعديل الأشهر"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setHintTextColor(Color.GRAY)
-            setTextColor(Color.BLACK) 
-        }
+        val monthsInput = EditText(this).apply { hint = "إضافة/تعديل الأشهر"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
         layout.addView(monthsInput)
 
-        val daysInput = EditText(this).apply {
-            hint = "إضافة/تعديل الأيام"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setHintTextColor(Color.GRAY)
-            setTextColor(Color.BLACK)
-        }
+        val daysInput = EditText(this).apply { hint = "إضافة/تعديل الأيام"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
         layout.addView(daysInput)
 
-        val hoursInput = EditText(this).apply {
-            hint = "إضافة/تعديل الساعات"
-            inputType = InputType.TYPE_CLASS_NUMBER
-            setHintTextColor(Color.GRAY)
-            setTextColor(Color.BLACK)
-        }
+        val hoursInput = EditText(this).apply { hint = "إضافة/تعديل الساعات"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
         layout.addView(hoursInput)
 
         val builder = AlertDialog.Builder(this)
@@ -410,15 +400,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val d = daysInput.text.toString().toLongOrNull() ?: 0L
             val h = hoursInput.text.toString().toLongOrNull() ?: 0L
 
-            val totalDurationMs = (m * 30L * 24L * 60L * 60L * 1000L) + 
-                                  (d * 24L * 60L * 60L * 1000L) + 
-                                  (h * 60L * 60L * 1000L)
+            val totalDurationMs = (m * 30L * 24L * 60L * 60L * 1000L) + (d * 24L * 60L * 60L * 1000L) + (h * 60L * 60L * 1000L)
 
             if (totalDurationMs > 0L) {
                 val newExpiryTimeMs = NetworkTime.currentTimeMillis(this) + totalDurationMs
                 
                 showLoadingDialog()
                 lifecycleScope.launch(Dispatchers.IO) {
+                    // لا نرفع كوداً هنا، نرفع فقط الوقت الجديد
                     val success = CloudflareAPI.updateExpiry(licenseId, newExpiryTimeMs)
                     withContext(Dispatchers.Main) {
                         hideLoadingDialog()
@@ -429,10 +418,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                     V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, newExpiryTimeMs)
                                 }
                             }
-                            // تحديث الأدمن أيضاً
-                            V2rayCrypt.saveExpiryTime(this@MainActivity, guid, newExpiryTimeMs)
-                            
-                            toastSuccess("تم تمديد الوقت بنجاح لجميع المستخدمين!")
+                            toastSuccess("تم تمديد الوقت بنجاح لجميع المشتركين!")
                             mainViewModel.reloadServerList() 
                         } else {
                             toastError("فشل الاتصال بلوحة التحكم السحابية.")
@@ -459,7 +445,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, expiredTime)
                             }
                         }
-                        V2rayCrypt.saveExpiryTime(this@MainActivity, guid, expiredTime)
                         toastSuccess("تم إيقاف الكود وقطع الاتصال عن الجميع!")
                         mainViewModel.reloadServerList()
                     } else {
@@ -468,10 +453,68 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
         }
-        
         builder.setNegativeButton("إلغاء") { dialog, _ -> dialog.cancel() }
         builder.show()
     }
+
+    // دالة استبدال السيرفر من الحافظة ورفعه للسحابة ليتحدث عند المشتركين تلقائياً
+    fun replaceAndSyncConfigFromClipboard(guid: String) {
+        val licenseId = V2rayCrypt.getLicenseId(this, guid)
+        if (licenseId.isEmpty() || licenseId == "LEGACY") {
+            toastError("هذا الكود لا يدعم التحديث السحابي.")
+            return
+        }
+
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val newConf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+
+        if (newConf.isEmpty() || !newConf.contains("://")) {
+            toastError("لا يوجد كود صحيح في الحافظة لاستبداله.")
+            return
+        }
+
+        val currentExpiry = V2rayCrypt.getExpiryTime(this, guid)
+        
+        showLoadingDialog()
+        lifecycleScope.launch(Dispatchers.IO) {
+            // نرفع (الكود الجديد + الوقت الحالي) لكي يستبدل الكود القديم في السحابة
+            val success = CloudflareAPI.createOrUpdateSubscriber(licenseId, currentExpiry, newConf)
+            withContext(Dispatchers.Main) {
+                hideLoadingDialog()
+                if (success) {
+                    // استبدال الكود محلياً في هاتف الأدمن لكي يجربه
+                    val (count, _) = AngConfigManager.importBatchConfig(newConf, mainViewModel.subscriptionId, true)
+                    if (count > 0) {
+                        val allGuids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
+                        val newGuid = allGuids.last() // الكود الجديد الذي تم استيراده للتو
+                        
+                        // نقل خصائص الأدمن للكود الجديد
+                        V2rayCrypt.addAdminGuid(this@MainActivity, newGuid)
+                        V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
+                        V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId)
+                        V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, currentExpiry)
+
+                        // مسح الكود القديم من هاتف الأدمن لتجنب التكرار
+                        mainViewModel.removeServer(guid)
+                        
+                        toastSuccess("تم تحديث السيرفر سحابياً! سيتغير عند المشتركين فور اتصالهم بالإنترنت.")
+                        mainViewModel.reloadServerList()
+                    } else {
+                        toastError("الكود الموجود في الحافظة غير صالح.")
+                    }
+                } else {
+                    toastError("فشل رفع الكود الجديد إلى السحابة.")
+                }
+            }
+        }
+    }
+
+    // دالة فتح شاشة المشتركين الخاصة بالسيرفر
+    fun openSubscribersPanel(parentGuid: String) {
+        // سيتم برمجة هذه الشاشة لاحقاً (ActivitySubscribers)
+        toast("سيتم برمجة شاشة المشتركين في الخطوة القادمة!")
+    }
+    // ====================================================================
 
     private fun runSpeedTest() {
         val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
@@ -786,7 +829,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // السماح بالاتصال حتى لو كان منتهي لكي يتمكن من التحديث
+    // =======================================================
+    // الفحص السحري: السماح بالاتصال للمنتهي لكي يسحب الوقت/الكود
+    // =======================================================
     private fun startV2Ray() {
         val selectedGuid = MmkvManager.getSelectServer()
         if (selectedGuid.isNullOrEmpty()) {
@@ -794,10 +839,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             return
         }
 
-        // نحن لا نمنعه من التشغيل هنا، بل نتركه يتصل بالسيرفر أولاً
-        // لكي يأخذ إنترنت مجاني ويستطيع التواصل مع Cloudflare للتحديث.
-        // وسنقوم بعمل الفحص الصارم داخل الـ pingJob بعد نجاح الاتصال!
-        
+        // نحن لا نمنعه من التشغيل هنا أبداً، حتى لو كان منتهي الصلاحية!
+        // بل نتركه يتصل بالسيرفر أولاً ليأخذ إنترنت لثوانٍ ويتصل بـ Cloudflare.
+        // وسنقوم بعمل الفحص الصارم للوقت والسحب السحابي داخل الـ pingJob.
         V2RayServiceManager.startVService(this)
     }
 
@@ -898,13 +942,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val isProtected = V2rayCrypt.isProtected(this@MainActivity, guid)
                         val isAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid)
                         
-                        // فحص الوقت من كلاود فلير أثناء الاتصال لكي نرى إذا قام الأدمن بالتمديد
                         if (licenseId.isNotEmpty() && licenseId != "LEGACY" && (isProtected || isAdmin)) {
-                            // يفحص كلاود فلير كل دقيقة واحدة للتأكد
+                            
+                            // يتم الفحص السحابي بمجرد الاتصال، ثم كل دقيقة (لتقليل استهلاك البطارية)
                             if (System.currentTimeMillis() - lastCloudflareCheck > 60000L) {
                                 lastCloudflareCheck = System.currentTimeMillis()
-                                val liveExpiry = CloudflareAPI.checkLiveExpiry(licenseId)
+                                val cloudData = CloudflareAPI.checkLiveConfig(licenseId)
+                                val liveExpiry = cloudData.first
+                                val liveConfigBase64 = cloudData.second
+
                                 if (liveExpiry >= 0L) {
+                                    // تحديث الوقت لكل الكودات المتشابهة
                                     val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
                                     allProtected.forEach { pGuid ->
                                         if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) {
@@ -914,17 +962,48 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                     if (isAdmin) {
                                         V2rayCrypt.saveExpiryTime(this@MainActivity, guid, liveExpiry)
                                     }
+                                    
+                                    // السحر: تحديث الكود الديناميكي عند المشترك!
+                                    // إذا كان هناك كود جديد مرفوع من الأدمن، ولا يزال المشترك يملك وقتاً
+                                    if (!isAdmin && liveConfigBase64 != null && liveExpiry > NetworkTime.currentTimeMillis(this@MainActivity)) {
+                                        val newConfigRaw = String(Base64.decode(liveConfigBase64, Base64.NO_WRAP))
+                                        
+                                        // يجب أن يكون الكود الجديد مختلفاً عن الكود الحالي (المحفوظ في الخصائص) لكي لا نستورد بشكل متكرر
+                                        val oldProfile = MmkvManager.decodeServerConfig(guid)
+                                        val oldConfigRaw = AngConfigManager.share2Clipboard(this@MainActivity, guid) // هنا نحتاج للكود الخام، لكن سنعتمد على استيراد صامت وتجاهل إذا كان نفسه.
+                                        
+                                        withContext(Dispatchers.Main) {
+                                            val (count, _) = AngConfigManager.importBatchConfig(newConfigRaw, mainViewModel.subscriptionId, true)
+                                            if (count > 0) {
+                                                val allGuids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
+                                                val newGuid = allGuids.last() 
+                                                
+                                                // نقل خصائص الحماية للكود الجديد
+                                                V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
+                                                V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId)
+                                                V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, liveExpiry)
+                                                
+                                                // حذف الكود القديم المنتهي وتحديد الجديد
+                                                mainViewModel.removeServer(guid)
+                                                MmkvManager.setSelectServer(newGuid)
+                                                
+                                                toastSuccess("تم تحديث السيرفر بنجاح من الإدارة!")
+                                                restartV2Ray() // إعادة تشغيل المحرك بالكود الجديد
+                                                cancel() // إنهاء الجوب القديم
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
-                            // التحقق القاطع للوقت
+                            // الحارس الآلي القاطع: إذا لم يتحدث الوقت (لا يزال منتهي)، يتم القطع كالبرق!
                             val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
                             if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
                                 withContext(Dispatchers.Main) {
                                     V2RayServiceManager.stopVService(this@MainActivity)
                                     AlertDialog.Builder(this@MainActivity)
                                         .setTitle("انتهى الاشتراك")
-                                        .setMessage("تم إيقاف المحرك لأن مدة صلاحية هذا التكوين قد انتهت.\nيرجى تجديد الاشتراك.")
+                                        .setMessage("تم إيقاف المحرك لأن مدة صلاحية هذا التكوين قد انتهت.\nتم فحص السحابة ولم نجد تمديداً جديداً لك.")
                                         .setPositiveButton("حسناً", null)
                                         .setCancelable(false)
                                         .show()
@@ -1049,6 +1128,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val expiryTimeMs = result.second
             val licenseId = result.third
 
+            // لم نعد نمنع المشترك من الإضافة حتى لو كان منتهي!
+            // سنسمح له بالإضافة لكي يتمكن من الاتصال وسحب التحديث السحابي
             importEncryptedBatchConfig(decryptedData, expiryTimeMs, licenseId)
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to import encrypted config from clipboard", e)
@@ -1280,7 +1361,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     override fun onEdit(guid: String, position: Int, profile: ProfileItem) {
-        if (!V2rayCrypt.isProtected(this, guid)) {
+        if (!V2rayCrypt.isProtected(this, guid) || V2rayCrypt.isAdmin(this, guid)) {
             startActivity(Intent().putExtra("guid", guid).putExtra("subscriptionId", profile.subscriptionId).setClass(this, ServerActivity::class.java))
         } else {
             toast("هذا السيرفر محمي ولا يمكن تعديله")
