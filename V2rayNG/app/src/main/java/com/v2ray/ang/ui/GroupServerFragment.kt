@@ -129,7 +129,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         scrollView.addView(container)
 
         val title = TextView(ownerActivity).apply {
-            text = "خيارات التصدير والمشاركة"
+            text = "خيارات الإدارة والمشاركة"
             textSize = 18f
             setTextColor(Color.parseColor("#FF9800")) 
             setPadding(40, 40, 40, 20)
@@ -185,8 +185,12 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             container.addView(layout)
         }
 
-        // إذا كان عميل عادي محمي، لا يرى أي خيارات. يجب أن يكون غير محمي، أو أدمن.
+        // السحر: إضافة زر المشترك الجديد للأدمن وللملفات العادية لكي يولد لها مشتركين
         if (!isProtected || isAdmin) {
+            createOptionButton("إضافة مشتركين", android.R.drawable.ic_menu_add) {
+                showAddSubscriberDialog(guid, profile)
+            }
+            
             createOptionButton("تصدير إلى ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) {
                 exportEncryptedFile(guid)
             }
@@ -207,10 +211,6 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 }
             }
             
-            createOptionButton("تعديل التكوين", android.R.drawable.ic_menu_edit) {
-                editServer(guid, profile)
-            }
-            
             createOptionButton("حذف التكوين", android.R.drawable.ic_menu_delete) {
                 removeServer(guid, position)
             }
@@ -225,6 +225,138 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
         bottomSheetDialog.show()
     }
+
+    // =======================================================================
+    // واجهة إضافة مشترك جديد وحفظه في السحابة وفي قائمة المشتركين المحلية
+    // =======================================================================
+    private fun showAddSubscriberDialog(parentGuid: String, profile: ProfileItem) {
+        val layout = LinearLayout(ownerActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(50, 40, 50, 40)
+        }
+
+        val titleView = TextView(ownerActivity).apply {
+            text = "إضافة مشترك جديد"
+            textSize = 18f
+            setTextColor(Color.parseColor("#FF9800"))
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(0, 0, 0, 30)
+            gravity = Gravity.CENTER
+        }
+        layout.addView(titleView)
+
+        val nameInput = EditText(ownerActivity).apply {
+            hint = "اسم المشترك (مثال: علي محمد)"
+            inputType = InputType.TYPE_CLASS_TEXT
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.BLACK)
+            // إنشاء اسم عشوائي كقيمة افتراضية
+            setText("مشترك_" + (1000..9999).random())
+        }
+        layout.addView(nameInput)
+
+        val monthsInput = EditText(ownerActivity).apply {
+            hint = "عدد الأشهر (مثال: 1)"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.BLACK) 
+        }
+        layout.addView(monthsInput)
+
+        val daysInput = EditText(ownerActivity).apply {
+            hint = "عدد الأيام (مثال: 15)"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.BLACK)
+        }
+        layout.addView(daysInput)
+
+        val hoursInput = EditText(ownerActivity).apply {
+            hint = "عدد الساعات (مثال: 12)"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.BLACK)
+        }
+        layout.addView(hoursInput)
+
+        val builder = AlertDialog.Builder(ownerActivity)
+        builder.setView(layout)
+        builder.setPositiveButton("حفظ المشترك") { dialog, _ ->
+            val subName = nameInput.text.toString().trim()
+            val m = monthsInput.text.toString().toLongOrNull() ?: 0L
+            val d = daysInput.text.toString().toLongOrNull() ?: 0L
+            val h = hoursInput.text.toString().toLongOrNull() ?: 0L
+
+            val totalDurationMs = (m * 30L * 24L * 60L * 60L * 1000L) + (d * 24L * 60L * 60L * 1000L) + (h * 60L * 60L * 1000L)
+
+            if (subName.isEmpty()) {
+                ownerActivity.toastError("يجب إدخال اسم المشترك")
+            } else if (totalDurationMs <= 0L) {
+                ownerActivity.toastError("الرجاء إدخال مدة صحيحة أكبر من الصفر")
+            } else {
+                val expiryTimeMs = NetworkTime.currentTimeMillis(ownerActivity) + totalDurationMs
+                
+                // إنشاء ID خاص بهذا المشترك
+                val licenseId = "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16)
+                
+                // جلب كود السيرفر الأصلي لرفعه
+                if (AngConfigManager.share2Clipboard(ownerActivity, parentGuid) == 0) {
+                    val clipboard = ownerActivity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val conf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                    
+                    if (conf.isNotEmpty()) {
+                        ownerActivity.showLoadingDialog()
+                        ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
+                            // نرفع للمشترك (الوقت + الكود الأصلي) لكي يتمكن من سحبه لاحقاً لو تغير
+                            val uploaded = CloudflareAPI.createOrUpdateSubscriber(licenseId, expiryTimeMs, conf)
+                            withContext(Dispatchers.Main) {
+                                ownerActivity.hideLoadingDialog()
+                                if (uploaded) {
+                                    // حفظ المشترك محلياً في هاتف الأدمن لكي يظهر في شاشة المشتركين
+                                    V2rayCrypt.saveSubscriberLocally(ownerActivity, parentGuid, licenseId, subName, expiryTimeMs)
+                                    ownerActivity.toastSuccess("تم إضافة المشترك بنجاح!")
+                                    
+                                    // نسأله إذا كان يريد نسخ الكود لإرساله للمشترك فوراً
+                                    askToShareSubscriberCode(conf, expiryTimeMs, licenseId, subName)
+                                } else {
+                                    ownerActivity.toastError("فشل الاتصال بكلاود فلير، لم يتم حفظ المشترك.")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            dialog.dismiss()
+        }
+        builder.setNegativeButton("إلغاء") { dialog, _ -> dialog.cancel() }
+        builder.show()
+    }
+
+    private fun askToShareSubscriberCode(conf: String, expiryTimeMs: Long, licenseId: String, subName: String) {
+        val encryptedConf = V2rayCrypt.encrypt(conf, expiryTimeMs, licenseId)
+        if (encryptedConf.isNotEmpty()) {
+            val options = arrayOf("نسخ الكود إلى الحافظة", "حفظ كملف (.ashor)")
+            AlertDialog.Builder(ownerActivity)
+                .setTitle("مشاركة المشترك ($subName)")
+                .setItems(options) { _, which ->
+                    when (which) {
+                        0 -> {
+                            val clipboard = ownerActivity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("Encrypted V2ray Config", encryptedConf)
+                            clipboard.setPrimaryClip(clip)
+                            ownerActivity.toastSuccess("تم نسخ الكود وجاهز للإرسال!")
+                        }
+                        1 -> {
+                            pendingEncryptedConfigToSave = encryptedConf
+                            val fileName = "${subName.replace(" ", "_")}.ashor"
+                            saveEncryptedFileLauncher.launch(fileName)
+                        }
+                    }
+                }
+                .show()
+        }
+    }
+    // =======================================================================
 
     private fun showCustomExpiryDialog(onExpirySelected: (Long) -> Unit) {
         val layout = LinearLayout(ownerActivity).apply {
@@ -311,11 +443,10 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 
                 ownerActivity.showLoadingDialog()
                 ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
-                    val uploaded = CloudflareAPI.updateExpiry(licenseId, expiryTime)
+                    val uploaded = CloudflareAPI.createOrUpdateSubscriber(licenseId, expiryTime, conf)
                     withContext(Dispatchers.Main) {
                         ownerActivity.hideLoadingDialog()
                         if (uploaded) {
-                            // التعديل الجبار: تسجيل الملف في هاتف الأدمن كملف "أدمن"
                             V2rayCrypt.addAdminGuid(ownerActivity, guid)
                             V2rayCrypt.saveLicenseId(ownerActivity, guid, licenseId)
                             V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
@@ -325,7 +456,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                                 pendingEncryptedConfigToSave = encryptedConf
                                 val fileName = "Config_${NetworkTime.currentTimeMillis(ownerActivity)}.ashor"
                                 saveEncryptedFileLauncher.launch(fileName)
-                                mainViewModel.reloadServerList() // تحديث القائمة لظهور الأيقونة الزرقاء
+                                mainViewModel.reloadServerList() 
                             } else {
                                 ownerActivity.toastError(R.string.toast_failure)
                             }
@@ -362,11 +493,10 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 
                 ownerActivity.showLoadingDialog()
                 ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
-                    val uploaded = CloudflareAPI.updateExpiry(licenseId, expiryTime)
+                    val uploaded = CloudflareAPI.createOrUpdateSubscriber(licenseId, expiryTime, conf)
                     withContext(Dispatchers.Main) {
                         ownerActivity.hideLoadingDialog()
                         if (uploaded) {
-                            // التعديل الجبار
                             V2rayCrypt.addAdminGuid(ownerActivity, guid)
                             V2rayCrypt.saveLicenseId(ownerActivity, guid, licenseId)
                             V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
