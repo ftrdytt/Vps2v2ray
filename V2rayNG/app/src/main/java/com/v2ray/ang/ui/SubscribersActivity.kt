@@ -24,9 +24,9 @@ import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.CloudflareAPI
 import com.v2ray.ang.handler.NetworkTime
 import com.v2ray.ang.handler.V2rayCrypt
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import org.json.JSONArray
+import org.json.JSONObject
 
 class SubscribersActivity : AppCompatActivity() {
 
@@ -75,7 +75,8 @@ class SubscribersActivity : AppCompatActivity() {
         adapter = SubscribersAdapter(
             onExtend = { sub -> showExtendDialog(sub) },
             onShare = { sub -> shareSubscriber(sub) },
-            onDelete = { sub -> deleteSubscriber(sub) }
+            onDelete = { sub -> deleteSubscriber(sub) },
+            onEdit = { sub -> showEditDialog(sub) } // برمجة زر التعديل الجديد
         )
         recycler.adapter = adapter
 
@@ -84,13 +85,35 @@ class SubscribersActivity : AppCompatActivity() {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
+    }
 
+    override fun onResume() {
+        super.onResume()
+        // بمجرد فتح الشاشة، نقوم بجلب البيانات المحلية ثم التحديث من النت فوراً
         loadSubscribers()
+        syncSubscribersFromCloud()
     }
 
     private fun loadSubscribers() {
         allSubscribers = V2rayCrypt.getSubscribers(this, parentGuid)
         filterList(etSearch.text.toString())
+    }
+
+    // جلب الوقت الحي من كلاود فلير لكل المشتركين في الخلفية بدون تجميد الشاشة
+    private fun syncSubscribersFromCloud() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            var isChanged = false
+            allSubscribers.forEach { sub ->
+                val cloudData = CloudflareAPI.checkLiveConfig(sub.licenseId)
+                if (cloudData.first >= 0L && cloudData.first != sub.expiryTimeMs) {
+                    V2rayCrypt.updateSubscriberExpiryLocally(this@SubscribersActivity, parentGuid, sub.licenseId, cloudData.first)
+                    isChanged = true
+                }
+            }
+            if (isChanged) {
+                withContext(Dispatchers.Main) { loadSubscribers() }
+            }
+        }
     }
 
     private fun filterList(query: String) {
@@ -103,6 +126,76 @@ class SubscribersActivity : AppCompatActivity() {
         tvEmptyState.visibility = if (filtered.isEmpty()) View.VISIBLE else View.GONE
     }
 
+    // زر التعديل: تغيير الاسم أو رفع كود جديد
+    private fun showEditDialog(sub: V2rayCrypt.SubscriberData) {
+        val options = arrayOf("تغيير اسم المشترك", "استبدال السيرفر للمشترك (من الحافظة)")
+        AlertDialog.Builder(this)
+            .setTitle("تعديل: ${sub.name}")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> showRenameDialog(sub)
+                    1 -> replaceSubscriberConfig(sub)
+                }
+            }.show()
+    }
+
+    private fun showRenameDialog(sub: V2rayCrypt.SubscriberData) {
+        val input = EditText(this).apply {
+            setText(sub.name)
+            setTextColor(Color.BLACK)
+            setHintTextColor(Color.GRAY)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("تغيير الاسم")
+            .setView(input)
+            .setPositiveButton("حفظ") { _, _ ->
+                val newName = input.text.toString().trim()
+                if (newName.isNotEmpty()) {
+                    // تحديث الاسم محلياً
+                    val prefs = getSharedPreferences("V2rayProtectedConfigs", Context.MODE_PRIVATE)
+                    val key = "Subscribers_$parentGuid"
+                    val currentListJson = prefs.getString(key, "[]") ?: "[]"
+                    try {
+                        val jsonArray = JSONArray(currentListJson)
+                        for (i in 0 until jsonArray.length()) {
+                            val obj = jsonArray.getJSONObject(i)
+                            if (obj.getString("licenseId") == sub.licenseId) {
+                                obj.put("name", newName)
+                                break
+                            }
+                        }
+                        prefs.edit().putString(key, jsonArray.toString()).apply()
+                        loadSubscribers()
+                    } catch (e: Exception) {}
+                }
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
+    }
+
+    private fun replaceSubscriberConfig(sub: V2rayCrypt.SubscriberData) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val newConf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+
+        if (newConf.isEmpty() || !newConf.contains("://")) {
+            Toast.makeText(this, "الحافظة لا تحتوي على كود سيرفر صالح!", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        Toast.makeText(this, "جاري رفع الكود الجديد للمشترك...", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch(Dispatchers.IO) {
+            val success = CloudflareAPI.createOrUpdateSubscriber(sub.licenseId, sub.expiryTimeMs, newConf)
+            withContext(Dispatchers.Main) {
+                if (success) {
+                    Toast.makeText(this@SubscribersActivity, "تم استبدال سيرفر المشترك بنجاح!", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this@SubscribersActivity, "فشل الاتصال بكلاود فلير.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    // إضافة زر الإيقاف الفوري هنا
     private fun showExtendDialog(sub: V2rayCrypt.SubscriberData) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -130,7 +223,7 @@ class SubscribersActivity : AppCompatActivity() {
 
         val builder = AlertDialog.Builder(this)
         builder.setView(layout)
-        builder.setPositiveButton("تمديد للمشترك") { dialog, _ ->
+        builder.setPositiveButton("تمديد") { dialog, _ ->
             val m = monthsInput.text.toString().toLongOrNull() ?: 0L
             val d = daysInput.text.toString().toLongOrNull() ?: 0L
             val h = hoursInput.text.toString().toLongOrNull() ?: 0L
@@ -157,12 +250,28 @@ class SubscribersActivity : AppCompatActivity() {
             }
             dialog.dismiss()
         }
+        
+        // زر الإيقاف الفوري تمت إضافته هنا
+        builder.setNeutralButton("إيقاف الكود") { dialog, _ ->
+            Toast.makeText(this, "جاري الإيقاف...", Toast.LENGTH_SHORT).show()
+            lifecycleScope.launch(Dispatchers.IO) {
+                val expiredTime = NetworkTime.currentTimeMillis(this@SubscribersActivity) - 10000L
+                val success = CloudflareAPI.updateExpiry(sub.licenseId, expiredTime)
+                withContext(Dispatchers.Main) {
+                    if (success) {
+                        V2rayCrypt.updateSubscriberExpiryLocally(this@SubscribersActivity, parentGuid, sub.licenseId, expiredTime)
+                        loadSubscribers()
+                        Toast.makeText(this@SubscribersActivity, "تم إيقاف المشترك!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            dialog.dismiss()
+        }
         builder.setNegativeButton("إلغاء", null)
         builder.show()
     }
 
     private fun shareSubscriber(sub: V2rayCrypt.SubscriberData) {
-        // نسخ الكود الأصلي وتشفيره للمشترك من جديد
         if (AngConfigManager.share2Clipboard(this, parentGuid) == 0) {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val conf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
@@ -196,14 +305,13 @@ class SubscribersActivity : AppCompatActivity() {
             .setPositiveButton("نعم، احذف") { _, _ ->
                 Toast.makeText(this, "جاري الحذف...", Toast.LENGTH_SHORT).show()
                 lifecycleScope.launch(Dispatchers.IO) {
-                    // جعل الوقت في الماضي لقطع الاتصال
                     val expiredTime = NetworkTime.currentTimeMillis(this@SubscribersActivity) - 10000L
                     CloudflareAPI.updateExpiry(sub.licenseId, expiredTime)
                     
                     withContext(Dispatchers.Main) {
                         V2rayCrypt.removeSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId)
                         loadSubscribers()
-                        Toast.makeText(this@SubscribersActivity, "تم حذف المشترك وقطع الاتصال عنه!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@SubscribersActivity, "تم حذف المشترك!", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -212,11 +320,14 @@ class SubscribersActivity : AppCompatActivity() {
     }
 }
 
-// محول القائمة (Adapter) الخاص ببطاقات المشتركين
+// =========================================================
+// محول القائمة - تمت إضافة النبض الحي (Live Ticker) للوقت
+// =========================================================
 class SubscribersAdapter(
     private val onExtend: (V2rayCrypt.SubscriberData) -> Unit,
     private val onShare: (V2rayCrypt.SubscriberData) -> Unit,
-    private val onDelete: (V2rayCrypt.SubscriberData) -> Unit
+    private val onDelete: (V2rayCrypt.SubscriberData) -> Unit,
+    private val onEdit: (V2rayCrypt.SubscriberData) -> Unit
 ) : RecyclerView.Adapter<SubscribersAdapter.SubViewHolder>() {
 
     private var list = listOf<V2rayCrypt.SubscriberData>()
@@ -233,26 +344,15 @@ class SubscribersAdapter(
 
     override fun onBindViewHolder(holder: SubViewHolder, position: Int) {
         val item = list[position]
-        holder.tvName.text = item.name
-
-        val currentTime = NetworkTime.currentTimeMillis(holder.itemView.context)
-        val diffMs = item.expiryTimeMs - currentTime
-        if (diffMs > 0) {
-            val days = diffMs / (1000L * 60L * 60L * 24L)
-            val hours = (diffMs / (1000L * 60L * 60L)) % 24L
-            holder.tvExpiry.text = "متبقي: $days يوم و $hours ساعة"
-            holder.tvExpiry.setTextColor(Color.parseColor("#4CAF50"))
-        } else {
-            holder.tvExpiry.text = "منتهي الصلاحية"
-            holder.tvExpiry.setTextColor(Color.parseColor("#E53935"))
-        }
-
-        holder.btnExtend.setOnClickListener { onExtend(item) }
-        holder.btnShare.setOnClickListener { onShare(item) }
-        holder.btnDelete.setOnClickListener { onDelete(item) }
+        holder.bind(item, onExtend, onShare, onDelete, onEdit)
     }
 
     override fun getItemCount() = list.size
+
+    override fun onViewRecycled(holder: SubViewHolder) {
+        super.onViewRecycled(holder)
+        holder.cancelTimer() // إيقاف العداد عند التمرير لتجنب استهلاك الذاكرة
+    }
 
     class SubViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvName: TextView = view.findViewById(R.id.tv_sub_name)
@@ -260,5 +360,57 @@ class SubscribersAdapter(
         val btnExtend: View = view.findViewById(R.id.btn_extend)
         val btnShare: View = view.findViewById(R.id.btn_share)
         val btnDelete: View = view.findViewById(R.id.btn_delete)
+        val btnEdit: View? = view.findViewById(R.id.btn_edit) // قد يكون null لو لم يتم تحديث الـ XML
+        
+        private var timerJob: Job? = null
+        private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+        fun bind(
+            item: V2rayCrypt.SubscriberData,
+            onExtend: (V2rayCrypt.SubscriberData) -> Unit,
+            onShare: (V2rayCrypt.SubscriberData) -> Unit,
+            onDelete: (V2rayCrypt.SubscriberData) -> Unit,
+            onEdit: (V2rayCrypt.SubscriberData) -> Unit
+        ) {
+            tvName.text = item.name
+            
+            btnExtend.setOnClickListener { onExtend(item) }
+            btnShare.setOnClickListener { onShare(item) }
+            btnDelete.setOnClickListener { onDelete(item) }
+            btnEdit?.setOnClickListener { onEdit(item) }
+
+            // عداد النبض (Ticker) يتحدث كل ثانية
+            timerJob?.cancel()
+            timerJob = scope.launch {
+                while (isActive) {
+                    val currentTime = NetworkTime.currentTimeMillis(itemView.context)
+                    val diffMs = item.expiryTimeMs - currentTime
+                    
+                    if (diffMs > 0) {
+                        val d = diffMs / 86400000L
+                        val h = (diffMs % 86400000L) / 3600000L
+                        val m = (diffMs % 3600000L) / 60000L
+                        val s = (diffMs % 60000L) / 1000L
+                        
+                        val timeStr = buildString {
+                            if (d > 0) append("$d يوم و ")
+                            if (h > 0 || d > 0) append("$h ساعة و ")
+                            append("$m دقيقة و $s ثانية")
+                        }
+                        
+                        tvExpiry.text = timeStr
+                        tvExpiry.setTextColor(Color.parseColor("#4CAF50"))
+                    } else {
+                        tvExpiry.text = "منتهي الصلاحية 🛑"
+                        tvExpiry.setTextColor(Color.parseColor("#E53935"))
+                    }
+                    delay(1000L)
+                }
+            }
+        }
+
+        fun cancelTimer() {
+            timerJob?.cancel()
+        }
     }
 }
