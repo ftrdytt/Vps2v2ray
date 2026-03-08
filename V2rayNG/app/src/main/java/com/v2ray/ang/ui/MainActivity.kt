@@ -407,7 +407,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 
                 showLoadingDialog()
                 lifecycleScope.launch(Dispatchers.IO) {
-                    // لا نرفع كوداً هنا، نرفع فقط الوقت الجديد
                     val success = CloudflareAPI.updateExpiry(licenseId, newExpiryTimeMs)
                     withContext(Dispatchers.Main) {
                         hideLoadingDialog()
@@ -457,7 +456,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         builder.show()
     }
 
-    // دالة استبدال السيرفر من الحافظة ورفعه للسحابة ليتحدث عند المشتركين تلقائياً
     fun replaceAndSyncConfigFromClipboard(guid: String) {
         val licenseId = V2rayCrypt.getLicenseId(this, guid)
         if (licenseId.isEmpty() || licenseId == "LEGACY") {
@@ -477,24 +475,20 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         
         showLoadingDialog()
         lifecycleScope.launch(Dispatchers.IO) {
-            // نرفع (الكود الجديد + الوقت الحالي) لكي يستبدل الكود القديم في السحابة
             val success = CloudflareAPI.createOrUpdateSubscriber(licenseId, currentExpiry, newConf)
             withContext(Dispatchers.Main) {
                 hideLoadingDialog()
                 if (success) {
-                    // استبدال الكود محلياً في هاتف الأدمن لكي يجربه
                     val (count, _) = AngConfigManager.importBatchConfig(newConf, mainViewModel.subscriptionId, true)
                     if (count > 0) {
                         val allGuids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
-                        val newGuid = allGuids.last() // الكود الجديد الذي تم استيراده للتو
+                        val newGuid = allGuids.last() 
                         
-                        // نقل خصائص الأدمن للكود الجديد
                         V2rayCrypt.addAdminGuid(this@MainActivity, newGuid)
                         V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
                         V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId)
                         V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, currentExpiry)
 
-                        // مسح الكود القديم من هاتف الأدمن لتجنب التكرار
                         mainViewModel.removeServer(guid)
                         
                         toastSuccess("تم تحديث السيرفر سحابياً! سيتغير عند المشتركين فور اتصالهم بالإنترنت.")
@@ -509,10 +503,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // دالة فتح شاشة المشتركين الخاصة بالسيرفر
     fun openSubscribersPanel(parentGuid: String) {
-        // سيتم برمجة هذه الشاشة لاحقاً (ActivitySubscribers)
-        toast("سيتم برمجة شاشة المشتركين في الخطوة القادمة!")
+        val intent = Intent(this, SubscribersActivity::class.java)
+        intent.putExtra("parentGuid", parentGuid)
+        startActivity(intent)
     }
     // ====================================================================
 
@@ -829,19 +823,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // =======================================================
-    // الفحص السحري: السماح بالاتصال للمنتهي لكي يسحب الوقت/الكود
-    // =======================================================
     private fun startV2Ray() {
         val selectedGuid = MmkvManager.getSelectServer()
         if (selectedGuid.isNullOrEmpty()) {
             toast(R.string.title_file_chooser)
             return
         }
-
-        // نحن لا نمنعه من التشغيل هنا أبداً، حتى لو كان منتهي الصلاحية!
-        // بل نتركه يتصل بالسيرفر أولاً ليأخذ إنترنت لثوانٍ ويتصل بـ Cloudflare.
-        // وسنقوم بعمل الفحص الصارم للوقت والسحب السحابي داخل الـ pingJob.
+        
         V2RayServiceManager.startVService(this)
     }
 
@@ -944,7 +932,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         
                         if (licenseId.isNotEmpty() && licenseId != "LEGACY" && (isProtected || isAdmin)) {
                             
-                            // يتم الفحص السحابي بمجرد الاتصال، ثم كل دقيقة (لتقليل استهلاك البطارية)
                             if (System.currentTimeMillis() - lastCloudflareCheck > 60000L) {
                                 lastCloudflareCheck = System.currentTimeMillis()
                                 val cloudData = CloudflareAPI.checkLiveConfig(licenseId)
@@ -952,7 +939,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 val liveConfigBase64 = cloudData.second
 
                                 if (liveExpiry >= 0L) {
-                                    // تحديث الوقت لكل الكودات المتشابهة
                                     val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
                                     allProtected.forEach { pGuid ->
                                         if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) {
@@ -963,14 +949,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                         V2rayCrypt.saveExpiryTime(this@MainActivity, guid, liveExpiry)
                                     }
                                     
-                                    // السحر: تحديث الكود الديناميكي عند المشترك!
-                                    // إذا كان هناك كود جديد مرفوع من الأدمن، ولا يزال المشترك يملك وقتاً
                                     if (!isAdmin && liveConfigBase64 != null && liveExpiry > NetworkTime.currentTimeMillis(this@MainActivity)) {
                                         val newConfigRaw = String(Base64.decode(liveConfigBase64, Base64.NO_WRAP))
-                                        
-                                        // يجب أن يكون الكود الجديد مختلفاً عن الكود الحالي (المحفوظ في الخصائص) لكي لا نستورد بشكل متكرر
-                                        val oldProfile = MmkvManager.decodeServerConfig(guid)
-                                        val oldConfigRaw = AngConfigManager.share2Clipboard(this@MainActivity, guid) // هنا نحتاج للكود الخام، لكن سنعتمد على استيراد صامت وتجاهل إذا كان نفسه.
                                         
                                         withContext(Dispatchers.Main) {
                                             val (count, _) = AngConfigManager.importBatchConfig(newConfigRaw, mainViewModel.subscriptionId, true)
@@ -978,25 +958,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                                 val allGuids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
                                                 val newGuid = allGuids.last() 
                                                 
-                                                // نقل خصائص الحماية للكود الجديد
                                                 V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
                                                 V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId)
                                                 V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, liveExpiry)
                                                 
-                                                // حذف الكود القديم المنتهي وتحديد الجديد
                                                 mainViewModel.removeServer(guid)
                                                 MmkvManager.setSelectServer(newGuid)
                                                 
                                                 toastSuccess("تم تحديث السيرفر بنجاح من الإدارة!")
-                                                restartV2Ray() // إعادة تشغيل المحرك بالكود الجديد
-                                                cancel() // إنهاء الجوب القديم
+                                                restartV2Ray() 
+                                                cancel() 
                                             }
                                         }
                                     }
                                 }
                             }
 
-                            // الحارس الآلي القاطع: إذا لم يتحدث الوقت (لا يزال منتهي)، يتم القطع كالبرق!
                             val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
                             if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
                                 withContext(Dispatchers.Main) {
@@ -1128,8 +1105,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val expiryTimeMs = result.second
             val licenseId = result.third
 
-            // لم نعد نمنع المشترك من الإضافة حتى لو كان منتهي!
-            // سنسمح له بالإضافة لكي يتمكن من الاتصال وسحب التحديث السحابي
             importEncryptedBatchConfig(decryptedData, expiryTimeMs, licenseId)
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to import encrypted config from clipboard", e)
@@ -1334,9 +1309,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         return super.onKeyDown(keyCode, event)
     }
 
-    // =======================================================
-    // دوال واجهة MainAdapterListener المطلوبة
-    // =======================================================
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.sub_setting -> requestActivityLauncher.launch(Intent(this, SubSettingActivity::class.java))
