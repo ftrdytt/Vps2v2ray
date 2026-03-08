@@ -13,6 +13,7 @@ import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
 import android.text.InputType
+import android.util.Base64 // السطر الذي تم إضافته لحل المشكلة
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -359,9 +360,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         bottomSheetDialog.show()
     }
 
-    // ====================================================================
-    // دوال لوحة تحكم الأدمن (Central Admin Functions)
-    // ====================================================================
     fun showExtendLicenseDialog(guid: String) {
         val licenseId = V2rayCrypt.getLicenseId(this, guid)
         if (licenseId.isEmpty() || licenseId == "LEGACY") {
@@ -508,7 +506,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         intent.putExtra("parentGuid", parentGuid)
         startActivity(intent)
     }
-    // ====================================================================
 
     private fun runSpeedTest() {
         val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
