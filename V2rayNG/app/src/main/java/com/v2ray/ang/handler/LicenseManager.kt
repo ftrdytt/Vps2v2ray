@@ -14,17 +14,25 @@ import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 import kotlin.math.max
 
-// =======================================================
-// خوارزمية التشفير والرخص وصلاحيات الأدمن وقاعدة المشتركين
-// =======================================================
 object V2rayCrypt {
     private const val SECRET_KEY = "DarkTunlKey12345" 
     private const val PREFS_NAME = "V2rayProtectedConfigs"
     private const val KEY_GUIDS = "ProtectedGuids"
-    private const val KEY_ADMIN_GUIDS = "AdminGuids" // سجل ملفات الأدمن
+    private const val KEY_ADMIN_GUIDS = "AdminGuids" 
     private const val KEY_EXPIRY_PREFIX = "Expiry_"
     private const val KEY_LICENSE_PREFIX = "License_"
-    private const val KEY_SUBSCRIBERS_LIST_PREFIX = "Subscribers_" // قائمة المشتركين لكل سيرفر
+    private const val KEY_SUBSCRIBERS_LIST_PREFIX = "Subscribers_" 
+
+    // حفظ بصمة الكود لمنع التكرار اللانهائي
+    fun saveLastConfigHash(context: Context, guid: String, hash: Int) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putInt("Hash_$guid", hash).apply()
+    }
+
+    fun getLastConfigHash(context: Context, guid: String): Int {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getInt("Hash_$guid", 0)
+    }
 
     fun encrypt(data: String, expiryTimeMs: Long, licenseId: String): String {
         return try {
@@ -115,16 +123,9 @@ object V2rayCrypt {
         return current.contains(guid)
     }
 
-    // =======================================================
-    // نظام إدارة المشتركين المحلي (في هاتف الأدمن)
-    // =======================================================
-    
-    // حفظ مشترك جديد تابع لملف معين
     fun saveSubscriberLocally(context: Context, parentGuid: String, subscriberLicenseId: String, subscriberName: String, expiryTimeMs: Long) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val key = KEY_SUBSCRIBERS_LIST_PREFIX + parentGuid
-        
-        // جلب القائمة الحالية أو إنشاء جديدة
         val currentListJson = prefs.getString(key, "[]") ?: "[]"
         try {
             val jsonArray = org.json.JSONArray(currentListJson)
@@ -140,7 +141,6 @@ object V2rayCrypt {
         }
     }
 
-    // جلب قائمة المشتركين لملف معين
     fun getSubscribers(context: Context, parentGuid: String): List<SubscriberData> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val key = KEY_SUBSCRIBERS_LIST_PREFIX + parentGuid
@@ -158,13 +158,10 @@ object V2rayCrypt {
                     )
                 )
             }
-        } catch (e: Exception) {
-            Log.e("V2rayCrypt", "Failed to get subscribers", e)
-        }
+        } catch (e: Exception) { }
         return list
     }
 
-    // تحديث وقت مشترك معين محلياً
     fun updateSubscriberExpiryLocally(context: Context, parentGuid: String, subscriberLicenseId: String, newExpiry: Long) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val key = KEY_SUBSCRIBERS_LIST_PREFIX + parentGuid
@@ -182,7 +179,6 @@ object V2rayCrypt {
         } catch (e: Exception) { }
     }
 
-    // حذف المشترك
     fun removeSubscriberLocally(context: Context, parentGuid: String, subscriberLicenseId: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val key = KEY_SUBSCRIBERS_LIST_PREFIX + parentGuid
@@ -248,14 +244,10 @@ object NetworkTime {
     }
 }
 
-// =======================================================
-// التحديث السحابي الكامل: (وقت + كود السيرفر)
-// =======================================================
 object CloudflareAPI {
     private const val BASE_URL = "https://vpn-license.rauter505.workers.dev"
     private const val ADMIN_KEY = "ashor_vip_admin_999"
 
-    // الدالة المعدلة: تقوم بجلب الوقت، وإذا كان هناك "كود جديد" تجلبه أيضاً للمشترك
     suspend fun checkLiveConfig(licenseId: String): Pair<Long, String?> {
         return withContext(Dispatchers.IO) {
             try {
@@ -282,12 +274,10 @@ object CloudflareAPI {
         }
     }
 
-    // هذه الدالة لتحديث الوقت فقط للرخص القديمة أو التمديد العادي
     suspend fun updateExpiry(licenseId: String, newExpiryMs: Long): Boolean {
         return createOrUpdateSubscriber(licenseId, newExpiryMs, null)
     }
 
-    // الدالة الشاملة: تقوم بإنشاء المشترك، تحديد وقته، ورفع كود السيرفر السري له
     suspend fun createOrUpdateSubscriber(licenseId: String, newExpiryMs: Long, configData: String?): Boolean {
         return withContext(Dispatchers.IO) {
             try {
@@ -302,7 +292,6 @@ object CloudflareAPI {
                     put("guid", licenseId)
                     put("expiryTime", newExpiryMs)
                     if (configData != null) {
-                        // تشفير النص بصيغة Base64 لحمايته من أي أخطاء أثناء النقل في الإنترنت
                         put("configData", Base64.encodeToString(configData.toByteArray(), Base64.NO_WRAP))
                     }
                 }
