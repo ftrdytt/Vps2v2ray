@@ -45,7 +45,6 @@ class MainRecyclerAdapter(
     @SuppressLint("NotifyDataSetChanged")
     fun setData(newData: MutableList<ServersCache>?, position: Int = -1) {
         data = newData?.toMutableList() ?: mutableListOf()
-
         if (position >= 0 && position in data.indices) {
             notifyItemChanged(position)
         } else {
@@ -64,7 +63,6 @@ class MainRecyclerAdapter(
             holder.itemView.setBackgroundColor(Color.TRANSPARENT)
             holder.itemMainBinding.tvName.text = profile.remarks
             
-            // تحديد نوع الملف
             val isProtected = V2rayCrypt.isProtected(context, guid)
             val isAdmin = V2rayCrypt.isAdmin(context, guid)
 
@@ -100,20 +98,22 @@ class MainRecyclerAdapter(
             if ((isProtected || isAdmin) && expiryTime > 0L) {
                 tvExpiry?.visibility = View.VISIBLE
                 
+                // هنا النبض السريع كل ثانية للشاشة الرئيسية
                 holder.countdownJob = coroutineScope.launch {
                     while (isActive) {
                         val currentTime = NetworkTime.currentTimeMillis(context)
                         val diffMs = expiryTime - currentTime
                         
                         if (diffMs > 0L) {
-                            val days = diffMs / (1000L * 60L * 60L * 24L)
-                            val hours = (diffMs / (1000L * 60L * 60L)) % 24L
-                            val minutes = (diffMs / (1000L * 60L)) % 60L
+                            val d = diffMs / 86400000L
+                            val h = (diffMs % 86400000L) / 3600000L
+                            val m = (diffMs % 3600000L) / 60000L
+                            val s = (diffMs % 60000L) / 1000L
                             
-                            val timeText = when {
-                                days > 0L -> "$days يوم و $hours ساعة"
-                                hours > 0L -> "$hours ساعة و $minutes دقيقة"
-                                else -> "$minutes دقيقة"
+                            val timeText = buildString {
+                                if (d > 0) append("$d يوم و ")
+                                if (h > 0 || d > 0) append("$h ساعة و ")
+                                append("$m دقيقة و $s ثانية")
                             }
                             
                             tvExpiry?.text = timeText
@@ -122,8 +122,7 @@ class MainRecyclerAdapter(
                             tvExpiry?.text = "منتهي الصلاحية"
                             tvExpiry?.setTextColor(Color.parseColor("#E53935")) 
                         }
-                        
-                        delay(60000L)
+                        delay(1000L) // التحديث كل ثانية واحدة بدلاً من دقيقة
                     }
                 }
             } else {
@@ -133,7 +132,7 @@ class MainRecyclerAdapter(
             val lottieVerified = holder.itemMainBinding.root.findViewById<com.airbnb.lottie.LottieAnimationView>(R.id.lottie_verified)
             val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
             val layoutAdminControl = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_admin_control)
-            val layoutSubscribersBtn = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_subscribers_btn) // زر المشتركين
+            val layoutSubscribersBtn = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_subscribers_btn)
 
             if (guid == MmkvManager.getSelectServer()) {
                 holder.itemMainBinding.layoutIndicator.visibility = View.VISIBLE
@@ -165,60 +164,44 @@ class MainRecyclerAdapter(
             } else {
                 holder.itemMainBinding.layoutMore.visibility = View.GONE
 
-                // التحكم بالأزرار (السحر)
                 if (isProtected && !isAdmin) {
-                    // العميل: إخفاء المشاركة، التعديل، والأدمن وزر المشتركين
                     holder.itemMainBinding.layoutShare.visibility = View.GONE
                     holder.itemMainBinding.layoutEdit.visibility = View.GONE
                     layoutAdminControl?.visibility = View.GONE
                     layoutSubscribersBtn?.visibility = View.GONE
                 } else if (isAdmin) {
-                    // الأدمن: إظهار التعديل، المشاركة، ساعة الأدمن، وزر المشتركين!
                     holder.itemMainBinding.layoutShare.visibility = View.VISIBLE
                     holder.itemMainBinding.layoutEdit.visibility = View.VISIBLE
                     layoutAdminControl?.visibility = View.VISIBLE
                     layoutSubscribersBtn?.visibility = View.VISIBLE
                 } else {
-                    // العادي: إخفاء أدوات الأدمن
                     holder.itemMainBinding.layoutShare.visibility = View.VISIBLE
                     holder.itemMainBinding.layoutEdit.visibility = View.VISIBLE
                     layoutAdminControl?.visibility = View.GONE
                     layoutSubscribersBtn?.visibility = View.GONE
                 }
 
-                // فتح شاشة المشتركين الجديدة
                 layoutSubscribersBtn?.setOnClickListener {
-                    if (context is MainActivity) {
-                        // سنبرمج هذه الدالة لاحقاً في MainActivity لتفتح الـ Activity الجديد
-                        context.openSubscribersPanel(guid)
-                    }
+                    if (context is MainActivity) context.openSubscribersPanel(guid)
                 }
 
                 layoutAdminControl?.setOnClickListener {
-                    if (context is MainActivity) {
-                        context.showExtendLicenseDialog(guid)
-                    }
+                    if (context is MainActivity) context.showExtendLicenseDialog(guid)
                 }
 
                 holder.itemMainBinding.layoutShare.setOnClickListener {
                     adapterListener?.onShare(guid, profile, position, false)
                 }
 
-                // تعديل زر القلم للأدمن ليظهر خيارات التعديل أو الاستبدال
                 holder.itemMainBinding.layoutEdit.setOnClickListener {
                     if (isAdmin) {
                         val options = arrayOf("تعديل يدوي للسيرفر", "استبدال السيرفر من الحافظة (السحابة)")
                         AlertDialog.Builder(context)
                             .setTitle("تعديل كود المشتركين")
-                            .setItems(options) { dialog, which ->
+                            .setItems(options) { _, which ->
                                 when (which) {
-                                    0 -> adapterListener?.onEdit(guid, position, profile) // فتح واجهة التعديل اليدوي
-                                    1 -> {
-                                        // استبدال الكود من الحافظة ورفعه لكلاود فلير
-                                        if (context is MainActivity) {
-                                            context.replaceAndSyncConfigFromClipboard(guid)
-                                        }
-                                    }
+                                    0 -> adapterListener?.onEdit(guid, position, profile) 
+                                    1 -> if (context is MainActivity) context.replaceAndSyncConfigFromClipboard(guid)
                                 }
                             }
                             .show()
