@@ -27,7 +27,7 @@
                 android:background="@drawable/ic_circle"
                 android:backgroundTint="#FF9800"
                 android:padding="8dp"
-                app:srcCompat="@drawable/ic_person_24dp"
+                android:src="@android:drawable/star_on"
                 app:tint="#FFFFFF" />
 
             <LinearLayout
@@ -98,7 +98,7 @@
                 <ImageView
                     android:layout_width="24dp"
                     android:layout_height="24dp"
-                    app:srcCompat="@drawable/ic_share_24dp"
+                    android:src="@android:drawable/ic_menu_share"
                     app:tint="#4CAF50" />
             </LinearLayout>
 
@@ -113,7 +113,7 @@
                 <ImageView
                     android:layout_width="24dp"
                     android:layout_height="24dp"
-                    app:srcCompat="@drawable/ic_delete_24dp"
+                    android:src="@android:drawable/ic_delete"
                     app:tint="#E53935" />
             </LinearLayout>
         </LinearLayout>
