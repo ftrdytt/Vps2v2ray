@@ -160,6 +160,10 @@
             android:name=".ui.AboutActivity"
             android:exported="false" />
 
+        <activity 
+            android:name=".ui.SubscribersActivity" 
+            android:exported="false" />
+
         <service
             android:name=".service.V2RayVpnService"
             android:enabled="true"
