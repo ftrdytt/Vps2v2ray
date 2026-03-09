@@ -69,6 +69,7 @@ import com.v2ray.ang.handler.V2rayCrypt
 import com.v2ray.ang.handler.CloudflareAPI
 import com.v2ray.ang.handler.AuthManager
 import kotlinx.coroutines.*
+import org.json.JSONObject // هذا السطر الذي كان ناقصاً
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
