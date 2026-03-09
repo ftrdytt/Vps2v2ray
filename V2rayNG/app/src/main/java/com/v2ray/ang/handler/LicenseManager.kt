@@ -33,10 +33,12 @@ object V2rayCrypt {
         return prefs.getInt("Active_$guid", 0)
     }
 
+    // حفظ بصمة الكود لمنع التكرار اللانهائي
     fun saveLastConfigHash(context: Context, guid: String, hash: Int) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putInt("Hash_$guid", hash).apply()
     }
+
     fun getLastConfigHash(context: Context, guid: String): Int {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getInt("Hash_$guid", 0)
@@ -50,7 +52,9 @@ object V2rayCrypt {
             cipher.init(Cipher.ENCRYPT_MODE, keySpec)
             val encryptedBytes = cipher.doFinal(payload.toByteArray())
             "ENC://" + Base64.encodeToString(encryptedBytes, Base64.NO_WRAP)
-        } catch (e: Exception) { "" }
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     fun decryptAndCheckExpiry(data: String): Triple<String, Long, String>? {
@@ -65,18 +69,26 @@ object V2rayCrypt {
 
             val parts = decryptedString.split("||", limit = 3)
             if (parts.size == 3) {
-                return Triple(parts[2], parts[0].toLongOrNull() ?: 0L, parts[1])
+                val expiryTimeMs = parts[0].toLongOrNull() ?: 0L
+                val licenseId = parts[1]
+                val configData = parts[2]
+                return Triple(configData, expiryTimeMs, licenseId)
             } else if (parts.size == 2) {
-                return Triple(parts[1], parts[0].toLongOrNull() ?: 0L, "LEGACY")
+                val expiryTimeMs = parts[0].toLongOrNull() ?: 0L
+                val configData = parts[1]
+                return Triple(configData, expiryTimeMs, "LEGACY")
             }
             null
-        } catch (e: Exception) { null }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun saveExpiryTime(context: Context, guid: String, expiryTimeMs: Long) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putLong(KEY_EXPIRY_PREFIX + guid, expiryTimeMs).apply()
     }
+
     fun getExpiryTime(context: Context, guid: String): Long {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getLong(KEY_EXPIRY_PREFIX + guid, 0L)
@@ -86,6 +98,7 @@ object V2rayCrypt {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_LICENSE_PREFIX + guid, licenseId).apply()
     }
+
     fun getLicenseId(context: Context, guid: String): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getString(KEY_LICENSE_PREFIX + guid, "") ?: ""
@@ -97,10 +110,12 @@ object V2rayCrypt {
         val updated = current.toMutableSet().apply { addAll(newGuids) }
         prefs.edit().putStringSet(KEY_GUIDS, updated).apply()
     }
+
     fun getAllProtectedGuids(context: Context): Set<String> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getStringSet(KEY_GUIDS, emptySet()) ?: emptySet()
     }
+
     fun isProtected(context: Context, guid: String): Boolean {
         return getAllProtectedGuids(context).contains(guid)
     }
@@ -111,6 +126,7 @@ object V2rayCrypt {
         val updated = current.toMutableSet().apply { add(guid) }
         prefs.edit().putStringSet(KEY_ADMIN_GUIDS, updated).apply()
     }
+
     fun isAdmin(context: Context, guid: String): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val current = prefs.getStringSet(KEY_ADMIN_GUIDS, emptySet()) ?: emptySet()
@@ -130,7 +146,9 @@ object V2rayCrypt {
             }
             jsonArray.put(newSub)
             prefs.edit().putString(key, jsonArray.toString()).apply()
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Log.e("V2rayCrypt", "Failed to save subscriber", e)
+        }
     }
 
     fun getSubscribers(context: Context, parentGuid: String): List<SubscriberData> {
@@ -214,16 +232,24 @@ object NetworkTime {
                     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                     prefs.edit().putLong(KEY_LAST_TIME, serverTime).apply()
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                Log.e("NetworkTime", "Failed to sync internet time")
+            }
         }
     }
 
     fun currentTimeMillis(context: Context): Long {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val lastTrusted = prefs.getLong(KEY_LAST_TIME, 0L)
-        val calculatedTime = if (isInitialized) android.os.SystemClock.elapsedRealtime() + networkTimeOffset else System.currentTimeMillis() 
+        val calculatedTime = if (isInitialized) {
+            android.os.SystemClock.elapsedRealtime() + networkTimeOffset
+        } else {
+            System.currentTimeMillis() 
+        }
         val finalTime = max(calculatedTime, lastTrusted)
-        if (finalTime > lastTrusted + 60000) prefs.edit().putLong(KEY_LAST_TIME, finalTime).apply()
+        if (finalTime > lastTrusted + 60000) {
+            prefs.edit().putLong(KEY_LAST_TIME, finalTime).apply()
+        }
         return finalTime
     }
 }
@@ -244,6 +270,7 @@ object CloudflareAPI {
                 if (conn.responseCode == 200) {
                     val reader = BufferedReader(InputStreamReader(conn.inputStream))
                     val response = reader.readText()
+                    
                     val obj = JSONObject(response)
                     val expiry = if (obj.has("expiryTime")) obj.getLong("expiryTime") else -1L
                     val configData = if (obj.has("configData") && !obj.isNull("configData")) obj.getString("configData") else null
@@ -290,7 +317,9 @@ object CloudflareAPI {
                 val payload = JSONObject().apply {
                     put("guid", licenseId)
                     put("expiryTime", newExpiryMs)
-                    if (configData != null) put("configData", Base64.encodeToString(configData.toByteArray(), Base64.NO_WRAP))
+                    if (configData != null) {
+                        put("configData", Base64.encodeToString(configData.toByteArray(), Base64.NO_WRAP))
+                    }
                 }
 
                 conn.outputStream.use { os ->
@@ -298,7 +327,9 @@ object CloudflareAPI {
                     os.write(input, 0, input.size)
                 }
                 conn.responseCode == 200
-            } catch (e: Exception) { false }
+            } catch (e: Exception) {
+                false
+            }
         }
     }
 }
