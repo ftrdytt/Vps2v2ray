@@ -361,11 +361,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             withContext(Dispatchers.Main) {
                 hideLoadingDialog()
                 if (success) {
-                    val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
+                    val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
                     val (count, _) = AngConfigManager.importBatchConfig(newConf, mainViewModel.subscriptionId, true)
                     
                     if (count > 0) {
-                        val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
+                        val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
                         val newGuid = (afterGuids - beforeGuids).firstOrNull()
                         if (newGuid != null) {
                             V2rayCrypt.addAdminGuid(this@MainActivity, newGuid)
@@ -630,10 +630,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                         if (incomingHash != currentHash && liveExpiry > NetworkTime.currentTimeMillis(this@MainActivity)) {
                                             val newConfigRaw = String(Base64.decode(liveConfigBase64, Base64.NO_WRAP)).trim()
                                             withContext(Dispatchers.Main) {
-                                                val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
+                                                val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
                                                 val (count, _) = AngConfigManager.importBatchConfig(newConfigRaw, mainViewModel.subscriptionId, true)
                                                 if (count > 0) {
-                                                    val newGuid = (MmkvManager.decodeServerList()?.toSet() ?: emptySet() - beforeGuids).firstOrNull() 
+                                                    val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
+                                                    val newGuid = (afterGuids - beforeGuids).firstOrNull() 
                                                     if (newGuid != null) {
                                                         V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
                                                         V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId)
@@ -732,10 +733,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         showLoadingDialog()
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
+                val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
                 val (count, countSub) = AngConfigManager.importBatchConfig(server, mainViewModel.subscriptionId, true)
                 if (count > 0) { 
-                    val newGuids = (MmkvManager.decodeServerList()?.toSet() ?: emptySet()) - beforeGuids
+                    val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
+                    val newGuids = afterGuids - beforeGuids
                     if (newGuids.isNotEmpty()) {
                         V2rayCrypt.addProtectedGuids(this@MainActivity, newGuids)
                         newGuids.forEach { guid ->
