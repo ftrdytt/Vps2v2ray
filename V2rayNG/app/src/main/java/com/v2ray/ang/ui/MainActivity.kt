@@ -77,10 +77,7 @@ import java.net.URL
 import java.util.Locale
 
 class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener, MainAdapterListener {
-    private val binding by lazy {
-        ActivityMainBinding.inflate(layoutInflater)
-    }
-
+    private val binding by lazy { ActivityMainBinding.inflate(layoutInflater) }
     val mainViewModel: MainViewModel by viewModels()
     private lateinit var groupPagerAdapter: GroupPagerAdapter
     private var tabMediator: TabLayoutMediator? = null
@@ -93,37 +90,19 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
     private var isFirstTrafficRead: Boolean = true
-    private var lastReportedState: Boolean? = null 
+    private var lastReportedState: Boolean? = null // لمنع التكرار في السحابة
 
     private var screenWidth = 0
 
-    private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (it.resultCode == RESULT_OK) {
-            startV2Ray()
-        }
-    }
+    private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { if (it.resultCode == RESULT_OK) startV2Ray() }
     private val requestActivityLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (SettingsChangeManager.consumeRestartService() && mainViewModel.isRunning.value == true) {
-            restartV2Ray()
-        }
-        if (SettingsChangeManager.consumeSetupGroupTab()) {
-            setupGroupTab()
-        }
+        if (SettingsChangeManager.consumeRestartService() && mainViewModel.isRunning.value == true) restartV2Ray()
+        if (SettingsChangeManager.consumeSetupGroupTab()) setupGroupTab()
     }
+    private val openEncryptedFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) readEncryptedContentFromUri(uri) }
 
-    private val openEncryptedFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            readEncryptedContentFromUri(uri)
-        }
-    }
-
-    fun showLoadingDialog() {
-        showLoading()
-    }
-
-    fun hideLoadingDialog() {
-        hideLoading()
-    }
+    fun showLoadingDialog() { showLoading() }
+    fun hideLoadingDialog() { hideLoading() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
@@ -131,48 +110,29 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         setContentView(binding.root)
         handleIntent(intent)
 
-        lifecycleScope.launch(Dispatchers.IO) {
-            NetworkTime.syncTime(this@MainActivity)
-        }
+        lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
 
         val displayMetrics = resources.displayMetrics
         screenWidth = displayMetrics.widthPixels
         
-        val settingsWrapper = binding.root.findViewById<View>(R.id.settings_wrapper)
-        settingsWrapper?.layoutParams?.width = screenWidth
+        binding.root.findViewById<View>(R.id.settings_wrapper)?.layoutParams?.width = screenWidth
         binding.homeContentContainer.layoutParams.width = screenWidth
         binding.greenScreenContainer.layoutParams.width = screenWidth
 
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
-            .commit()
+        supportFragmentManager.beginTransaction().replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment()).commit()
 
-        val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
-        btnGreenConnect?.setOnClickListener { handleFabAction() }
-
-        val btnSpeedTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
-        btnSpeedTest?.text = "قياس سرعة الإنترنت" 
-        btnSpeedTest?.setOnClickListener { runSpeedTest() }
-
-        val cardTrafficMeter = binding.root.findViewById<CardView>(R.id.card_traffic_meter)
-        cardTrafficMeter?.setOnClickListener { showTrafficDetailsDialog() }
-        
+        binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)?.setOnClickListener { handleFabAction() }
+        binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)?.let { it.text = "قياس سرعة الإنترنت"; it.setOnClickListener { runSpeedTest() } }
+        binding.root.findViewById<CardView>(R.id.card_traffic_meter)?.setOnClickListener { showTrafficDetailsDialog() }
         updateTrafficDisplay()
 
         val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
-
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
                 val page = if (screenWidth > 0) ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 2) else 0
-                val targetScrollX = page * screenWidth
-
-                binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(targetScrollX, 0) }
-                when (page) {
-                    0 -> bottomNav?.selectedItemId = R.id.nav_settings
-                    1 -> bottomNav?.selectedItemId = R.id.nav_servers
-                    2 -> bottomNav?.selectedItemId = R.id.nav_home
-                }
+                binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(page * screenWidth, 0) }
+                when (page) { 0 -> bottomNav?.selectedItemId = R.id.nav_settings; 1 -> bottomNav?.selectedItemId = R.id.nav_servers; 2 -> bottomNav?.selectedItemId = R.id.nav_home }
                 return@setOnTouchListener true
             }
             false
@@ -186,97 +146,49 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 else -> false
             }
         }
-
         bottomNav?.selectedItemId = R.id.nav_home
         binding.mainScrollView.post { binding.mainScrollView.scrollTo(screenWidth * 2, 0) }
 
         setupToolbar(binding.toolbar, false, "اشور لود")
 
         groupPagerAdapter = GroupPagerAdapter(this, emptyList())
-        binding.viewPager.adapter = groupPagerAdapter
-        binding.viewPager.isUserInputEnabled = true
+        binding.viewPager.adapter = groupPagerAdapter; binding.viewPager.isUserInputEnabled = true
 
         val toggle = ActionBarDrawerToggle(this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
-        toggle.isDrawerIndicatorEnabled = false 
-        binding.drawerLayout.addDrawerListener(toggle)
-        toggle.syncState()
+        toggle.isDrawerIndicatorEnabled = false; binding.drawerLayout.addDrawerListener(toggle); toggle.syncState()
         binding.navView.setNavigationItemSelectedListener(this)
         binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) {
-                    binding.drawerLayout.closeDrawer(GravityCompat.START)
-                } else {
-                    val currentScroll = binding.mainScrollView.scrollX
-                    if (currentScroll != screenWidth * 2) {
-                         binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
-                         bottomNav?.selectedItemId = R.id.nav_home 
-                    } else {
-                        isEnabled = false
-                        onBackPressedDispatcher.onBackPressed()
-                        isEnabled = true
-                    }
+                if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) binding.drawerLayout.closeDrawer(GravityCompat.START)
+                else {
+                    if (binding.mainScrollView.scrollX != screenWidth * 2) { binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0); bottomNav?.selectedItemId = R.id.nav_home } 
+                    else { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
                 }
             }
         })
 
-        binding.fab.setOnClickListener { handleFabAction() }
-        binding.layoutTest.setOnClickListener { handleLayoutTestClick() }
-
-        setupGroupTab()
-        setupViewModel()
-        mainViewModel.reloadServerList()
+        binding.fab.setOnClickListener { handleFabAction() }; binding.layoutTest.setOnClickListener { handleLayoutTestClick() }
+        setupGroupTab(); setupViewModel(); mainViewModel.reloadServerList()
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
     private fun showAddBottomSheet() {
         val bottomSheetDialog = BottomSheetDialog(this)
         val scrollView = ScrollView(this)
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#141417"))
-            setPadding(0, 0, 0, 40)
-        }
+        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#141417")); setPadding(0, 0, 0, 40) }
         scrollView.addView(container)
 
-        val title = TextView(this).apply {
-            text = "إضافة تكوين جديد"
-            textSize = 20f
-            setTextColor(Color.parseColor("#FF9800"))
-            setPadding(40, 40, 40, 20)
-            textAlignment = View.TEXT_ALIGNMENT_CENTER
-            setTypeface(null, android.graphics.Typeface.BOLD)
-        }
-        container.addView(title)
+        container.addView(TextView(this).apply { text = "إضافة تكوين جديد"; textSize = 20f; setTextColor(Color.parseColor("#FF9800")); setPadding(40, 40, 40, 20); textAlignment = View.TEXT_ALIGNMENT_CENTER; setTypeface(null, android.graphics.Typeface.BOLD) })
+        container.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 2).apply { setMargins(40, 0, 40, 20) }; setBackgroundColor(Color.parseColor("#33FFFFFF")) })
 
-        fun addSectionTitle(textStr: String) {
-            val sectionTitle = TextView(this).apply {
-                text = textStr
-                textSize = 14f
-                setTextColor(Color.parseColor("#80FFFFFF"))
-                setPadding(50, 30, 50, 10)
-                setTypeface(null, android.graphics.Typeface.BOLD)
-            }
-            container.addView(sectionTitle)
-        }
-
+        fun addSectionTitle(textStr: String) { container.addView(TextView(this).apply { text = textStr; textSize = 14f; setTextColor(Color.parseColor("#80FFFFFF")); setPadding(50, 30, 50, 10); setTypeface(null, android.graphics.Typeface.BOLD) }) }
         fun createOptionButton(textStr: String, iconRes: Int, onClick: () -> Unit) {
-            val layout = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                setPadding(50, 30, 50, 30)
-                gravity = Gravity.CENTER_VERTICAL
-                isClickable = true
-                isFocusable = true
-                val outValue = android.util.TypedValue()
-                theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
-                setBackgroundResource(outValue.resourceId)
-                setOnClickListener { onClick(); bottomSheetDialog.dismiss() }
-            }
-            val icon = ImageView(this).apply { setImageResource(iconRes); setColorFilter(Color.parseColor("#FF9800")); layoutParams = LinearLayout.LayoutParams(56, 56) }
-            val textView = TextView(this).apply { text = textStr; textSize = 16f; setTextColor(Color.WHITE); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = 40 } }
-            layout.addView(icon); layout.addView(textView); container.addView(layout)
+            val layout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT); setPadding(50, 30, 50, 30); gravity = Gravity.CENTER_VERTICAL; isClickable = true; isFocusable = true; val outValue = android.util.TypedValue(); theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true); setBackgroundResource(outValue.resourceId); setOnClickListener { onClick(); bottomSheetDialog.dismiss() } }
+            layout.addView(ImageView(this).apply { setImageResource(iconRes); setColorFilter(Color.parseColor("#FF9800")); layoutParams = LinearLayout.LayoutParams(56, 56) })
+            layout.addView(TextView(this).apply { text = textStr; textSize = 16f; setTextColor(Color.WHITE); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = 40 } })
+            container.addView(layout)
         }
 
         addSectionTitle("الاستيراد السريع")
@@ -289,9 +201,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         createOptionButton("VMess", android.R.drawable.ic_menu_edit) { importManually(EConfigType.VMESS.value) }
         createOptionButton("Trojan", android.R.drawable.ic_menu_edit) { importManually(EConfigType.TROJAN.value) }
         
-        bottomSheetDialog.setContentView(scrollView)
-        bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
-        bottomSheetDialog.show()
+        bottomSheetDialog.setContentView(scrollView); bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT); bottomSheetDialog.show()
     }
 
     fun showExtendLicenseDialog(guid: String) {
@@ -299,17 +209,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         if (licenseId.isEmpty() || licenseId == "LEGACY") { toastError("هذا الكود قديم ولا يدعم التمديد المركزي."); return }
 
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 40, 50, 40) }
-        val titleView = TextView(this).apply { text = "لوحة التحكم: تعديل للجميع"; textSize = 17f; setTextColor(Color.parseColor("#4CAF50")); setTypeface(null, android.graphics.Typeface.BOLD); setPadding(0, 0, 0, 30); gravity = Gravity.CENTER }
-        layout.addView(titleView)
+        layout.addView(TextView(this).apply { text = "لوحة التحكم: تعديل للجميع"; textSize = 17f; setTextColor(Color.parseColor("#4CAF50")); setTypeface(null, android.graphics.Typeface.BOLD); setPadding(0, 0, 0, 30); gravity = Gravity.CENTER })
+        val monthsInput = EditText(this).apply { hint = "عدد الأشهر"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }; layout.addView(monthsInput)
+        val daysInput = EditText(this).apply { hint = "عدد الأيام"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }; layout.addView(daysInput)
+        val hoursInput = EditText(this).apply { hint = "عدد الساعات"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }; layout.addView(hoursInput)
 
-        val monthsInput = EditText(this).apply { hint = "عدد الأشهر"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
-        val daysInput = EditText(this).apply { hint = "عدد الأيام"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
-        val hoursInput = EditText(this).apply { hint = "عدد الساعات"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
-        layout.addView(monthsInput); layout.addView(daysInput); layout.addView(hoursInput)
-
-        val builder = AlertDialog.Builder(this)
-        builder.setView(layout)
-        builder.setPositiveButton("تمديد للجميع") { dialog, _ ->
+        AlertDialog.Builder(this).setView(layout).setPositiveButton("تمديد للجميع") { dialog, _ ->
             val totalDurationMs = ((monthsInput.text.toString().toLongOrNull() ?: 0L) * 30L * 24L * 60L * 60L * 1000L) + ((daysInput.text.toString().toLongOrNull() ?: 0L) * 24L * 60L * 60L * 1000L) + ((hoursInput.text.toString().toLongOrNull() ?: 0L) * 60L * 60L * 1000L)
             if (totalDurationMs > 0L) {
                 val newExpiryTimeMs = NetworkTime.currentTimeMillis(this) + totalDurationMs
@@ -326,8 +231,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             } else toastError("الرجاء إدخال وقت صحيح")
             dialog.dismiss()
-        }
-        builder.setNeutralButton("إيقاف الكود فوراً") { dialog, _ ->
+        }.setNeutralButton("إيقاف الكود فوراً") { dialog, _ ->
             showLoadingDialog()
             lifecycleScope.launch(Dispatchers.IO) {
                 val expiredTime = NetworkTime.currentTimeMillis(this@MainActivity) - 100000L
@@ -340,18 +244,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     } else toastError("فشل الاتصال.")
                 }
             }
-        }
-        builder.setNegativeButton("إلغاء") { dialog, _ -> dialog.cancel() }
-        builder.show()
+        }.setNegativeButton("إلغاء") { dialog, _ -> dialog.cancel() }.show()
     }
 
     fun replaceAndSyncConfigFromClipboard(guid: String) {
         val licenseId = V2rayCrypt.getLicenseId(this, guid)
         if (licenseId.isEmpty() || licenseId == "LEGACY") { toastError("هذا الكود لا يدعم التحديث السحابي."); return }
 
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val newConf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-
+        val newConf = (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip?.getItemAt(0)?.text?.toString() ?: ""
         if (newConf.isEmpty() || !newConf.contains("://")) { toastError("الحافظة لا تحتوي على كود صالح."); return }
 
         val currentExpiry = V2rayCrypt.getExpiryTime(this, guid)
@@ -363,22 +263,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 if (success) {
                     val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
                     val (count, _) = AngConfigManager.importBatchConfig(newConf, mainViewModel.subscriptionId, true)
-                    
                     if (count > 0) {
-                        val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
-                        val newGuid = (afterGuids - beforeGuids).firstOrNull()
+                        val newGuid = ((MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()) - beforeGuids).firstOrNull()
                         if (newGuid != null) {
-                            V2rayCrypt.addAdminGuid(this@MainActivity, newGuid)
-                            V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
-                            V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId)
-                            V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, currentExpiry)
-                            
-                            val configBase64 = Base64.encodeToString(newConf.toByteArray(), Base64.NO_WRAP)
-                            V2rayCrypt.saveLastConfigHash(this@MainActivity, newGuid, configBase64.hashCode())
-
-                            mainViewModel.removeServer(guid)
-                            MmkvManager.setSelectServer(newGuid)
-                            toastSuccess("تم تحديث السيرفر سحابياً!"); mainViewModel.reloadServerList()
+                            V2rayCrypt.addAdminGuid(this@MainActivity, newGuid); V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid)); V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId); V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, currentExpiry); V2rayCrypt.saveLastConfigHash(this@MainActivity, newGuid, Base64.encodeToString(newConf.toByteArray(), Base64.NO_WRAP).hashCode())
+                            mainViewModel.removeServer(guid); MmkvManager.setSelectServer(newGuid); toastSuccess("تم تحديث السيرفر سحابياً!"); mainViewModel.reloadServerList()
                         }
                     } else toastError("الكود في الحافظة غير صالح.")
                 } else toastError("فشل رفع الكود.")
@@ -386,58 +275,38 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    fun openSubscribersPanel(parentGuid: String) {
-        startActivity(Intent(this, SubscribersActivity::class.java).putExtra("parentGuid", parentGuid))
-    }
+    fun openSubscribersPanel(parentGuid: String) { startActivity(Intent(this, SubscribersActivity::class.java).putExtra("parentGuid", parentGuid)) }
 
     private fun runSpeedTest() {
-        val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
-        val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
+        val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed); val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
         if (speedTestJob?.isActive == true) return
-        resetSpeedButtonJob?.cancel() 
-        btnTest?.isEnabled = false; btnTest?.text = "جاري القياس..."; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FF9800")) 
+        resetSpeedButtonJob?.cancel(); btnTest?.isEnabled = false; btnTest?.text = "جاري القياس..."; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FF9800")) 
 
         speedTestJob = lifecycleScope.launch(Dispatchers.IO) {
-            var finalSpeed = -1f
-            val url = URL("https://speed.cloudflare.com/__down?bytes=20000000")
-
-            if (mainViewModel.isRunning.value == true && finalSpeed < 0f) {
-                try { finalSpeed = attemptDownload(url, speedGauge, Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 10809))) } catch (e: Exception) {}
-            }
-            if (mainViewModel.isRunning.value == true && finalSpeed < 0f) {
-                try { finalSpeed = attemptDownload(url, speedGauge, Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))) } catch (e: Exception) {}
-            }
-            if (finalSpeed < 0f) {
-                try { finalSpeed = attemptDownload(url, speedGauge, Proxy.NO_PROXY) } catch (e: Exception) {}
-            }
+            var finalSpeed = -1f; val url = URL("https://speed.cloudflare.com/__down?bytes=20000000")
+            if (mainViewModel.isRunning.value == true && finalSpeed < 0f) try { finalSpeed = attemptDownload(url, speedGauge, Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 10809))) } catch (e: Exception) {}
+            if (mainViewModel.isRunning.value == true && finalSpeed < 0f) try { finalSpeed = attemptDownload(url, speedGauge, Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))) } catch (e: Exception) {}
+            if (finalSpeed < 0f) try { finalSpeed = attemptDownload(url, speedGauge, Proxy.NO_PROXY) } catch (e: Exception) {}
 
             withContext(Dispatchers.Main) {
                 speedGauge?.setSpeed(0f); btnTest?.isEnabled = true
                 if (finalSpeed >= 0f) {
-                    btnTest?.text = "السرعة: ${String.format(Locale.US, "%.1f", finalSpeed)} Mbps"
-                    btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#4CAF50"))
+                    btnTest?.text = "السرعة: ${String.format(Locale.US, "%.1f", finalSpeed)} Mbps"; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#4CAF50"))
                     resetSpeedButtonJob = lifecycleScope.launch { delay(10000); btnTest?.text = "قياس سرعة الإنترنت"; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3")) }
-                } else {
-                    btnTest?.text = "قياس سرعة الإنترنت"; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3")); toast("تعذر الفحص.")
-                }
+                } else { btnTest?.text = "قياس سرعة الإنترنت"; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3")); toast("تعذر الفحص.") }
             }
         }
     }
 
     private suspend fun attemptDownload(url: URL, speedGauge: SpeedGaugeView?, proxy: Proxy): Float {
         val connection = url.openConnection(proxy) as HttpURLConnection
-        connection.requestMethod = "GET"; connection.setRequestProperty("User-Agent", "Mozilla/5.0"); connection.connectTimeout = 2000; connection.readTimeout = 5000
-        connection.connect() 
+        connection.requestMethod = "GET"; connection.setRequestProperty("User-Agent", "Mozilla/5.0"); connection.connectTimeout = 2000; connection.readTimeout = 5000; connection.connect() 
         if (connection.responseCode != HttpURLConnection.HTTP_OK) return -1f
         
-        val inputStream = connection.inputStream
-        val buffer = ByteArray(16384) 
-        var totalBytesRead = 0L; var bytesRead: Int; val startTime = System.currentTimeMillis(); var lastUpdateTime = startTime; var lastBytesRead = 0L; var maxSpeed = 0f
+        val inputStream = connection.inputStream; val buffer = ByteArray(16384); var totalBytesRead = 0L; var bytesRead: Int; val startTime = System.currentTimeMillis(); var lastUpdateTime = startTime; var lastBytesRead = 0L; var maxSpeed = 0f
         
         while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-            totalBytesRead += bytesRead
-            val currentTime = System.currentTimeMillis()
-            val timeDiff = currentTime - lastUpdateTime
+            totalBytesRead += bytesRead; val currentTime = System.currentTimeMillis(); val timeDiff = currentTime - lastUpdateTime
             if (timeDiff >= 300) { 
                 val speedMbps = ((totalBytesRead - lastBytesRead) / (timeDiff / 1000f) * 8) / 1_000_000f 
                 if (speedMbps > maxSpeed) maxSpeed = speedMbps
@@ -453,18 +322,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun formatTraffic(bytes: Long): String {
         if (bytes <= 0) return "0.00 B"
         if (bytes < 1024) return "$bytes B"
-        val kb = bytes / 1024.0
-        if (kb < 1024) return String.format(Locale.ENGLISH, "%.2f KB", kb)
-        val mb = kb / 1024.0
-        if (mb < 1024) return String.format(Locale.ENGLISH, "%.2f MB", mb)
-        val gb = mb / 1024.0
-        return String.format(Locale.ENGLISH, "%.2f GB", gb)
+        val kb = bytes / 1024.0; if (kb < 1024) return String.format(Locale.ENGLISH, "%.2f KB", kb)
+        val mb = kb / 1024.0; if (mb < 1024) return String.format(Locale.ENGLISH, "%.2f MB", mb)
+        val gb = mb / 1024.0; return String.format(Locale.ENGLISH, "%.2f GB", gb)
     }
 
-    private fun updateTrafficDisplay() {
-        val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
-        binding.root.findViewById<TextView>(R.id.tv_total_traffic)?.text = formatTraffic(prefs.getLong("rx", 0L) + prefs.getLong("tx", 0L))
-    }
+    private fun updateTrafficDisplay() { binding.root.findViewById<TextView>(R.id.tv_total_traffic)?.text = formatTraffic(getSharedPreferences("traffic_stats", Context.MODE_PRIVATE).let { it.getLong("rx", 0L) + it.getLong("tx", 0L) }) }
 
     private fun startTrafficMonitor() {
         isFirstTrafficRead = true; trafficJob?.cancel()
@@ -493,17 +356,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun stopTrafficMonitor() { trafficJob?.cancel(); isFirstTrafficRead = true }
 
     private fun showTrafficDetailsDialog() {
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        dialog.setContentView(R.layout.dialog_traffic_stats)
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-
+        val dialog = Dialog(this).apply { requestWindowFeature(Window.FEATURE_NO_TITLE); setContentView(R.layout.dialog_traffic_stats); window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT)); window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) }
         val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
-        fun refreshDialogData() {
-            dialog.findViewById<TextView>(R.id.tv_download_stat).text = formatTraffic(prefs.getLong("rx", 0L))
-            dialog.findViewById<TextView>(R.id.tv_upload_stat).text = formatTraffic(prefs.getLong("tx", 0L))
-        }
+        fun refreshDialogData() { dialog.findViewById<TextView>(R.id.tv_download_stat).text = formatTraffic(prefs.getLong("rx", 0L)); dialog.findViewById<TextView>(R.id.tv_upload_stat).text = formatTraffic(prefs.getLong("tx", 0L)) }
         refreshDialogData()
         dialog.findViewById<ImageView>(R.id.btn_close_dialog).setOnClickListener { dialog.dismiss() }
         dialog.findViewById<MaterialButton>(R.id.btn_reset_stats).setOnClickListener {
@@ -520,15 +375,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun setupViewModel() {
         mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }
         mainViewModel.isRunning.observe(this) { isRunning -> applyRunningState(false, isRunning) }
-        mainViewModel.startListenBroadcast()
-        mainViewModel.initAssets(assets)
+        mainViewModel.startListenBroadcast(); mainViewModel.initAssets(assets)
     }
 
     private fun setupGroupTab() {
-        val groups = mainViewModel.getSubscriptions(this)
-        groupPagerAdapter.update(groups)
-        tabMediator?.detach()
-        tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position -> groupPagerAdapter.groups.getOrNull(position)?.let { tab.text = it.remarks; tab.tag = it.id } }.also { it.attach() }
+        val groups = mainViewModel.getSubscriptions(this); groupPagerAdapter.update(groups)
+        tabMediator?.detach(); tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position -> groupPagerAdapter.groups.getOrNull(position)?.let { tab.text = it.remarks; tab.tag = it.id } }.also { it.attach() }
         binding.viewPager.setCurrentItem(groups.indexOfFirst { it.id == mainViewModel.subscriptionId }.takeIf { it >= 0 } ?: (groups.size - 1), false)
         binding.tabGroup.isVisible = groups.size > 1
     }
@@ -540,24 +392,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         else startV2Ray()
     }
 
-    private fun handleLayoutTestClick() {
-        if (mainViewModel.isRunning.value == true) { setTestState(getString(R.string.connection_test_testing)); mainViewModel.testCurrentServerRealPing() }
-    }
+    private fun handleLayoutTestClick() { if (mainViewModel.isRunning.value == true) { setTestState(getString(R.string.connection_test_testing)); mainViewModel.testCurrentServerRealPing() } }
 
-    private fun startV2Ray() {
-        if (MmkvManager.getSelectServer().isNullOrEmpty()) { toast(R.string.title_file_chooser); return }
-        V2RayServiceManager.startVService(this)
-    }
+    private fun startV2Ray() { if (MmkvManager.getSelectServer().isNullOrEmpty()) { toast(R.string.title_file_chooser); return }; V2RayServiceManager.startVService(this) }
 
-    fun restartV2Ray() {
-        if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this)
-        lifecycleScope.launch { delay(500); startV2Ray() }
-    }
+    fun restartV2Ray() { if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this); lifecycleScope.launch { delay(500); startV2Ray() } }
 
     private fun setTestState(content: String?) {
-        binding.tvTestState.text = content
-        val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
-        val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
+        binding.tvTestState.text = content; val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping); val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
         if (content.isNullOrEmpty()) return
         try {
             val normalizedContent = content.replace("٠", "0").replace("١", "1").replace("٢", "2").replace("٣", "3").replace("٤", "4").replace("٥", "5").replace("٦", "6").replace("٧", "7").replace("٨", "8").replace("٩", "9")
@@ -565,9 +407,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 val match = Regex("(\\d+)\\s*(ms|م\\.ث)", RegexOption.IGNORE_CASE).find(normalizedContent)
                 if (match != null) { val pingValue = match.groupValues[1].toFloat(); gaugePing?.setPing(pingValue); tvGreenPing?.text = "${pingValue.toInt()} ms" } 
                 else Regex("(\\d+)").find(normalizedContent)?.let { gaugePing?.setPing(it.value.toFloat()); tvGreenPing?.text = "${it.value} ms" }
-            } else if (normalizedContent.contains("Timeout", ignoreCase = true) || normalizedContent.contains("Failed", ignoreCase = true) || normalizedContent.contains("فشل", ignoreCase = true)) {
-                gaugePing?.setPing(500f); tvGreenPing?.text = "Timeout"
-            } else if (normalizedContent == getString(R.string.connection_connected)) { gaugePing?.setPing(0f); tvGreenPing?.text = "متصل..." }
+            } else if (normalizedContent.contains("Timeout", ignoreCase = true) || normalizedContent.contains("Failed", ignoreCase = true) || normalizedContent.contains("فشل", ignoreCase = true)) { gaugePing?.setPing(500f); tvGreenPing?.text = "Timeout" } 
+            else if (normalizedContent == getString(R.string.connection_connected)) { gaugePing?.setPing(0f); tvGreenPing?.text = "متصل..." }
         } catch (e: Exception) {}
     }
 
@@ -578,26 +419,20 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         
+        // قفل ذكي لعدم إرسال حالة الاتصال مرتين 
         if (isRunning != lastReportedState && !isLoading && guid.isNotEmpty()) {
             lastReportedState = isRunning
             lifecycleScope.launch(Dispatchers.IO) { CloudflareAPI.sendActiveState(idToTrack, isRunning) }
         }
 
         if (isLoading) {
-            binding.fab.setImageResource(R.drawable.ic_fab_check); btnGreenConnect?.text = "جاري تشغيل المحرك..."; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
-            binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f); binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f); lottieEngine?.playAnimation()
-            return
+            binding.fab.setImageResource(R.drawable.ic_fab_check); btnGreenConnect?.text = "جاري تشغيل المحرك..."; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00")); binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f); binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f); lottieEngine?.playAnimation(); return
         }
 
         if (isRunning) {
-            binding.fab.setImageResource(R.drawable.ic_stop_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
-            binding.fab.contentDescription = getString(R.string.action_stop_service); setTestState(getString(R.string.connection_connected)); binding.layoutTest.isFocusable = true
-            btnGreenConnect?.text = "إيقاف المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F")); lottieEngine?.playAnimation()
-            startTrafficMonitor()
+            binding.fab.setImageResource(R.drawable.ic_stop_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active)); binding.fab.contentDescription = getString(R.string.action_stop_service); setTestState(getString(R.string.connection_connected)); binding.layoutTest.isFocusable = true; btnGreenConnect?.text = "إيقاف المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F")); lottieEngine?.playAnimation(); startTrafficMonitor()
             
-            pingJob?.cancel()
-            var lastCloudflareCheck = 0L 
-
+            pingJob?.cancel(); var lastCloudflareCheck = 0L 
             pingJob = lifecycleScope.launch {
                 delay(1000) 
                 while (isActive) {
@@ -624,26 +459,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                     if (isAdmin) V2rayCrypt.saveExpiryTime(this@MainActivity, guid, liveExpiry)
                                     
                                     if (!isAdmin && liveConfigBase64 != null) {
-                                        val incomingHash = liveConfigBase64.hashCode()
-                                        val currentHash = V2rayCrypt.getLastConfigHash(this@MainActivity, guid)
-
+                                        val incomingHash = liveConfigBase64.hashCode(); val currentHash = V2rayCrypt.getLastConfigHash(this@MainActivity, guid)
                                         if (incomingHash != currentHash && liveExpiry > NetworkTime.currentTimeMillis(this@MainActivity)) {
                                             val newConfigRaw = String(Base64.decode(liveConfigBase64, Base64.NO_WRAP)).trim()
                                             withContext(Dispatchers.Main) {
                                                 val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
                                                 val (count, _) = AngConfigManager.importBatchConfig(newConfigRaw, mainViewModel.subscriptionId, true)
                                                 if (count > 0) {
-                                                    val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
-                                                    val newGuid = (afterGuids - beforeGuids).firstOrNull() 
+                                                    val newGuid = ((MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()) - beforeGuids).firstOrNull() 
                                                     if (newGuid != null) {
-                                                        V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
-                                                        V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId)
-                                                        V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, liveExpiry)
-                                                        V2rayCrypt.saveLastConfigHash(this@MainActivity, newGuid, incomingHash)
-                                                        mainViewModel.removeServer(guid)
-                                                        MmkvManager.setSelectServer(newGuid)
-                                                        toastSuccess("تم تحديث إعدادات السيرفر بنجاح!")
-                                                        restartV2Ray(); cancel() 
+                                                        V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid)); V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId); V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, liveExpiry); V2rayCrypt.saveLastConfigHash(this@MainActivity, newGuid, incomingHash); mainViewModel.removeServer(guid); MmkvManager.setSelectServer(newGuid); toastSuccess("تم تحديث إعدادات السيرفر بنجاح!"); restartV2Ray(); cancel() 
                                                     }
                                                 }
                                             }
@@ -668,11 +493,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
         } else {
             pingJob?.cancel(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel(); stopTrafficMonitor()
-            binding.fab.setImageResource(R.drawable.ic_play_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
-            binding.fab.contentDescription = getString(R.string.tasker_start_service); setTestState(getString(R.string.connection_not_connected)); binding.layoutTest.isFocusable = false
-            btnGreenConnect?.text = "تشغيل المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C")); lottieEngine?.cancelAnimation(); lottieEngine?.progress = 0f
-            binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f); binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f); binding.root.findViewById<TextView>(R.id.tv_green_ping)?.text = "--- ms"
-            val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test); btnTest?.isEnabled = true; btnTest?.text = "قياس سرعة الإنترنت"; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
+            binding.fab.setImageResource(R.drawable.ic_play_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive)); binding.fab.contentDescription = getString(R.string.tasker_start_service); setTestState(getString(R.string.connection_not_connected)); binding.layoutTest.isFocusable = false; btnGreenConnect?.text = "تشغيل المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C")); lottieEngine?.cancelAnimation(); lottieEngine?.progress = 0f; binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f); binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f); binding.root.findViewById<TextView>(R.id.tv_green_ping)?.text = "--- ms"; val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test); btnTest?.isEnabled = true; btnTest?.text = "قياس سرعة الإنترنت"; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
         }
     }
 
@@ -683,10 +504,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         if (lastReportedState == true && idToTrack.isNotEmpty()) {
+            lastReportedState = false
             GlobalScope.launch(Dispatchers.IO) { CloudflareAPI.sendActiveState(idToTrack, false) }
         }
-        tabMediator?.detach(); pingJob?.cancel(); trafficJob?.cancel(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel()
-        super.onDestroy()
+        tabMediator?.detach(); pingJob?.cancel(); trafficJob?.cancel(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel(); super.onDestroy()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -736,8 +557,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
                 val (count, countSub) = AngConfigManager.importBatchConfig(server, mainViewModel.subscriptionId, true)
                 if (count > 0) { 
-                    val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
-                    val newGuids = afterGuids - beforeGuids
+                    val newGuids = (MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()) - beforeGuids
                     if (newGuids.isNotEmpty()) {
                         V2rayCrypt.addProtectedGuids(this@MainActivity, newGuids)
                         newGuids.forEach { guid ->
