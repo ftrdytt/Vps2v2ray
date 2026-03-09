@@ -21,24 +21,38 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 class ProfileActivity : AppCompatActivity() {
     
     private lateinit var ivPfp: ImageView
     private var currentBase64Pfp: String = ""
 
+    // حل مشكلة الدقة المليحة (التغويش): زيادة الأبعاد والجودة
     private val pickImage = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
             val uri = result.data?.data
             if (uri != null) {
                 try {
                     val bitmap = MediaStore.Images.Media.getBitmap(contentResolver, uri)
-                    val scaled = Bitmap.createScaledBitmap(bitmap, 300, 300, true)
+                    
+                    // تحديد حجم كبير يحافظ على النقاء (800 بكسل كحد أقصى)
+                    val maxImageSize = 800f
+                    val ratio = min(maxImageSize / bitmap.width, maxImageSize / bitmap.height)
+                    val width = (ratio * bitmap.width).roundToInt()
+                    val height = (ratio * bitmap.height).roundToInt()
+                    
+                    val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
                     val baos = ByteArrayOutputStream()
-                    scaled.compress(Bitmap.CompressFormat.JPEG, 70, baos)
+                    // ضغط بجودة ممتازة 95%
+                    scaled.compress(Bitmap.CompressFormat.JPEG, 95, baos)
                     val b = baos.toByteArray()
                     currentBase64Pfp = Base64.encodeToString(b, Base64.NO_WRAP)
+                    
+                    // عرض الصورة الجديدة
                     ivPfp.setImageBitmap(scaled)
+                    ivPfp.imageTintList = null // إزالة الفلتر الرمادي
                 } catch (e: Exception) {}
             }
         }
@@ -57,7 +71,6 @@ class ProfileActivity : AppCompatActivity() {
         val etPass = findViewById<EditText>(R.id.et_profile_pass)
         val btnSave = findViewById<Button>(R.id.btn_save_profile)
         val btnLogout = findViewById<Button>(R.id.btn_logout)
-        val tvChangePic = findViewById<TextView>(R.id.tv_change_pic)
 
         // جلب البيانات المحفوظة وعرضها
         etId.setText(AuthManager.getId(this))
@@ -70,15 +83,14 @@ class ProfileActivity : AppCompatActivity() {
                 val decodedBytes = Base64.decode(currentBase64Pfp, Base64.NO_WRAP)
                 val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
                 ivPfp.setImageBitmap(bitmap)
+                ivPfp.imageTintList = null // إزالة الفلتر إذا وجدت صورة
             } catch (e: Exception) {}
         }
 
-        val pickAction = {
+        ivPfp.setOnClickListener {
             val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
             pickImage.launch(intent)
         }
-        tvChangePic.setOnClickListener { pickAction() }
-        ivPfp.setOnClickListener { pickAction() }
 
         btnSave.setOnClickListener {
             val newName = etName.text.toString().trim()
@@ -90,7 +102,7 @@ class ProfileActivity : AppCompatActivity() {
             }
 
             btnSave.isEnabled = false
-            btnSave.text = "جاري الحفظ..."
+            btnSave.text = "جاري الحفظ السحابي..."
 
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
@@ -117,27 +129,27 @@ class ProfileActivity : AppCompatActivity() {
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(this@ProfileActivity, "تم حفظ التعديلات بنجاح!", Toast.LENGTH_SHORT).show()
                                 btnSave.isEnabled = true
-                                btnSave.text = "حفظ التعديلات"
+                                btnSave.text = "حفظ التعديلات السحابية"
                             }
                         } else {
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(this@ProfileActivity, obj.optString("message", "لا يمكن تعديل هذا الحساب"), Toast.LENGTH_SHORT).show()
                                 btnSave.isEnabled = true
-                                btnSave.text = "حفظ التعديلات"
+                                btnSave.text = "حفظ التعديلات السحابية"
                             }
                         }
                     } else {
                         withContext(Dispatchers.Main) {
                             Toast.makeText(this@ProfileActivity, "فشل الاتصال بالسيرفر", Toast.LENGTH_SHORT).show()
                             btnSave.isEnabled = true
-                            btnSave.text = "حفظ التعديلات"
+                            btnSave.text = "حفظ التعديلات السحابية"
                         }
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@ProfileActivity, "تأكد من الإنترنت لحفظ التعديلات", Toast.LENGTH_SHORT).show()
                         btnSave.isEnabled = true
-                        btnSave.text = "حفظ التعديلات"
+                        btnSave.text = "حفظ التعديلات السحابية"
                     }
                 }
             }
