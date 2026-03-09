@@ -76,7 +76,7 @@ class SubscribersActivity : AppCompatActivity() {
             onExtend = { sub -> showExtendDialog(sub) },
             onShare = { sub -> shareSubscriber(sub) },
             onDelete = { sub -> deleteSubscriber(sub) },
-            onEdit = { sub -> showEditDialog(sub) } // برمجة زر التعديل الجديد
+            onEdit = { sub -> showEditDialog(sub) } 
         )
         recycler.adapter = adapter
 
@@ -89,7 +89,6 @@ class SubscribersActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // بمجرد فتح الشاشة، نقوم بجلب البيانات المحلية ثم التحديث من النت فوراً
         loadSubscribers()
         syncSubscribersFromCloud()
     }
@@ -99,7 +98,6 @@ class SubscribersActivity : AppCompatActivity() {
         filterList(etSearch.text.toString())
     }
 
-    // جلب الوقت الحي من كلاود فلير لكل المشتركين في الخلفية بدون تجميد الشاشة
     private fun syncSubscribersFromCloud() {
         lifecycleScope.launch(Dispatchers.IO) {
             var isChanged = false
@@ -126,7 +124,6 @@ class SubscribersActivity : AppCompatActivity() {
         tvEmptyState.visibility = if (filtered.isEmpty()) View.VISIBLE else View.GONE
     }
 
-    // زر التعديل: تغيير الاسم أو رفع كود جديد
     private fun showEditDialog(sub: V2rayCrypt.SubscriberData) {
         val options = arrayOf("تغيير اسم المشترك", "استبدال السيرفر للمشترك (من الحافظة)")
         AlertDialog.Builder(this)
@@ -151,7 +148,6 @@ class SubscribersActivity : AppCompatActivity() {
             .setPositiveButton("حفظ") { _, _ ->
                 val newName = input.text.toString().trim()
                 if (newName.isNotEmpty()) {
-                    // تحديث الاسم محلياً
                     val prefs = getSharedPreferences("V2rayProtectedConfigs", Context.MODE_PRIVATE)
                     val key = "Subscribers_$parentGuid"
                     val currentListJson = prefs.getString(key, "[]") ?: "[]"
@@ -195,7 +191,6 @@ class SubscribersActivity : AppCompatActivity() {
         }
     }
 
-    // إضافة زر الإيقاف الفوري هنا
     private fun showExtendDialog(sub: V2rayCrypt.SubscriberData) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -251,7 +246,7 @@ class SubscribersActivity : AppCompatActivity() {
             dialog.dismiss()
         }
         
-        // زر الإيقاف الفوري تمت إضافته هنا
+        // --- زر إيقاف الكود الفوري موجود هنا! ---
         builder.setNeutralButton("إيقاف الكود") { dialog, _ ->
             Toast.makeText(this, "جاري الإيقاف...", Toast.LENGTH_SHORT).show()
             lifecycleScope.launch(Dispatchers.IO) {
@@ -320,9 +315,6 @@ class SubscribersActivity : AppCompatActivity() {
     }
 }
 
-// =========================================================
-// محول القائمة - تمت إضافة النبض الحي (Live Ticker) للوقت
-// =========================================================
 class SubscribersAdapter(
     private val onExtend: (V2rayCrypt.SubscriberData) -> Unit,
     private val onShare: (V2rayCrypt.SubscriberData) -> Unit,
@@ -351,7 +343,7 @@ class SubscribersAdapter(
 
     override fun onViewRecycled(holder: SubViewHolder) {
         super.onViewRecycled(holder)
-        holder.cancelTimer() // إيقاف العداد عند التمرير لتجنب استهلاك الذاكرة
+        holder.cancelTimer() 
     }
 
     class SubViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -360,7 +352,7 @@ class SubscribersAdapter(
         val btnExtend: View = view.findViewById(R.id.btn_extend)
         val btnShare: View = view.findViewById(R.id.btn_share)
         val btnDelete: View = view.findViewById(R.id.btn_delete)
-        val btnEdit: View? = view.findViewById(R.id.btn_edit) // قد يكون null لو لم يتم تحديث الـ XML
+        val btnEdit: View? = view.findViewById(R.id.btn_edit) 
         
         private var timerJob: Job? = null
         private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -379,7 +371,6 @@ class SubscribersAdapter(
             btnDelete.setOnClickListener { onDelete(item) }
             btnEdit?.setOnClickListener { onEdit(item) }
 
-            // عداد النبض (Ticker) يتحدث كل ثانية
             timerJob?.cancel()
             timerJob = scope.launch {
                 while (isActive) {
