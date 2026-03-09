@@ -18,7 +18,6 @@ import com.v2ray.ang.databinding.ItemRecyclerMainBinding
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.dto.ServersCache
 import com.v2ray.ang.extension.nullIfBlank
-import com.v2ray.ang.extension.toast
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.NetworkTime
@@ -90,6 +89,16 @@ class MainRecyclerAdapter(
                 holder.itemMainBinding.tvTestResult.setTextColor(Color.parseColor("#00E676"))
             }
 
+            // --- عرض عداد النشطين ---
+            val tvActiveCount = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_active_count)
+            if (isProtected || isAdmin) {
+                val activeCount = V2rayCrypt.getActiveCount(context, guid)
+                tvActiveCount?.visibility = View.VISIBLE
+                tvActiveCount?.text = "🟢 $activeCount"
+            } else {
+                tvActiveCount?.visibility = View.GONE
+            }
+
             val expiryTime = V2rayCrypt.getExpiryTime(context, guid)
             val tvExpiry = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_expiry_countdown)
             
@@ -98,7 +107,6 @@ class MainRecyclerAdapter(
             if ((isProtected || isAdmin) && expiryTime > 0L) {
                 tvExpiry?.visibility = View.VISIBLE
                 
-                // هنا النبض السريع كل ثانية للشاشة الرئيسية
                 holder.countdownJob = coroutineScope.launch {
                     while (isActive) {
                         val currentTime = NetworkTime.currentTimeMillis(context)
@@ -122,7 +130,7 @@ class MainRecyclerAdapter(
                             tvExpiry?.text = "منتهي الصلاحية"
                             tvExpiry?.setTextColor(Color.parseColor("#E53935")) 
                         }
-                        delay(1000L) // التحديث كل ثانية واحدة بدلاً من دقيقة
+                        delay(1000L) 
                     }
                 }
             } else {
