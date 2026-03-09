@@ -67,6 +67,7 @@ import com.v2ray.ang.viewmodel.MainViewModel
 import com.v2ray.ang.handler.NetworkTime
 import com.v2ray.ang.handler.V2rayCrypt
 import com.v2ray.ang.handler.CloudflareAPI
+import com.v2ray.ang.handler.AuthManager
 import kotlinx.coroutines.*
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -86,7 +87,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var trafficJob: Job? = null
     private var speedTestJob: Job? = null
     private var resetSpeedButtonJob: Job? = null 
-    private var liveUpdateJob: Job? = null // رادار التحديث اللحظي
+    private var liveUpdateJob: Job? = null 
     
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
@@ -109,6 +110,39 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onCreate(savedInstanceState: Bundle?) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
+
+        // === نظام الحسابات: فحص تسجيل الخروج ===
+        if (AuthManager.hasLoggedOut(this)) {
+            startActivity(Intent(this, LoginActivity::class.java))
+            finish()
+            return
+        }
+
+        // === نظام الحسابات: إنشاء حساب عشوائي صامت إذا لم يكن مسجلاً ===
+        if (!AuthManager.isLoggedIn(this)) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val url = URL("https://vpn-license.rauter505.workers.dev/auth/init")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    if (conn.responseCode == 200) {
+                        val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                        val obj = JSONObject(resp)
+                        if (obj.getBoolean("success")) {
+                            AuthManager.saveUser(
+                                this@MainActivity,
+                                obj.getString("id"),
+                                obj.getString("name"),
+                                obj.getString("password"),
+                                "user",
+                                ""
+                            )
+                        }
+                    }
+                } catch (e: Exception) { Log.e("Auth", "Failed to create auto account", e) }
+            }
+        }
+
         setContentView(binding.root)
         handleIntent(intent)
 
@@ -145,6 +179,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 R.id.nav_settings -> { binding.mainScrollView.smoothScrollTo(0, 0); true }
                 R.id.nav_servers -> { binding.mainScrollView.smoothScrollTo(screenWidth, 0); true }
                 R.id.nav_home -> { binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0); true }
+                R.id.nav_profile -> { 
+                    startActivity(Intent(this, ProfileActivity::class.java))
+                    false 
+                }
                 else -> false
             }
         }
@@ -176,7 +214,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
-    // الدالة المسؤولة عن التحديث الفوري للنشطين أثناء فتح التطبيق
     private fun startLiveUpdates() {
         liveUpdateJob?.cancel()
         liveUpdateJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -199,12 +236,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 if (needsRefresh) {
                     withContext(Dispatchers.Main) { mainViewModel.reloadServerList() }
                 }
-                delay(4000) // الرادار يفحص كل 4 ثواني للنشطين الجدد
+                delay(4000) 
             }
         }
     }
 
-    // هذه الدالة ليتم استدعاؤها من صفحة السيرفرات عند السحب من الأعلى
     fun forceManualSync() {
         showLoadingDialog()
         lifecycleScope.launch(Dispatchers.IO) {
@@ -472,13 +508,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         
-        // إصلاح مشكلة عدم التصفير: القفل الذكي لضمان تحديث السحابة والواجهة عند التشغيل والإيقاف
         val isNowRunning = isRunning && !isLoading
         if (lastReportedState != isNowRunning && guid.isNotEmpty()) {
             lastReportedState = isNowRunning
             lifecycleScope.launch(Dispatchers.IO) { 
                 CloudflareAPI.sendActiveState(idToTrack, isNowRunning) 
-                // جلب العدد الجديد فوراً بعد التغيير
                 val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
                 V2rayCrypt.saveActiveCount(this@MainActivity, guid, updatedData.third)
                 withContext(Dispatchers.Main) { mainViewModel.reloadServerList() }
@@ -503,14 +537,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val isAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid)
                         
                         if (licenseId.isNotEmpty() && licenseId != "LEGACY" && (isProtected || isAdmin)) {
-                            // يتم الفحص السحابي كل دقيقة للوقت والكود
                             if (System.currentTimeMillis() - lastCloudflareCheck > 60000L) {
                                 lastCloudflareCheck = System.currentTimeMillis()
                                 val cloudData = CloudflareAPI.checkLiveConfig(licenseId)
                                 val liveExpiry = cloudData.first
                                 val liveConfigBase64 = cloudData.second
+                                val activeCount = cloudData.third
 
                                 if (liveExpiry >= 0L) {
+                                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, activeCount)
+                                    withContext(Dispatchers.Main) { mainViewModel.reloadServerList() } 
+                                    
                                     val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
                                     allProtected.forEach { pGuid -> if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, liveExpiry) }
                                     if (isAdmin) V2rayCrypt.saveExpiryTime(this@MainActivity, guid, liveExpiry)
@@ -557,14 +594,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onResume() { 
         super.onResume()
         if (mainViewModel.isRunning.value == true) startTrafficMonitor() else updateTrafficDisplay() 
-        // تشغيل רادار النشطين
         startLiveUpdates()
     }
     
     override fun onPause() { 
         super.onPause()
         stopTrafficMonitor(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel() 
-        // إيقاف الرادار لتوفير البطارية
         liveUpdateJob?.cancel()
     }
     
