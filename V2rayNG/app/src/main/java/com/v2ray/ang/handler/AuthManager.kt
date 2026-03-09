@@ -25,11 +25,19 @@ object AuthManager {
             .apply()
     }
 
+    // هنا السحر: عند تسجيل الخروج لا نحذف البيانات، بل نغير الحالة فقط
     fun logout(context: Context) {
-        getPrefs(context).edit().clear().putBoolean("has_logged_out", true).apply()
+        getPrefs(context).edit().putBoolean("has_logged_out", true).apply()
     }
 
-    fun isLoggedIn(context: Context): Boolean = getPrefs(context).getString("id", null) != null
+    fun isLoggedIn(context: Context): Boolean {
+        return getPrefs(context).getString("id", null) != null && !hasLoggedOut(context)
+    }
+
+    fun getSavedId(context: Context): String? = getPrefs(context).getString("id", null)
+    fun getSavedName(context: Context): String? = getPrefs(context).getString("name", null)
+    fun getSavedPass(context: Context): String? = getPrefs(context).getString("pass", null)
+
     fun getId(context: Context): String = getPrefs(context).getString("id", "جاري الاتصال...") ?: "جاري الاتصال..."
     fun getName(context: Context): String = getPrefs(context).getString("name", "مستخدم جديد") ?: "مستخدم جديد"
     fun getPass(context: Context): String = getPrefs(context).getString("pass", "") ?: ""
