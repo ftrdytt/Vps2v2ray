@@ -1,62 +1,143 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
     android:background="#0A0A0C"
-    android:padding="24dp">
+    android:fillViewport="true">
 
-    <ImageView
-        android:layout_width="100dp"
-        android:layout_height="100dp"
-        android:src="@mipmap/ic_launcher"
-        android:layout_marginBottom="32dp"/>
-
-    <TextView
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="تسجيل الدخول"
-        android:textColor="#FFFFFF"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="24dp"/>
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="24dp">
 
-    <EditText
-        android:id="@+id/et_login_id"
-        android:layout_width="match_parent"
-        android:layout_height="55dp"
-        android:background="@drawable/ic_circle"
-        android:backgroundTint="#1A1A1D"
-        android:hint="الايدي (ID)"
-        android:textColorHint="#80FFFFFF"
-        android:textColor="#FFFFFF"
-        android:paddingHorizontal="16dp"
-        android:inputType="number"
-        android:layout_marginBottom="16dp"/>
+        <androidx.cardview.widget.CardView
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:layout_marginTop="40dp"
+            android:layout_marginBottom="24dp"
+            app:cardCornerRadius="30dp"
+            app:cardBackgroundColor="#1A1A1D"
+            app:cardElevation="10dp">
+            <ImageView
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_stat_name"
+                app:tint="#FF9800" />
+        </androidx.cardview.widget.CardView>
 
-    <EditText
-        android:id="@+id/et_login_pass"
-        android:layout_width="match_parent"
-        android:layout_height="55dp"
-        android:background="@drawable/ic_circle"
-        android:backgroundTint="#1A1A1D"
-        android:hint="كلمة المرور"
-        android:textColorHint="#80FFFFFF"
-        android:textColor="#FFFFFF"
-        android:paddingHorizontal="16dp"
-        android:inputType="textPassword"
-        android:layout_marginBottom="32dp"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="مرحباً بك في Ashor"
+            android:textColor="#FFFFFF"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp"/>
+            
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="سجل دخولك أو أنشئ حساباً جديداً بضغطة زر"
+            android:textColor="#80FFFFFF"
+            android:textSize="14sp"
+            android:layout_marginBottom="40dp"/>
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btn_login"
-        android:layout_width="match_parent"
-        android:layout_height="60dp"
-        android:text="تسجيل الدخول"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        app:cornerRadius="12dp"
-        app:backgroundTint="#FF9800"/>
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_quick_login"
+            android:layout_width="match_parent"
+            android:layout_height="65dp"
+            android:text="متابعة كـ (الاسم)"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:icon="@android:drawable/ic_menu_myplaces"
+            app:iconGravity="textStart"
+            app:cornerRadius="16dp"
+            android:visibility="gone"
+            app:backgroundTint="#2196F3"
+            android:layout_marginBottom="16dp"/>
 
-</LinearLayout>
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_create_random"
+            android:layout_width="match_parent"
+            android:layout_height="65dp"
+            android:text="إنشاء حساب عشوائي جديد بضغطة"
+            android:textColor="#FF9800"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:icon="@android:drawable/ic_menu_rotate"
+            app:iconTint="#FF9800"
+            app:iconGravity="textStart"
+            app:strokeColor="#FF9800"
+            app:strokeWidth="2dp"
+            app:cornerRadius="16dp"
+            app:backgroundTint="#141417"
+            android:layout_marginBottom="32dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:layout_marginBottom="24dp">
+            <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" android:background="#33FFFFFF"/>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="أو الدخول يدوياً" android:textColor="#80FFFFFF" android:layout_marginHorizontal="16dp"/>
+            <View android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" android:background="#33FFFFFF"/>
+        </LinearLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:boxBackgroundColor="#1A1A1D"
+            app:boxCornerRadiusTopStart="16dp"
+            app:boxCornerRadiusTopEnd="16dp"
+            app:boxCornerRadiusBottomStart="16dp"
+            app:boxCornerRadiusBottomEnd="16dp"
+            app:boxStrokeWidth="0dp"
+            app:hintTextColor="#80FFFFFF"
+            android:layout_marginBottom="16dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_login_id"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:hint="الايدي (ID)"
+                android:inputType="number"
+                android:textColor="#FFFFFF" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:boxBackgroundColor="#1A1A1D"
+            app:boxCornerRadiusTopStart="16dp"
+            app:boxCornerRadiusTopEnd="16dp"
+            app:boxCornerRadiusBottomStart="16dp"
+            app:boxCornerRadiusBottomEnd="16dp"
+            app:boxStrokeWidth="0dp"
+            app:passwordToggleEnabled="true"
+            app:passwordToggleTint="#80FFFFFF"
+            app:hintTextColor="#80FFFFFF"
+            android:layout_marginBottom="24dp">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_login_pass"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:hint="كلمة المرور"
+                android:inputType="textPassword"
+                android:textColor="#FFFFFF" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_manual_login"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:text="دخول"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:cornerRadius="16dp"
+            app:backgroundTint="#4CAF50"/>
+
+    </LinearLayout>
+</ScrollView>
