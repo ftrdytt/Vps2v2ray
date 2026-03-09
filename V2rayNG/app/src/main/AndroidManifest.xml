@@ -164,6 +164,15 @@
             android:name=".ui.SubscribersActivity" 
             android:exported="false" />
 
+        <activity
+            android:name=".ui.LoginActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+            
+        <activity
+            android:name=".ui.ProfileActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
         <service
             android:name=".service.V2RayVpnService"
             android:enabled="true"
