@@ -55,6 +55,15 @@
                     android:textColor="#4CAF50"
                     android:textStyle="bold"
                     android:textSize="13sp" />
+                    
+                <TextView
+                    android:id="@+id/tv_active_count"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="نشط الآن: 🟢 0"
+                    android:textColor="#80FFFFFF"
+                    android:textSize="12sp" />
             </LinearLayout>
         </LinearLayout>
 
