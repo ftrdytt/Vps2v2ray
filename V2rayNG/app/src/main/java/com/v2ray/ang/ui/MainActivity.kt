@@ -86,11 +86,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var trafficJob: Job? = null
     private var speedTestJob: Job? = null
     private var resetSpeedButtonJob: Job? = null 
+    private var liveUpdateJob: Job? = null // رادار التحديث اللحظي
     
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
     private var isFirstTrafficRead: Boolean = true
-    private var lastReportedState: Boolean? = null // لمنع التكرار في السحابة
+
+    companion object { var lastReportedState: Boolean? = null }
 
     private var screenWidth = 0
 
@@ -172,6 +174,57 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         binding.fab.setOnClickListener { handleFabAction() }; binding.layoutTest.setOnClickListener { handleLayoutTestClick() }
         setupGroupTab(); setupViewModel(); mainViewModel.reloadServerList()
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
+    }
+
+    // الدالة المسؤولة عن التحديث الفوري للنشطين أثناء فتح التطبيق
+    private fun startLiveUpdates() {
+        liveUpdateJob?.cancel()
+        liveUpdateJob = lifecycleScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
+                var needsRefresh = false
+                for (guid in guids) {
+                    val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
+                    if (licenseId.isNotEmpty() && licenseId != "LEGACY" && (V2rayCrypt.isProtected(this@MainActivity, guid) || V2rayCrypt.isAdmin(this@MainActivity, guid))) {
+                        val cloudData = CloudflareAPI.checkLiveConfig(licenseId)
+                        if (cloudData.first >= 0L) {
+                            val currentCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
+                            if (currentCount != cloudData.third) {
+                                V2rayCrypt.saveActiveCount(this@MainActivity, guid, cloudData.third)
+                                needsRefresh = true
+                            }
+                        }
+                    }
+                }
+                if (needsRefresh) {
+                    withContext(Dispatchers.Main) { mainViewModel.reloadServerList() }
+                }
+                delay(4000) // الرادار يفحص كل 4 ثواني للنشطين الجدد
+            }
+        }
+    }
+
+    // هذه الدالة ليتم استدعاؤها من صفحة السيرفرات عند السحب من الأعلى
+    fun forceManualSync() {
+        showLoadingDialog()
+        lifecycleScope.launch(Dispatchers.IO) {
+            val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
+            for (guid in guids) {
+                val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
+                if (licenseId.isNotEmpty() && licenseId != "LEGACY") {
+                    val cloudData = CloudflareAPI.checkLiveConfig(licenseId)
+                    if (cloudData.first >= 0L) {
+                        V2rayCrypt.saveActiveCount(this@MainActivity, guid, cloudData.third)
+                        V2rayCrypt.saveExpiryTime(this@MainActivity, guid, cloudData.first)
+                    }
+                }
+            }
+            withContext(Dispatchers.Main) { 
+                mainViewModel.reloadServerList()
+                hideLoadingDialog()
+                toastSuccess("تم تحديث البيانات بنجاح!")
+            }
+        }
     }
 
     private fun showAddBottomSheet() {
@@ -419,10 +472,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         
-        // قفل ذكي لعدم إرسال حالة الاتصال مرتين 
-        if (isRunning != lastReportedState && !isLoading && guid.isNotEmpty()) {
-            lastReportedState = isRunning
-            lifecycleScope.launch(Dispatchers.IO) { CloudflareAPI.sendActiveState(idToTrack, isRunning) }
+        // إصلاح مشكلة عدم التصفير: القفل الذكي لضمان تحديث السحابة والواجهة عند التشغيل والإيقاف
+        val isNowRunning = isRunning && !isLoading
+        if (lastReportedState != isNowRunning && guid.isNotEmpty()) {
+            lastReportedState = isNowRunning
+            lifecycleScope.launch(Dispatchers.IO) { 
+                CloudflareAPI.sendActiveState(idToTrack, isNowRunning) 
+                // جلب العدد الجديد فوراً بعد التغيير
+                val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
+                V2rayCrypt.saveActiveCount(this@MainActivity, guid, updatedData.third)
+                withContext(Dispatchers.Main) { mainViewModel.reloadServerList() }
+            }
         }
 
         if (isLoading) {
@@ -443,17 +503,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val isAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid)
                         
                         if (licenseId.isNotEmpty() && licenseId != "LEGACY" && (isProtected || isAdmin)) {
+                            // يتم الفحص السحابي كل دقيقة للوقت والكود
                             if (System.currentTimeMillis() - lastCloudflareCheck > 60000L) {
                                 lastCloudflareCheck = System.currentTimeMillis()
                                 val cloudData = CloudflareAPI.checkLiveConfig(licenseId)
                                 val liveExpiry = cloudData.first
                                 val liveConfigBase64 = cloudData.second
-                                val activeCount = cloudData.third
 
                                 if (liveExpiry >= 0L) {
-                                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, activeCount)
-                                    withContext(Dispatchers.Main) { mainViewModel.reloadServerList() } 
-                                    
                                     val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
                                     allProtected.forEach { pGuid -> if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, liveExpiry) }
                                     if (isAdmin) V2rayCrypt.saveExpiryTime(this@MainActivity, guid, liveExpiry)
@@ -497,8 +554,19 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    override fun onResume() { super.onResume(); if (mainViewModel.isRunning.value == true) startTrafficMonitor() else updateTrafficDisplay() }
-    override fun onPause() { super.onPause(); stopTrafficMonitor(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel() }
+    override fun onResume() { 
+        super.onResume()
+        if (mainViewModel.isRunning.value == true) startTrafficMonitor() else updateTrafficDisplay() 
+        // تشغيل רادار النشطين
+        startLiveUpdates()
+    }
+    
+    override fun onPause() { 
+        super.onPause()
+        stopTrafficMonitor(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel() 
+        // إيقاف الرادار لتوفير البطارية
+        liveUpdateJob?.cancel()
+    }
     
     override fun onDestroy() {
         val guid = MmkvManager.getSelectServer().orEmpty()
@@ -507,7 +575,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lastReportedState = false
             GlobalScope.launch(Dispatchers.IO) { CloudflareAPI.sendActiveState(idToTrack, false) }
         }
-        tabMediator?.detach(); pingJob?.cancel(); trafficJob?.cancel(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel(); super.onDestroy()
+        tabMediator?.detach(); pingJob?.cancel(); trafficJob?.cancel(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel(); liveUpdateJob?.cancel()
+        super.onDestroy()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
