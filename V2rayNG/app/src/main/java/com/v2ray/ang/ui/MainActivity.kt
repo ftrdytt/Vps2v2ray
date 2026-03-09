@@ -93,6 +93,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
     private var isFirstTrafficRead: Boolean = true
+    private var lastReportedState: Boolean? = null // لمنع تكرار الإرسال للسحابة
 
     private var screenWidth = 0
 
@@ -126,10 +127,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     override fun onCreate(savedInstanceState: Bundle?) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
-        
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
-        
         handleIntent(intent)
 
         lifecycleScope.launch(Dispatchers.IO) {
@@ -149,20 +148,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             .commit()
 
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
-        btnGreenConnect?.setOnClickListener {
-            handleFabAction()
-        }
+        btnGreenConnect?.setOnClickListener { handleFabAction() }
 
         val btnSpeedTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
         btnSpeedTest?.text = "قياس سرعة الإنترنت" 
-        btnSpeedTest?.setOnClickListener {
-            runSpeedTest()
-        }
+        btnSpeedTest?.setOnClickListener { runSpeedTest() }
 
         val cardTrafficMeter = binding.root.findViewById<CardView>(R.id.card_traffic_meter)
-        cardTrafficMeter?.setOnClickListener {
-            showTrafficDetailsDialog()
-        }
+        cardTrafficMeter?.setOnClickListener { showTrafficDetailsDialog() }
         
         updateTrafficDisplay()
 
@@ -174,10 +167,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 val page = if (screenWidth > 0) ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 2) else 0
                 val targetScrollX = page * screenWidth
 
-                binding.mainScrollView.post { 
-                    binding.mainScrollView.smoothScrollTo(targetScrollX, 0) 
-                }
-                
+                binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(targetScrollX, 0) }
                 when (page) {
                     0 -> bottomNav?.selectedItemId = R.id.nav_settings
                     1 -> bottomNav?.selectedItemId = R.id.nav_servers
@@ -190,26 +180,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         bottomNav?.setOnItemSelectedListener { item ->
             when (item.itemId) {
-                R.id.nav_settings -> { 
-                    binding.mainScrollView.smoothScrollTo(0, 0)
-                    true 
-                }
-                R.id.nav_servers -> { 
-                    binding.mainScrollView.smoothScrollTo(screenWidth, 0)
-                    true
-                }
-                R.id.nav_home -> { 
-                    binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
-                    true
-                }
+                R.id.nav_settings -> { binding.mainScrollView.smoothScrollTo(0, 0); true }
+                R.id.nav_servers -> { binding.mainScrollView.smoothScrollTo(screenWidth, 0); true }
+                R.id.nav_home -> { binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0); true }
                 else -> false
             }
         }
 
         bottomNav?.selectedItemId = R.id.nav_home
-        binding.mainScrollView.post {
-            binding.mainScrollView.scrollTo(screenWidth * 2, 0)
-        }
+        binding.mainScrollView.post { binding.mainScrollView.scrollTo(screenWidth * 2, 0) }
 
         setupToolbar(binding.toolbar, false, "اشور لود")
 
@@ -217,15 +196,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         binding.viewPager.adapter = groupPagerAdapter
         binding.viewPager.isUserInputEnabled = true
 
-        val toggle = ActionBarDrawerToggle(
-            this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close
-        )
-        
+        val toggle = ActionBarDrawerToggle(this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
         toggle.isDrawerIndicatorEnabled = false 
         binding.drawerLayout.addDrawerListener(toggle)
         toggle.syncState()
         binding.navView.setNavigationItemSelectedListener(this)
-        
         binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -252,13 +227,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         setupGroupTab()
         setupViewModel()
         mainViewModel.reloadServerList()
-
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
     private fun showAddBottomSheet() {
         val bottomSheetDialog = BottomSheetDialog(this)
-        
         val scrollView = ScrollView(this)
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -277,14 +250,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
         container.addView(title)
 
-        val divider = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 2).apply {
-                setMargins(40, 0, 40, 20)
-            }
-            setBackgroundColor(Color.parseColor("#33FFFFFF"))
-        }
-        container.addView(divider)
-
         fun addSectionTitle(textStr: String) {
             val sectionTitle = TextView(this).apply {
                 text = textStr
@@ -301,60 +266,29 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 setPadding(50, 30, 50, 30)
-                gravity = android.view.Gravity.CENTER_VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
                 isClickable = true
                 isFocusable = true
                 val outValue = android.util.TypedValue()
                 theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
                 setBackgroundResource(outValue.resourceId)
-                setOnClickListener {
-                    onClick()
-                    bottomSheetDialog.dismiss()
-                }
+                setOnClickListener { onClick(); bottomSheetDialog.dismiss() }
             }
-
-            val icon = ImageView(this).apply {
-                setImageResource(iconRes)
-                setColorFilter(Color.parseColor("#FF9800"))
-                layoutParams = LinearLayout.LayoutParams(56, 56)
-            }
-
-            val textView = TextView(this).apply {
-                text = textStr
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    marginStart = 40
-                }
-            }
-
-            layout.addView(icon)
-            layout.addView(textView)
-            container.addView(layout)
+            val icon = ImageView(this).apply { setImageResource(iconRes); setColorFilter(Color.parseColor("#FF9800")); layoutParams = LinearLayout.LayoutParams(56, 56) }
+            val textView = TextView(this).apply { text = textStr; textSize = 16f; setTextColor(Color.WHITE); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = 40 } }
+            layout.addView(icon); layout.addView(textView); container.addView(layout)
         }
 
         addSectionTitle("الاستيراد السريع")
-        createOptionButton("استيراد من الحافظة (عادي)", android.R.drawable.ic_menu_add) {
-            if (importClipboard()) bottomSheetDialog.dismiss()
-        }
-        createOptionButton("استيراد من حافظة مشفرة", android.R.drawable.ic_lock_idle_lock) {
-            if (importClipboardEncrypted()) bottomSheetDialog.dismiss()
-        }
-        createOptionButton("إضافة ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) {
-            importEncryptedFile()
-        }
+        createOptionButton("استيراد من الحافظة (عادي)", android.R.drawable.ic_menu_add) { if (importClipboard()) bottomSheetDialog.dismiss() }
+        createOptionButton("استيراد من حافظة مشفرة", android.R.drawable.ic_lock_idle_lock) { if (importClipboardEncrypted()) bottomSheetDialog.dismiss() }
+        createOptionButton("إضافة ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) { importEncryptedFile() }
 
-        addSectionTitle("الإضافة اليدوية (البروتوكولات)")
+        addSectionTitle("الإضافة اليدوية")
         createOptionButton("VLESS", android.R.drawable.ic_menu_edit) { importManually(EConfigType.VLESS.value) }
         createOptionButton("VMess", android.R.drawable.ic_menu_edit) { importManually(EConfigType.VMESS.value) }
         createOptionButton("Trojan", android.R.drawable.ic_menu_edit) { importManually(EConfigType.TROJAN.value) }
-        createOptionButton("Shadowsocks", android.R.drawable.ic_menu_edit) { importManually(EConfigType.SHADOWSOCKS.value) }
-        createOptionButton("SOCKS", android.R.drawable.ic_menu_edit) { importManually(EConfigType.SOCKS.value) }
-        createOptionButton("HTTP", android.R.drawable.ic_menu_edit) { importManually(EConfigType.HTTP.value) }
-        createOptionButton("Wireguard", android.R.drawable.ic_menu_edit) { importManually(EConfigType.WIREGUARD.value) }
-        createOptionButton("Hysteria2", android.R.drawable.ic_menu_edit) { importManually(EConfigType.HYSTERIA2.value) }
-        createOptionButton("مجموعة سياسات (Policy Group)", android.R.drawable.ic_menu_agenda) { importManually(EConfigType.POLICYGROUP.value) }
-
+        
         bottomSheetDialog.setContentView(scrollView)
         bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
         bottomSheetDialog.show()
@@ -362,72 +296,37 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     fun showExtendLicenseDialog(guid: String) {
         val licenseId = V2rayCrypt.getLicenseId(this, guid)
-        if (licenseId.isEmpty() || licenseId == "LEGACY") {
-            toastError("هذا الكود قديم ولا يدعم التمديد المركزي.")
-            return
-        }
+        if (licenseId.isEmpty() || licenseId == "LEGACY") { toastError("هذا الكود قديم ولا يدعم التمديد المركزي."); return }
 
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(50, 40, 50, 40)
-        }
-
-        val titleView = TextView(this).apply {
-            text = "لوحة التحكم: تعديل الصلاحية للجميع"
-            textSize = 17f
-            setTextColor(Color.parseColor("#4CAF50"))
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setPadding(0, 0, 0, 30)
-            gravity = Gravity.CENTER
-        }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 40, 50, 40) }
+        val titleView = TextView(this).apply { text = "لوحة التحكم: تعديل للجميع"; textSize = 17f; setTextColor(Color.parseColor("#4CAF50")); setTypeface(null, android.graphics.Typeface.BOLD); setPadding(0, 0, 0, 30); gravity = Gravity.CENTER }
         layout.addView(titleView)
 
-        val monthsInput = EditText(this).apply { hint = "إضافة/تعديل الأشهر"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
-        layout.addView(monthsInput)
-
-        val daysInput = EditText(this).apply { hint = "إضافة/تعديل الأيام"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
-        layout.addView(daysInput)
-
-        val hoursInput = EditText(this).apply { hint = "إضافة/تعديل الساعات"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
-        layout.addView(hoursInput)
+        val monthsInput = EditText(this).apply { hint = "عدد الأشهر"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
+        val daysInput = EditText(this).apply { hint = "عدد الأيام"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
+        val hoursInput = EditText(this).apply { hint = "عدد الساعات"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
+        layout.addView(monthsInput); layout.addView(daysInput); layout.addView(hoursInput)
 
         val builder = AlertDialog.Builder(this)
         builder.setView(layout)
         builder.setPositiveButton("تمديد للجميع") { dialog, _ ->
-            val m = monthsInput.text.toString().toLongOrNull() ?: 0L
-            val d = daysInput.text.toString().toLongOrNull() ?: 0L
-            val h = hoursInput.text.toString().toLongOrNull() ?: 0L
-
-            val totalDurationMs = (m * 30L * 24L * 60L * 60L * 1000L) + (d * 24L * 60L * 60L * 1000L) + (h * 60L * 60L * 1000L)
-
+            val totalDurationMs = ((monthsInput.text.toString().toLongOrNull() ?: 0L) * 30L * 24L * 60L * 60L * 1000L) + ((daysInput.text.toString().toLongOrNull() ?: 0L) * 24L * 60L * 60L * 1000L) + ((hoursInput.text.toString().toLongOrNull() ?: 0L) * 60L * 60L * 1000L)
             if (totalDurationMs > 0L) {
                 val newExpiryTimeMs = NetworkTime.currentTimeMillis(this) + totalDurationMs
-                
                 showLoadingDialog()
                 lifecycleScope.launch(Dispatchers.IO) {
                     val success = CloudflareAPI.updateExpiry(licenseId, newExpiryTimeMs)
                     withContext(Dispatchers.Main) {
                         hideLoadingDialog()
                         if (success) {
-                            val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
-                            allProtected.forEach { pGuid ->
-                                if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) {
-                                    V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, newExpiryTimeMs)
-                                }
-                            }
-                            toastSuccess("تم تمديد الوقت بنجاح لجميع المشتركين!")
-                            mainViewModel.reloadServerList() 
-                        } else {
-                            toastError("فشل الاتصال بلوحة التحكم السحابية.")
-                        }
+                            V2rayCrypt.getAllProtectedGuids(this@MainActivity).forEach { pGuid -> if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, newExpiryTimeMs) }
+                            toastSuccess("تم التمديد بنجاح!"); mainViewModel.reloadServerList() 
+                        } else toastError("فشل الاتصال")
                     }
                 }
-            } else {
-                toastError("الرجاء إدخال وقت صحيح")
-            }
+            } else toastError("الرجاء إدخال وقت صحيح")
             dialog.dismiss()
         }
-        
         builder.setNeutralButton("إيقاف الكود فوراً") { dialog, _ ->
             showLoadingDialog()
             lifecycleScope.launch(Dispatchers.IO) {
@@ -436,17 +335,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 withContext(Dispatchers.Main) {
                     hideLoadingDialog()
                     if (success) {
-                        val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
-                        allProtected.forEach { pGuid ->
-                            if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) {
-                                V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, expiredTime)
-                            }
-                        }
-                        toastSuccess("تم إيقاف الكود وقطع الاتصال عن الجميع!")
-                        mainViewModel.reloadServerList()
-                    } else {
-                        toastError("فشل الاتصال.")
-                    }
+                        V2rayCrypt.getAllProtectedGuids(this@MainActivity).forEach { pGuid -> if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, expiredTime) }
+                        toastSuccess("تم إيقاف الكود عن الجميع!"); mainViewModel.reloadServerList()
+                    } else toastError("فشل الاتصال.")
                 }
             }
         }
@@ -456,21 +347,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     fun replaceAndSyncConfigFromClipboard(guid: String) {
         val licenseId = V2rayCrypt.getLicenseId(this, guid)
-        if (licenseId.isEmpty() || licenseId == "LEGACY") {
-            toastError("هذا الكود لا يدعم التحديث السحابي.")
-            return
-        }
+        if (licenseId.isEmpty() || licenseId == "LEGACY") { toastError("هذا الكود لا يدعم التحديث السحابي."); return }
 
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val newConf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
 
-        if (newConf.isEmpty() || !newConf.contains("://")) {
-            toastError("لا يوجد كود صحيح في الحافظة لاستبداله.")
-            return
-        }
+        if (newConf.isEmpty() || !newConf.contains("://")) { toastError("الحافظة لا تحتوي على كود صالح."); return }
 
         val currentExpiry = V2rayCrypt.getExpiryTime(this, guid)
-        
         showLoadingDialog()
         lifecycleScope.launch(Dispatchers.IO) {
             val success = CloudflareAPI.createOrUpdateSubscriber(licenseId, currentExpiry, newConf)
@@ -482,9 +366,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     
                     if (count > 0) {
                         val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
-                        val newGuids = afterGuids - beforeGuids
-                        val newGuid = newGuids.firstOrNull()
-                        
+                        val newGuid = (afterGuids - beforeGuids).firstOrNull()
                         if (newGuid != null) {
                             V2rayCrypt.addAdminGuid(this@MainActivity, newGuid)
                             V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
@@ -495,85 +377,48 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             V2rayCrypt.saveLastConfigHash(this@MainActivity, newGuid, configBase64.hashCode())
 
                             mainViewModel.removeServer(guid)
-                            
-                            toastSuccess("تم تحديث السيرفر سحابياً! سيتغير عند المشتركين فور اتصالهم بالإنترنت.")
-                            mainViewModel.reloadServerList()
+                            MmkvManager.setSelectServer(newGuid)
+                            toastSuccess("تم تحديث السيرفر سحابياً!"); mainViewModel.reloadServerList()
                         }
-                    } else {
-                        toastError("الكود الموجود في الحافظة غير صالح.")
-                    }
-                } else {
-                    toastError("فشل رفع الكود الجديد إلى السحابة.")
-                }
+                    } else toastError("الكود في الحافظة غير صالح.")
+                } else toastError("فشل رفع الكود.")
             }
         }
     }
 
     fun openSubscribersPanel(parentGuid: String) {
-        val intent = Intent(this, SubscribersActivity::class.java)
-        intent.putExtra("parentGuid", parentGuid)
-        startActivity(intent)
+        startActivity(Intent(this, SubscribersActivity::class.java).putExtra("parentGuid", parentGuid))
     }
 
     private fun runSpeedTest() {
         val speedGauge = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
         val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
-        
         if (speedTestJob?.isActive == true) return
         resetSpeedButtonJob?.cancel() 
-        
-        btnTest?.isEnabled = false
-        btnTest?.text = "جاري القياس..."
-        btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FF9800")) 
+        btnTest?.isEnabled = false; btnTest?.text = "جاري القياس..."; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#FF9800")) 
 
         speedTestJob = lifecycleScope.launch(Dispatchers.IO) {
             var finalSpeed = -1f
             val url = URL("https://speed.cloudflare.com/__down?bytes=20000000")
 
             if (mainViewModel.isRunning.value == true && finalSpeed < 0f) {
-                try {
-                    val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 10809))
-                    finalSpeed = attemptDownload(url, speedGauge, proxy)
-                } catch (e: Exception) {
-                    Log.d(AppConfig.TAG, "HTTP Proxy failed, trying SOCKS...")
-                }
+                try { finalSpeed = attemptDownload(url, speedGauge, Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 10809))) } catch (e: Exception) {}
             }
-
             if (mainViewModel.isRunning.value == true && finalSpeed < 0f) {
-                try {
-                    val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
-                    finalSpeed = attemptDownload(url, speedGauge, proxy)
-                } catch (e: Exception) {
-                    Log.d(AppConfig.TAG, "SOCKS Proxy failed, trying DIRECT...")
-                }
+                try { finalSpeed = attemptDownload(url, speedGauge, Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))) } catch (e: Exception) {}
             }
-
             if (finalSpeed < 0f) {
-                try {
-                    finalSpeed = attemptDownload(url, speedGauge, Proxy.NO_PROXY)
-                } catch (e: Exception) {
-                    Log.e(AppConfig.TAG, "Direct download failed", e)
-                }
+                try { finalSpeed = attemptDownload(url, speedGauge, Proxy.NO_PROXY) } catch (e: Exception) {}
             }
 
             withContext(Dispatchers.Main) {
-                speedGauge?.setSpeed(0f) 
-                btnTest?.isEnabled = true
-                
+                speedGauge?.setSpeed(0f); btnTest?.isEnabled = true
                 if (finalSpeed >= 0f) {
-                    val speedText = String.format(Locale.US, "%.1f", finalSpeed)
-                    btnTest?.text = "السرعة: $speedText Mbps"
+                    btnTest?.text = "السرعة: ${String.format(Locale.US, "%.1f", finalSpeed)} Mbps"
                     btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#4CAF50"))
-                    
-                    resetSpeedButtonJob = lifecycleScope.launch {
-                        delay(10000)
-                        btnTest?.text = "قياس سرعة الإنترنت"
-                        btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
-                    }
+                    resetSpeedButtonJob = lifecycleScope.launch { delay(10000); btnTest?.text = "قياس سرعة الإنترنت"; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3")) }
                 } else {
-                    btnTest?.text = "قياس سرعة الإنترنت"
-                    btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
-                    toast("تعذر الفحص، الرجاء التأكد من توفر إنترنت.")
+                    btnTest?.text = "قياس سرعة الإنترنت"; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3")); toast("تعذر الفحص.")
                 }
             }
         }
@@ -581,68 +426,27 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     private suspend fun attemptDownload(url: URL, speedGauge: SpeedGaugeView?, proxy: Proxy): Float {
         val connection = url.openConnection(proxy) as HttpURLConnection
-        connection.requestMethod = "GET"
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0")
-        connection.connectTimeout = 2000 
-        connection.readTimeout = 5000
-        
+        connection.requestMethod = "GET"; connection.setRequestProperty("User-Agent", "Mozilla/5.0"); connection.connectTimeout = 2000; connection.readTimeout = 5000
         connection.connect() 
-        
-        if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-            return -1f
-        }
+        if (connection.responseCode != HttpURLConnection.HTTP_OK) return -1f
         
         val inputStream = connection.inputStream
         val buffer = ByteArray(16384) 
-        var totalBytesRead = 0L
-        var bytesRead: Int
-        val startTime = System.currentTimeMillis()
-        var lastUpdateTime = startTime
-        var lastBytesRead = 0L
-        
-        var maxSpeed = 0f
-        val recentSpeeds = mutableListOf<Float>() 
+        var totalBytesRead = 0L; var bytesRead: Int; val startTime = System.currentTimeMillis(); var lastUpdateTime = startTime; var lastBytesRead = 0L; var maxSpeed = 0f
         
         while (inputStream.read(buffer).also { bytesRead = it } != -1) {
             totalBytesRead += bytesRead
             val currentTime = System.currentTimeMillis()
             val timeDiff = currentTime - lastUpdateTime
-            
             if (timeDiff >= 300) { 
-                val bytesDiff = totalBytesRead - lastBytesRead
-                val speedBps = bytesDiff / (timeDiff / 1000f)
-                val speedMbps = (speedBps * 8) / 1_000_000f 
-                
+                val speedMbps = ((totalBytesRead - lastBytesRead) / (timeDiff / 1000f) * 8) / 1_000_000f 
                 if (speedMbps > maxSpeed) maxSpeed = speedMbps
-                
-                recentSpeeds.add(speedMbps)
-                if (recentSpeeds.size > 5) recentSpeeds.removeAt(0)
-                
-                withContext(Dispatchers.Main) {
-                    speedGauge?.setSpeed(speedMbps)
-                }
-                
-                if (recentSpeeds.size == 5) {
-                    val currentMax = recentSpeeds.maxOrNull() ?: 0f
-                    val currentMin = recentSpeeds.minOrNull() ?: 0f
-                    
-                    if (currentMax > 1f && (currentMax - currentMin) < (currentMax * 0.15f)) {
-                        if (currentTime - startTime > 3000) {
-                            break
-                        }
-                    }
-                }
-                
-                lastUpdateTime = currentTime
-                lastBytesRead = totalBytesRead
+                withContext(Dispatchers.Main) { speedGauge?.setSpeed(speedMbps) }
+                lastUpdateTime = currentTime; lastBytesRead = totalBytesRead
             }
-            
-            if (currentTime - startTime > 8000) {
-                break 
-            }
+            if (currentTime - startTime > 8000) break 
         }
         inputStream.close()
-        
         return if (maxSpeed > 0f) maxSpeed else -1f
     }
 
@@ -659,67 +463,34 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     private fun updateTrafficDisplay() {
         val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
-        val savedRx = prefs.getLong("rx", 0L)
-        val savedTx = prefs.getLong("tx", 0L)
-        val total = savedRx + savedTx
-        
-        val tvTotalTraffic = binding.root.findViewById<TextView>(R.id.tv_total_traffic)
-        tvTotalTraffic?.text = formatTraffic(total)
+        binding.root.findViewById<TextView>(R.id.tv_total_traffic)?.text = formatTraffic(prefs.getLong("rx", 0L) + prefs.getLong("tx", 0L))
     }
 
     private fun startTrafficMonitor() {
-        isFirstTrafficRead = true
-        trafficJob?.cancel()
-        
+        isFirstTrafficRead = true; trafficJob?.cancel()
         trafficJob = lifecycleScope.launch(Dispatchers.IO) {
             while (true) {
                 try {
-                    val currentRxBytes = TrafficStats.getTotalRxBytes()
-                    val currentTxBytes = TrafficStats.getTotalTxBytes()
-
-                    if (currentRxBytes == TrafficStats.UNSUPPORTED.toLong() || currentTxBytes == TrafficStats.UNSUPPORTED.toLong()) {
-                        delay(1000)
-                        continue
-                    }
-
-                    if (isFirstTrafficRead) {
-                        lastRxBytes = currentRxBytes
-                        lastTxBytes = currentTxBytes
-                        isFirstTrafficRead = false
-                    } else {
-                        val diffRx = currentRxBytes - lastRxBytes
-                        val diffTx = currentTxBytes - lastTxBytes
-                        
-                        if (diffRx > 0 || diffTx > 0) {
-                            val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
-                            val oldRx = prefs.getLong("rx", 0L)
-                            val oldTx = prefs.getLong("tx", 0L)
-                            
-                            prefs.edit()
-                                .putLong("rx", oldRx + diffRx)
-                                .putLong("tx", oldTx + diffTx)
-                                .apply()
-                                
-                            lastRxBytes = currentRxBytes
-                            lastTxBytes = currentTxBytes
-
-                            withContext(Dispatchers.Main) {
-                                updateTrafficDisplay()
+                    val rx = TrafficStats.getTotalRxBytes(); val tx = TrafficStats.getTotalTxBytes()
+                    if (rx != TrafficStats.UNSUPPORTED.toLong() && tx != TrafficStats.UNSUPPORTED.toLong()) {
+                        if (isFirstTrafficRead) { lastRxBytes = rx; lastTxBytes = tx; isFirstTrafficRead = false } 
+                        else {
+                            val diffRx = rx - lastRxBytes; val diffTx = tx - lastTxBytes
+                            if (diffRx > 0 || diffTx > 0) {
+                                val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
+                                prefs.edit().putLong("rx", prefs.getLong("rx", 0L) + diffRx).putLong("tx", prefs.getLong("tx", 0L) + diffTx).apply()
+                                lastRxBytes = rx; lastTxBytes = tx
+                                withContext(Dispatchers.Main) { updateTrafficDisplay() }
                             }
                         }
                     }
-                } catch (e: Exception) {
-                    Log.e(AppConfig.TAG, "Traffic monitor error", e)
-                }
+                } catch (e: Exception) {}
                 delay(1000)
             }
         }
     }
 
-    private fun stopTrafficMonitor() {
-        trafficJob?.cancel()
-        isFirstTrafficRead = true
-    }
+    private fun stopTrafficMonitor() { trafficJob?.cancel(); isFirstTrafficRead = true }
 
     private fun showTrafficDetailsDialog() {
         val dialog = Dialog(this)
@@ -728,60 +499,27 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 
-        val tvDownload = dialog.findViewById<TextView>(R.id.tv_download_stat)
-        val tvUpload = dialog.findViewById<TextView>(R.id.tv_upload_stat)
-        val btnClose = dialog.findViewById<ImageView>(R.id.btn_close_dialog)
-        val btnReset = dialog.findViewById<MaterialButton>(R.id.btn_reset_stats)
-
         val prefs = getSharedPreferences("traffic_stats", Context.MODE_PRIVATE)
-        
         fun refreshDialogData() {
-            val rx = prefs.getLong("rx", 0L)
-            val tx = prefs.getLong("tx", 0L)
-            tvDownload.text = formatTraffic(rx)
-            tvUpload.text = formatTraffic(tx)
+            dialog.findViewById<TextView>(R.id.tv_download_stat).text = formatTraffic(prefs.getLong("rx", 0L))
+            dialog.findViewById<TextView>(R.id.tv_upload_stat).text = formatTraffic(prefs.getLong("tx", 0L))
         }
-        
         refreshDialogData()
-
-        btnClose.setOnClickListener {
-            dialog.dismiss()
-        }
-
-        btnReset.setOnClickListener {
+        dialog.findViewById<ImageView>(R.id.btn_close_dialog).setOnClickListener { dialog.dismiss() }
+        dialog.findViewById<MaterialButton>(R.id.btn_reset_stats).setOnClickListener {
             prefs.edit().putLong("rx", 0L).putLong("tx", 0L).apply()
-            
-            if (mainViewModel.isRunning.value == true) {
-                lastRxBytes = TrafficStats.getTotalRxBytes()
-                lastTxBytes = TrafficStats.getTotalTxBytes()
-            }
-            
-            refreshDialogData()
-            updateTrafficDisplay()
-            toast("تم تصفير الاستهلاك بنجاح!")
+            if (mainViewModel.isRunning.value == true) { lastRxBytes = TrafficStats.getTotalRxBytes(); lastTxBytes = TrafficStats.getTotalTxBytes() }
+            refreshDialogData(); updateTrafficDisplay(); toast("تم التصفير بنجاح!")
         }
-
         dialog.show()
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handleIntent(intent)
-    }
-
-    private fun handleIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_VIEW) {
-            intent.data?.let { uri ->
-                readEncryptedContentFromUri(uri)
-            }
-        }
-    }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
+    private fun handleIntent(intent: Intent?) { if (intent?.action == Intent.ACTION_VIEW) intent.data?.let { readEncryptedContentFromUri(it) } }
 
     private fun setupViewModel() {
         mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }
-        mainViewModel.isRunning.observe(this) { isRunning ->
-            applyRunningState(false, isRunning)
-        }
+        mainViewModel.isRunning.observe(this) { isRunning -> applyRunningState(false, isRunning) }
         mainViewModel.startListenBroadcast()
         mainViewModel.initAssets(assets)
     }
@@ -789,136 +527,73 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun setupGroupTab() {
         val groups = mainViewModel.getSubscriptions(this)
         groupPagerAdapter.update(groups)
-
         tabMediator?.detach()
-        tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position ->
-            groupPagerAdapter.groups.getOrNull(position)?.let {
-                tab.text = it.remarks
-                tab.tag = it.id
-            }
-        }.also { it.attach() }
-
-        val targetIndex = groups.indexOfFirst { it.id == mainViewModel.subscriptionId }.takeIf { it >= 0 } ?: (groups.size - 1)
-        binding.viewPager.setCurrentItem(targetIndex, false)
-
+        tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position -> groupPagerAdapter.groups.getOrNull(position)?.let { tab.text = it.remarks; tab.tag = it.id } }.also { it.attach() }
+        binding.viewPager.setCurrentItem(groups.indexOfFirst { it.id == mainViewModel.subscriptionId }.takeIf { it >= 0 } ?: (groups.size - 1), false)
         binding.tabGroup.isVisible = groups.size > 1
     }
 
     private fun handleFabAction() {
         applyRunningState(isLoading = true, isRunning = false)
-
-        if (mainViewModel.isRunning.value == true) {
-            V2RayServiceManager.stopVService(this)
-        } else if (SettingsManager.isVpnMode()) {
-            val intent = VpnService.prepare(this)
-            if (intent == null) {
-                startV2Ray()
-            } else {
-                requestVpnPermission.launch(intent)
-            }
-        } else {
-            startV2Ray()
-        }
+        if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this)
+        else if (SettingsManager.isVpnMode()) { val intent = VpnService.prepare(this); if (intent == null) startV2Ray() else requestVpnPermission.launch(intent) } 
+        else startV2Ray()
     }
 
     private fun handleLayoutTestClick() {
-        if (mainViewModel.isRunning.value == true) {
-            setTestState(getString(R.string.connection_test_testing))
-            mainViewModel.testCurrentServerRealPing()
-        }
+        if (mainViewModel.isRunning.value == true) { setTestState(getString(R.string.connection_test_testing)); mainViewModel.testCurrentServerRealPing() }
     }
 
     private fun startV2Ray() {
-        val selectedGuid = MmkvManager.getSelectServer()
-        if (selectedGuid.isNullOrEmpty()) {
-            toast(R.string.title_file_chooser)
-            return
-        }
+        if (MmkvManager.getSelectServer().isNullOrEmpty()) { toast(R.string.title_file_chooser); return }
         V2RayServiceManager.startVService(this)
     }
 
     fun restartV2Ray() {
-        if (mainViewModel.isRunning.value == true) {
-            V2RayServiceManager.stopVService(this)
-        }
-        lifecycleScope.launch {
-            delay(500)
-            startV2Ray()
-        }
+        if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this)
+        lifecycleScope.launch { delay(500); startV2Ray() }
     }
 
     private fun setTestState(content: String?) {
         binding.tvTestState.text = content
-        
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
         val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
-        
         if (content.isNullOrEmpty()) return
-
         try {
-            val normalizedContent = content
-                .replace("٠", "0").replace("١", "1").replace("٢", "2")
-                .replace("٣", "3").replace("٤", "4").replace("٥", "5")
-                .replace("٦", "6").replace("٧", "7").replace("٨", "8").replace("٩", "9")
-
+            val normalizedContent = content.replace("٠", "0").replace("١", "1").replace("٢", "2").replace("٣", "3").replace("٤", "4").replace("٥", "5").replace("٦", "6").replace("٧", "7").replace("٨", "8").replace("٩", "9")
             if (normalizedContent.contains("ms", ignoreCase = true) || normalizedContent.contains("م.ث")) {
                 val match = Regex("(\\d+)\\s*(ms|م\\.ث)", RegexOption.IGNORE_CASE).find(normalizedContent)
-                
-                if (match != null) {
-                    val pingValue = match.groupValues[1].toFloat()
-                    gaugePing?.setPing(pingValue) 
-                    tvGreenPing?.text = "${pingValue.toInt()} ms"
-                } else {
-                    val fallbackMatch = Regex("(\\d+)").find(normalizedContent)
-                    if (fallbackMatch != null) {
-                        gaugePing?.setPing(fallbackMatch.value.toFloat())
-                        tvGreenPing?.text = "${fallbackMatch.value} ms"
-                    }
-                }
-            } 
-            else if (normalizedContent.contains("Timeout", ignoreCase = true) || 
-                     normalizedContent.contains("Failed", ignoreCase = true) ||
-                     normalizedContent.contains("فشل", ignoreCase = true)) {
-                gaugePing?.setPing(500f) 
-                tvGreenPing?.text = "Timeout"
-            } 
-            else if (normalizedContent == getString(R.string.connection_connected)) {
-                gaugePing?.setPing(0f)
-                tvGreenPing?.text = "متصل..."
-            }
-        } catch (e: Exception) {
-            Log.e(AppConfig.TAG, "Error parsing ping", e)
-        }
+                if (match != null) { val pingValue = match.groupValues[1].toFloat(); gaugePing?.setPing(pingValue); tvGreenPing?.text = "${pingValue.toInt()} ms" } 
+                else Regex("(\\d+)").find(normalizedContent)?.let { gaugePing?.setPing(it.value.toFloat()); tvGreenPing?.text = "${it.value} ms" }
+            } else if (normalizedContent.contains("Timeout", ignoreCase = true) || normalizedContent.contains("Failed", ignoreCase = true) || normalizedContent.contains("فشل", ignoreCase = true)) {
+                gaugePing?.setPing(500f); tvGreenPing?.text = "Timeout"
+            } else if (normalizedContent == getString(R.string.connection_connected)) { gaugePing?.setPing(0f); tvGreenPing?.text = "متصل..." }
+        } catch (e: Exception) {}
     }
 
-    // هنا العقل المدبر والحل الجذري لمشكلة التحديث اللانهائي
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
-        val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
-        val gaugeSpeed = binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)
+        
+        // إرسال إشارة الاتصال للسحابة لزيادة وتخفيض العداد
+        val guid = MmkvManager.getSelectServer().orEmpty()
+        val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
+        
+        if (isRunning != lastReportedState && !isLoading && guid.isNotEmpty()) {
+            lastReportedState = isRunning
+            lifecycleScope.launch(Dispatchers.IO) { CloudflareAPI.sendActiveState(idToTrack, isRunning) }
+        }
 
         if (isLoading) {
-            binding.fab.setImageResource(R.drawable.ic_fab_check)
-            btnGreenConnect?.text = "جاري تشغيل المحرك..."
-            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
-            gaugePing?.setPing(0f)
-            gaugeSpeed?.setSpeed(0f)
-            lottieEngine?.playAnimation()
+            binding.fab.setImageResource(R.drawable.ic_fab_check); btnGreenConnect?.text = "جاري تشغيل المحرك..."; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
+            binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f); binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f); lottieEngine?.playAnimation()
             return
         }
 
         if (isRunning) {
-            binding.fab.setImageResource(R.drawable.ic_stop_24dp)
-            binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
-            binding.fab.contentDescription = getString(R.string.action_stop_service)
-            setTestState(getString(R.string.connection_connected))
-            binding.layoutTest.isFocusable = true
-            
-            btnGreenConnect?.text = "إيقاف المحرك"
-            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F"))
-            lottieEngine?.playAnimation()
-            
+            binding.fab.setImageResource(R.drawable.ic_stop_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
+            binding.fab.contentDescription = getString(R.string.action_stop_service); setTestState(getString(R.string.connection_connected)); binding.layoutTest.isFocusable = true
+            btnGreenConnect?.text = "إيقاف المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F")); lottieEngine?.playAnimation()
             startTrafficMonitor()
             
             pingJob?.cancel()
@@ -929,65 +604,46 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 while (isActive) {
                     try {
                         mainViewModel.testCurrentServerRealPing()
-                        
-                        val guid = MmkvManager.getSelectServer().orEmpty()
                         val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
                         val isProtected = V2rayCrypt.isProtected(this@MainActivity, guid)
                         val isAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid)
                         
                         if (licenseId.isNotEmpty() && licenseId != "LEGACY" && (isProtected || isAdmin)) {
-                            
-                            // يتم الفحص السحابي كل دقيقة
                             if (System.currentTimeMillis() - lastCloudflareCheck > 60000L) {
                                 lastCloudflareCheck = System.currentTimeMillis()
                                 val cloudData = CloudflareAPI.checkLiveConfig(licenseId)
                                 val liveExpiry = cloudData.first
                                 val liveConfigBase64 = cloudData.second
+                                val activeCount = cloudData.third
 
                                 if (liveExpiry >= 0L) {
-                                    val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
-                                    allProtected.forEach { pGuid ->
-                                        if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) {
-                                            V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, liveExpiry)
-                                        }
-                                    }
-                                    if (isAdmin) {
-                                        V2rayCrypt.saveExpiryTime(this@MainActivity, guid, liveExpiry)
-                                    }
+                                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, activeCount)
+                                    withContext(Dispatchers.Main) { mainViewModel.reloadServerList() } 
                                     
-                                    // الحل العبقري: التحقق من البصمة قبل الاستيراد لمنع التكرار
+                                    val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
+                                    allProtected.forEach { pGuid -> if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, liveExpiry) }
+                                    if (isAdmin) V2rayCrypt.saveExpiryTime(this@MainActivity, guid, liveExpiry)
+                                    
                                     if (!isAdmin && liveConfigBase64 != null) {
                                         val incomingHash = liveConfigBase64.hashCode()
                                         val currentHash = V2rayCrypt.getLastConfigHash(this@MainActivity, guid)
 
-                                        // إذا كانت البصمة مختلفة والوقت غير منتهي، قم بالتحديث
                                         if (incomingHash != currentHash && liveExpiry > NetworkTime.currentTimeMillis(this@MainActivity)) {
                                             val newConfigRaw = String(Base64.decode(liveConfigBase64, Base64.NO_WRAP)).trim()
-                                            
                                             withContext(Dispatchers.Main) {
                                                 val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
                                                 val (count, _) = AngConfigManager.importBatchConfig(newConfigRaw, mainViewModel.subscriptionId, true)
-                                                
                                                 if (count > 0) {
-                                                    val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
-                                                    val newGuids = afterGuids - beforeGuids
-                                                    val newGuid = newGuids.firstOrNull() 
-                                                    
+                                                    val newGuid = (MmkvManager.decodeServerList()?.toSet() ?: emptySet() - beforeGuids).firstOrNull() 
                                                     if (newGuid != null) {
-                                                        // نقل خصائص الحماية للملف الجديد
                                                         V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
                                                         V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId)
                                                         V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, liveExpiry)
-                                                        // حفظ البصمة الجديدة لكي لا يتم استيرادها مرة أخرى
                                                         V2rayCrypt.saveLastConfigHash(this@MainActivity, newGuid, incomingHash)
-                                                        
-                                                        // حذف القديم وتحديد الجديد
                                                         mainViewModel.removeServer(guid)
                                                         MmkvManager.setSelectServer(newGuid)
-                                                        
-                                                        toastSuccess("تم تحديث إعدادات السيرفر بنجاح من الإدارة!")
-                                                        restartV2Ray() 
-                                                        cancel() 
+                                                        toastSuccess("تم تحديث إعدادات السيرفر بنجاح!")
+                                                        restartV2Ray(); cancel() 
                                                     }
                                                 }
                                             }
@@ -1000,177 +656,77 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
                                 withContext(Dispatchers.Main) {
                                     V2RayServiceManager.stopVService(this@MainActivity)
-                                    AlertDialog.Builder(this@MainActivity)
-                                        .setTitle("انتهى الاشتراك")
-                                        .setMessage("تم إيقاف المحرك لأن مدة صلاحية هذا التكوين قد انتهت.\nتم فحص السحابة ولم نجد تمديداً جديداً لك.")
-                                        .setPositiveButton("حسناً", null)
-                                        .setCancelable(false)
-                                        .show()
+                                    AlertDialog.Builder(this@MainActivity).setTitle("انتهى الاشتراك").setMessage("تم إيقاف المحرك لانتهاء مدة الصلاحية.").setPositiveButton("حسناً", null).setCancelable(false).show()
                                     mainViewModel.reloadServerList()
                                 }
                                 cancel() 
                             }
                         }
-                    } catch (e: Exception) {
-                        Log.e(AppConfig.TAG, "Ping Error", e)
-                    }
+                    } catch (e: Exception) {}
                     delay(3000) 
                 }
             }
-            
         } else {
-            pingJob?.cancel()
-            speedTestJob?.cancel()
-            resetSpeedButtonJob?.cancel() 
-            stopTrafficMonitor()
-            
-            binding.fab.setImageResource(R.drawable.ic_play_24dp)
-            binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
-            binding.fab.contentDescription = getString(R.string.tasker_start_service)
-            setTestState(getString(R.string.connection_not_connected))
-            binding.layoutTest.isFocusable = false
-
-            btnGreenConnect?.text = "تشغيل المحرك"
-            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
-            
-            lottieEngine?.cancelAnimation()
-            lottieEngine?.progress = 0f
-            
-            gaugePing?.setPing(0f) 
-            gaugeSpeed?.setSpeed(0f)
-            
-            val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
-            tvGreenPing?.text = "--- ms"
-            
-            val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
-            btnTest?.isEnabled = true
-            btnTest?.text = "قياس سرعة الإنترنت" 
-            btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
+            pingJob?.cancel(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel(); stopTrafficMonitor()
+            binding.fab.setImageResource(R.drawable.ic_play_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
+            binding.fab.contentDescription = getString(R.string.tasker_start_service); setTestState(getString(R.string.connection_not_connected)); binding.layoutTest.isFocusable = false
+            btnGreenConnect?.text = "تشغيل المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C")); lottieEngine?.cancelAnimation(); lottieEngine?.progress = 0f
+            binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f); binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f); binding.root.findViewById<TextView>(R.id.tv_green_ping)?.text = "--- ms"
+            val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test); btnTest?.isEnabled = true; btnTest?.text = "قياس سرعة الإنترنت"; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (mainViewModel.isRunning.value == true) {
-            startTrafficMonitor()
-        } else {
-            updateTrafficDisplay()
+    override fun onResume() { super.onResume(); if (mainViewModel.isRunning.value == true) startTrafficMonitor() else updateTrafficDisplay() }
+    override fun onPause() { super.onPause(); stopTrafficMonitor(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel() }
+    
+    override fun onDestroy() {
+        val guid = MmkvManager.getSelectServer().orEmpty()
+        val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
+        if (lastReportedState == true && idToTrack.isNotEmpty()) {
+            GlobalScope.launch(Dispatchers.IO) { CloudflareAPI.sendActiveState(idToTrack, false) }
         }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        stopTrafficMonitor()
-        speedTestJob?.cancel()
-        resetSpeedButtonJob?.cancel()
+        tabMediator?.detach(); pingJob?.cancel(); trafficJob?.cancel(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel()
+        super.onDestroy()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_main, menu)
-
         val searchItem = menu.findItem(R.id.search_view)
         if (searchItem != null) {
             val searchView = searchItem.actionView as SearchView
             searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
                 override fun onQueryTextSubmit(query: String?): Boolean = false
-
-                override fun onQueryTextChange(newText: String?): Boolean {
-                    mainViewModel.filterConfig(newText.orEmpty())
-                    return false
-                }
+                override fun onQueryTextChange(newText: String?): Boolean { mainViewModel.filterConfig(newText.orEmpty()); return false }
             })
-
-            searchView.setOnCloseListener {
-                mainViewModel.filterConfig("")
-                false
-            }
+            searchView.setOnCloseListener { mainViewModel.filterConfig(""); false }
         }
         return super.onCreateOptionsMenu(menu)
     }
 
-    override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
-        R.id.import_qrcode -> {
-            showAddBottomSheet()
-            true
-        }
-        else -> super.onOptionsItemSelected(item)
-    }
+    override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) { R.id.import_qrcode -> { showAddBottomSheet(); true } else -> super.onOptionsItemSelected(item) }
 
     private fun importManually(createConfigType: Int) {
-        if (createConfigType == EConfigType.POLICYGROUP.value) {
-            startActivity(Intent().putExtra("subscriptionId", mainViewModel.subscriptionId).setClass(this, ServerGroupActivity::class.java))
-        } else {
-            startActivity(Intent().putExtra("createConfigType", createConfigType).putExtra("subscriptionId", mainViewModel.subscriptionId).setClass(this, ServerActivity::class.java))
-        }
+        if (createConfigType == EConfigType.POLICYGROUP.value) startActivity(Intent().putExtra("subscriptionId", mainViewModel.subscriptionId).setClass(this, ServerGroupActivity::class.java))
+        else startActivity(Intent().putExtra("createConfigType", createConfigType).putExtra("subscriptionId", mainViewModel.subscriptionId).setClass(this, ServerActivity::class.java))
     }
 
-    private fun importClipboard(): Boolean {
-        try { importBatchConfig(Utils.getClipboard(this)) } 
-        catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to import config from clipboard", e); return false }
-        return true
-    }
-
+    private fun importClipboard(): Boolean { try { importBatchConfig(Utils.getClipboard(this)) } catch (e: Exception) { return false }; return true }
     private fun importClipboardEncrypted(): Boolean {
         try {
-            val clipboard = Utils.getClipboard(this)
-            if (clipboard.isNullOrEmpty()) {
-                toast("الحافظة فارغة!")
-                return false
-            }
-            val result = V2rayCrypt.decryptAndCheckExpiry(clipboard)
-            if (result == null) {
-                toast("الكود المشفر غير صالح أو غير مدعوم!")
-                return false
-            }
-            
-            val decryptedData = result.first
-            val expiryTimeMs = result.second
-            val licenseId = result.third
-
-            importEncryptedBatchConfig(decryptedData, expiryTimeMs, licenseId)
-        } catch (e: Exception) {
-            Log.e(AppConfig.TAG, "Failed to import encrypted config from clipboard", e)
-            return false
-        }
+            val clipboard = Utils.getClipboard(this); if (clipboard.isNullOrEmpty()) { toast("الحافظة فارغة!"); return false }
+            val result = V2rayCrypt.decryptAndCheckExpiry(clipboard); if (result == null) { toast("الكود غير صالح!"); return false }
+            importEncryptedBatchConfig(result.first, result.second, result.third)
+        } catch (e: Exception) { return false }
         return true
     }
-    
-    private fun importEncryptedFile() {
-        try {
-            openEncryptedFileLauncher.launch(arrayOf("*/*"))
-        } catch (e: Exception) {
-            Log.e(AppConfig.TAG, "Failed to open file picker", e)
-        }
-    }
-    
+    private fun importEncryptedFile() { try { openEncryptedFileLauncher.launch(arrayOf("*/*")) } catch (e: Exception) {} }
     private fun readEncryptedContentFromUri(uri: Uri) {
         try {
-            val inputStream = contentResolver.openInputStream(uri)
-            val reader = BufferedReader(InputStreamReader(inputStream))
-            val fileContent = reader.readText()
-            reader.close()
-            
-            if (fileContent.isEmpty()) {
-                toast("الملف فارغ!")
-                return
-            }
-            
-            val result = V2rayCrypt.decryptAndCheckExpiry(fileContent)
-            if (result == null) {
-                toast("الملف غير صالح أو ليس ملف .ashor صحيح!")
-                return
-            }
-            
-            val decryptedData = result.first
-            val expiryTimeMs = result.second
-            val licenseId = result.third
-
-            importEncryptedBatchConfig(decryptedData, expiryTimeMs, licenseId)
-            
-        } catch (e: Exception) {
-            Log.e(AppConfig.TAG, "Failed to read encrypted content from URI", e)
-            toast("حدث خطأ أثناء قراءة الملف.")
-        }
+            val fileContent = contentResolver.openInputStream(uri)?.use { BufferedReader(InputStreamReader(it)).readText() } ?: ""
+            if (fileContent.isEmpty()) { toast("الملف فارغ!"); return }
+            val result = V2rayCrypt.decryptAndCheckExpiry(fileContent); if (result == null) { toast("الملف غير صالح!"); return }
+            importEncryptedBatchConfig(result.first, result.second, result.third)
+        } catch (e: Exception) { toast("حدث خطأ") }
     }
 
     private fun importEncryptedBatchConfig(server: String?, expiryTimeMs: Long = 0L, licenseId: String = "") {
@@ -1179,51 +735,20 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             try {
                 val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
                 val (count, countSub) = AngConfigManager.importBatchConfig(server, mainViewModel.subscriptionId, true)
-
                 if (count > 0) { 
-                    val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
-                    val newGuids = afterGuids - beforeGuids
-                    
+                    val newGuids = (MmkvManager.decodeServerList()?.toSet() ?: emptySet()) - beforeGuids
                     if (newGuids.isNotEmpty()) {
                         V2rayCrypt.addProtectedGuids(this@MainActivity, newGuids)
                         newGuids.forEach { guid ->
-                            if (expiryTimeMs > 0L) {
-                                V2rayCrypt.saveExpiryTime(this@MainActivity, guid, expiryTimeMs)
-                            }
-                            if (licenseId.isNotEmpty()) {
-                                V2rayCrypt.saveLicenseId(this@MainActivity, guid, licenseId)
-                            }
-                            if (server != null) {
-                                // حفظ البصمة الأولية عند أول استيراد لكي لا يعيد التحميل من كلاود فلير فوراً
-                                val initialBase64 = Base64.encodeToString(server.toByteArray(), Base64.NO_WRAP)
-                                V2rayCrypt.saveLastConfigHash(this@MainActivity, guid, initialBase64.hashCode())
-                            }
+                            if (expiryTimeMs > 0L) V2rayCrypt.saveExpiryTime(this@MainActivity, guid, expiryTimeMs)
+                            if (licenseId.isNotEmpty()) V2rayCrypt.saveLicenseId(this@MainActivity, guid, licenseId)
+                            if (server != null) V2rayCrypt.saveLastConfigHash(this@MainActivity, guid, Base64.encodeToString(server.toByteArray(), Base64.NO_WRAP).hashCode())
                         }
                     }
-
-                    withContext(Dispatchers.Main) {
-                        mainViewModel.reloadServerList()
-                        toast("تم استيراد التكوين بنجاح!")
-                        hideLoadingDialog()
-                    }
-                } else if (countSub > 0) {
-                    withContext(Dispatchers.Main) {
-                        setupGroupTab()
-                        hideLoadingDialog()
-                    }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        toastError(R.string.toast_failure)
-                        hideLoadingDialog()
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { 
-                    toastError(R.string.toast_failure)
-                    hideLoadingDialog() 
-                }
-                Log.e(AppConfig.TAG, "Failed to import encrypted batch config", e)
-            }
+                    withContext(Dispatchers.Main) { mainViewModel.reloadServerList(); toast("تم استيراد التكوين!"); hideLoadingDialog() }
+                } else if (countSub > 0) { withContext(Dispatchers.Main) { setupGroupTab(); hideLoadingDialog() }
+                } else { withContext(Dispatchers.Main) { toastError(R.string.toast_failure); hideLoadingDialog() } }
+            } catch (e: Exception) { withContext(Dispatchers.Main) { toastError(R.string.toast_failure); hideLoadingDialog() } }
         }
     }
 
@@ -1231,110 +756,19 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         showLoadingDialog()
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val (count, countSub) = AngConfigManager.importBatchConfig(server, mainViewModel.subscriptionId, true)
-                delay(500L)
+                val (count, countSub) = AngConfigManager.importBatchConfig(server, mainViewModel.subscriptionId, true); delay(500L)
                 withContext(Dispatchers.Main) {
-                    when {
-                        count > 0 -> { toast(getString(R.string.title_import_config_count, count)); mainViewModel.reloadServerList() }
-                        countSub > 0 -> setupGroupTab()
-                        else -> toastError(R.string.toast_failure)
-                    }
+                    when { count > 0 -> { toast(getString(R.string.title_import_config_count, count)); mainViewModel.reloadServerList() } countSub > 0 -> setupGroupTab() else -> toastError(R.string.toast_failure) }
                     hideLoadingDialog()
                 }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { toastError(R.string.toast_failure); hideLoadingDialog() }
-                Log.e(AppConfig.TAG, "Failed to import batch config", e)
-            }
+            } catch (e: Exception) { withContext(Dispatchers.Main) { toastError(R.string.toast_failure); hideLoadingDialog() } }
         }
     }
 
-    private fun importConfigLocal(): Boolean {
-        try { showFileChooser() } catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to import config from local file", e); return false }
-        return true
-    }
+    private fun importConfigLocal(): Boolean { try { launchFileChooser { uri -> if (uri != null) readContentFromUri(uri) } } catch (e: Exception) { return false }; return true }
+    private fun readContentFromUri(uri: Uri) { try { contentResolver.openInputStream(uri).use { input -> importBatchConfig(input?.bufferedReader()?.readText()) } } catch (e: Exception) {} }
 
-    private fun importConfigViaSub(): Boolean {
-        showLoadingDialog()
-        lifecycleScope.launch(Dispatchers.IO) {
-            val count = mainViewModel.updateConfigViaSubAll()
-            delay(500L)
-            launch(Dispatchers.Main) {
-                if (count > 0) { toast(getString(R.string.title_update_config_count, count)); mainViewModel.reloadServerList() } 
-                else { toastError(R.string.toast_failure) }
-                hideLoadingDialog()
-            }
-        }
-        return true
-    }
-
-    private fun exportAll() {
-        showLoadingDialog()
-        lifecycleScope.launch(Dispatchers.IO) {
-            val ret = mainViewModel.exportAllServer()
-            launch(Dispatchers.Main) {
-                if (ret > 0) toast(getString(R.string.title_export_config_count, ret)) else toastError(R.string.toast_failure)
-                hideLoadingDialog()
-            }
-        }
-    }
-
-    private fun delAllConfig() {
-        AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                showLoadingDialog()
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val ret = mainViewModel.removeAllServer()
-                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_config_count, ret)); hideLoadingDialog() }
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null).show()
-    }
-
-    private fun delDuplicateConfig() {
-        AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                showLoadingDialog()
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val ret = mainViewModel.removeDuplicateServer()
-                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_duplicate_config_count, ret)); hideLoadingDialog() }
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null).show()
-    }
-
-    private fun delInvalidConfig() {
-        AlertDialog.Builder(this).setMessage(R.string.del_invalid_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                showLoadingDialog()
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val ret = mainViewModel.removeInvalidServer()
-                    launch(Dispatchers.Main) { mainViewModel.reloadServerList(); toast(getString(R.string.title_del_config_count, ret)); hideLoadingDialog() }
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null).show()
-    }
-
-    private fun sortByTestResults() {
-        showLoadingDialog()
-        lifecycleScope.launch(Dispatchers.IO) {
-            mainViewModel.sortByTestResults()
-            launch(Dispatchers.Main) { mainViewModel.reloadServerList(); hideLoadingDialog() }
-        }
-    }
-
-    private fun showFileChooser() {
-        launchFileChooser { uri -> if (uri != null) readContentFromUri(uri) }
-    }
-
-    private fun readContentFromUri(uri: Uri) {
-        try { contentResolver.openInputStream(uri).use { input -> importBatchConfig(input?.bufferedReader()?.readText()) } } 
-        catch (e: Exception) { Log.e(AppConfig.TAG, "Failed to read content from URI", e) }
-    }
-
-    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_BUTTON_B) { moveTaskToBack(false); return true }
-        return super.onKeyDown(keyCode, event)
-    }
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean { if (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_BUTTON_B) { moveTaskToBack(false); return true }; return super.onKeyDown(keyCode, event) }
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
@@ -1353,41 +787,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         return true
     }
 
-    override fun onSelectServer(guid: String) {
-        MmkvManager.setSelectServer(guid)
-        toast(R.string.toast_success)
-        groupPagerAdapter.notifyDataSetChanged()
-    }
-
-    override fun onEdit(guid: String, position: Int, profile: ProfileItem) {
-        if (!V2rayCrypt.isProtected(this, guid) || V2rayCrypt.isAdmin(this, guid)) {
-            startActivity(Intent().putExtra("guid", guid).putExtra("subscriptionId", profile.subscriptionId).setClass(this, ServerActivity::class.java))
-        } else {
-            toast("هذا السيرفر محمي ولا يمكن تعديله")
-        }
-    }
-
-    override fun onRemove(guid: String, position: Int) {
-        AlertDialog.Builder(this)
-            .setMessage(R.string.del_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                mainViewModel.removeServer(guid)
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
-    }
+    override fun onSelectServer(guid: String) { MmkvManager.setSelectServer(guid); toast(R.string.toast_success); groupPagerAdapter.notifyDataSetChanged() }
+    override fun onEdit(guid: String, position: Int, profile: ProfileItem) { if (!V2rayCrypt.isProtected(this, guid) || V2rayCrypt.isAdmin(this, guid)) { startActivity(Intent().putExtra("guid", guid).putExtra("subscriptionId", profile.subscriptionId).setClass(this, ServerActivity::class.java)) } else { toast("هذا السيرفر محمي ولا يمكن تعديله") } }
+    override fun onRemove(guid: String, position: Int) { AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm).setPositiveButton(android.R.string.ok) { _, _ -> mainViewModel.removeServer(guid) }.setNegativeButton(android.R.string.cancel, null).show() }
     
     override fun onShare(guid: String, profile: ProfileItem, position: Int, isMore: Boolean) {}
     override fun onEdit(guid: String, position: Int) {}
     override fun onShare(url: String) {}
     override fun onRefreshData() {}
-
-    override fun onDestroy() {
-        tabMediator?.detach()
-        pingJob?.cancel() 
-        trafficJob?.cancel()
-        speedTestJob?.cancel()
-        resetSpeedButtonJob?.cancel()
-        super.onDestroy()
-    }
 }
