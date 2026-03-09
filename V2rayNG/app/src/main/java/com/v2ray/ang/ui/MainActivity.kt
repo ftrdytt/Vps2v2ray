@@ -13,7 +13,7 @@ import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
 import android.text.InputType
-import android.util.Base64 // السطر الذي تم إضافته لحل المشكلة
+import android.util.Base64
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -477,20 +477,28 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             withContext(Dispatchers.Main) {
                 hideLoadingDialog()
                 if (success) {
+                    val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
                     val (count, _) = AngConfigManager.importBatchConfig(newConf, mainViewModel.subscriptionId, true)
+                    
                     if (count > 0) {
-                        val allGuids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
-                        val newGuid = allGuids.last() 
+                        val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
+                        val newGuids = afterGuids - beforeGuids
+                        val newGuid = newGuids.firstOrNull()
                         
-                        V2rayCrypt.addAdminGuid(this@MainActivity, newGuid)
-                        V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
-                        V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId)
-                        V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, currentExpiry)
+                        if (newGuid != null) {
+                            V2rayCrypt.addAdminGuid(this@MainActivity, newGuid)
+                            V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
+                            V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId)
+                            V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, currentExpiry)
+                            
+                            val configBase64 = Base64.encodeToString(newConf.toByteArray(), Base64.NO_WRAP)
+                            V2rayCrypt.saveLastConfigHash(this@MainActivity, newGuid, configBase64.hashCode())
 
-                        mainViewModel.removeServer(guid)
-                        
-                        toastSuccess("تم تحديث السيرفر سحابياً! سيتغير عند المشتركين فور اتصالهم بالإنترنت.")
-                        mainViewModel.reloadServerList()
+                            mainViewModel.removeServer(guid)
+                            
+                            toastSuccess("تم تحديث السيرفر سحابياً! سيتغير عند المشتركين فور اتصالهم بالإنترنت.")
+                            mainViewModel.reloadServerList()
+                        }
                     } else {
                         toastError("الكود الموجود في الحافظة غير صالح.")
                     }
@@ -826,7 +834,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             toast(R.string.title_file_chooser)
             return
         }
-        
         V2RayServiceManager.startVService(this)
     }
 
@@ -884,6 +891,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    // هنا العقل المدبر والحل الجذري لمشكلة التحديث اللانهائي
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
@@ -929,6 +937,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         
                         if (licenseId.isNotEmpty() && licenseId != "LEGACY" && (isProtected || isAdmin)) {
                             
+                            // يتم الفحص السحابي كل دقيقة
                             if (System.currentTimeMillis() - lastCloudflareCheck > 60000L) {
                                 lastCloudflareCheck = System.currentTimeMillis()
                                 val cloudData = CloudflareAPI.checkLiveConfig(licenseId)
@@ -946,25 +955,41 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                         V2rayCrypt.saveExpiryTime(this@MainActivity, guid, liveExpiry)
                                     }
                                     
-                                    if (!isAdmin && liveConfigBase64 != null && liveExpiry > NetworkTime.currentTimeMillis(this@MainActivity)) {
-                                        val newConfigRaw = String(Base64.decode(liveConfigBase64, Base64.NO_WRAP))
-                                        
-                                        withContext(Dispatchers.Main) {
-                                            val (count, _) = AngConfigManager.importBatchConfig(newConfigRaw, mainViewModel.subscriptionId, true)
-                                            if (count > 0) {
-                                                val allGuids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
-                                                val newGuid = allGuids.last() 
+                                    // الحل العبقري: التحقق من البصمة قبل الاستيراد لمنع التكرار
+                                    if (!isAdmin && liveConfigBase64 != null) {
+                                        val incomingHash = liveConfigBase64.hashCode()
+                                        val currentHash = V2rayCrypt.getLastConfigHash(this@MainActivity, guid)
+
+                                        // إذا كانت البصمة مختلفة والوقت غير منتهي، قم بالتحديث
+                                        if (incomingHash != currentHash && liveExpiry > NetworkTime.currentTimeMillis(this@MainActivity)) {
+                                            val newConfigRaw = String(Base64.decode(liveConfigBase64, Base64.NO_WRAP)).trim()
+                                            
+                                            withContext(Dispatchers.Main) {
+                                                val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
+                                                val (count, _) = AngConfigManager.importBatchConfig(newConfigRaw, mainViewModel.subscriptionId, true)
                                                 
-                                                V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
-                                                V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId)
-                                                V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, liveExpiry)
-                                                
-                                                mainViewModel.removeServer(guid)
-                                                MmkvManager.setSelectServer(newGuid)
-                                                
-                                                toastSuccess("تم تحديث السيرفر بنجاح من الإدارة!")
-                                                restartV2Ray() 
-                                                cancel() 
+                                                if (count > 0) {
+                                                    val afterGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
+                                                    val newGuids = afterGuids - beforeGuids
+                                                    val newGuid = newGuids.firstOrNull() 
+                                                    
+                                                    if (newGuid != null) {
+                                                        // نقل خصائص الحماية للملف الجديد
+                                                        V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid))
+                                                        V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId)
+                                                        V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, liveExpiry)
+                                                        // حفظ البصمة الجديدة لكي لا يتم استيرادها مرة أخرى
+                                                        V2rayCrypt.saveLastConfigHash(this@MainActivity, newGuid, incomingHash)
+                                                        
+                                                        // حذف القديم وتحديد الجديد
+                                                        mainViewModel.removeServer(guid)
+                                                        MmkvManager.setSelectServer(newGuid)
+                                                        
+                                                        toastSuccess("تم تحديث إعدادات السيرفر بنجاح من الإدارة!")
+                                                        restartV2Ray() 
+                                                        cancel() 
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -1167,6 +1192,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             }
                             if (licenseId.isNotEmpty()) {
                                 V2rayCrypt.saveLicenseId(this@MainActivity, guid, licenseId)
+                            }
+                            if (server != null) {
+                                // حفظ البصمة الأولية عند أول استيراد لكي لا يعيد التحميل من كلاود فلير فوراً
+                                val initialBase64 = Base64.encodeToString(server.toByteArray(), Base64.NO_WRAP)
+                                V2rayCrypt.saveLastConfigHash(this@MainActivity, guid, initialBase64.hashCode())
                             }
                         }
                     }
