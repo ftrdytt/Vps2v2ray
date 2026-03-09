@@ -93,7 +93,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
     private var isFirstTrafficRead: Boolean = true
-    private var lastReportedState: Boolean? = null // لمنع تكرار الإرسال للسحابة
+    private var lastReportedState: Boolean? = null 
 
     private var screenWidth = 0
 
@@ -575,7 +575,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
         
-        // إرسال إشارة الاتصال للسحابة لزيادة وتخفيض العداد
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         
