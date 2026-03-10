@@ -69,7 +69,7 @@ import com.v2ray.ang.handler.V2rayCrypt
 import com.v2ray.ang.handler.CloudflareAPI
 import com.v2ray.ang.handler.AuthManager
 import kotlinx.coroutines.*
-import org.json.JSONObject // هذا السطر الذي كان ناقصاً
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
@@ -112,14 +112,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
 
-        // === نظام الحسابات: فحص تسجيل الخروج ===
         if (AuthManager.hasLoggedOut(this)) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
         }
 
-        // === نظام الحسابات: إنشاء حساب عشوائي صامت إذا لم يكن مسجلاً ===
         if (!AuthManager.isLoggedIn(this)) {
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
@@ -130,17 +128,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
                         val obj = JSONObject(resp)
                         if (obj.getBoolean("success")) {
-                            AuthManager.saveUser(
-                                this@MainActivity,
-                                obj.getString("id"),
-                                obj.getString("name"),
-                                obj.getString("password"),
-                                "user",
-                                ""
-                            )
+                            AuthManager.saveUser(this@MainActivity, obj.getString("id"), obj.getString("name"), obj.getString("password"), "user", "")
                         }
                     }
-                } catch (e: Exception) { Log.e("Auth", "Failed to create auto account", e) }
+                } catch (e: Exception) {}
             }
         }
 
@@ -152,11 +143,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val displayMetrics = resources.displayMetrics
         screenWidth = displayMetrics.widthPixels
         
+        // إعطاء العرض لـ 4 شاشات (الإعدادات، الملف الشخصي، الملفات، الرئيسية)
         binding.root.findViewById<View>(R.id.settings_wrapper)?.layoutParams?.width = screenWidth
+        binding.root.findViewById<View>(R.id.profile_wrapper)?.layoutParams?.width = screenWidth // حاوية الملف الشخصي
         binding.homeContentContainer.layoutParams.width = screenWidth
         binding.greenScreenContainer.layoutParams.width = screenWidth
 
-        supportFragmentManager.beginTransaction().replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment()).commit()
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
+            .replace(R.id.profile_wrapper, ProfileFragment()) // تحميل واجهة الملف الشخصي هنا
+            .commit()
 
         binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)?.setOnClickListener { handleFabAction() }
         binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)?.let { it.text = "قياس سرعة الإنترنت"; it.setOnClickListener { runSpeedTest() } }
@@ -164,31 +160,36 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         updateTrafficDisplay()
 
         val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
+        
+        // تعديل نظام السحب ليغطي 4 صفحات (من 0 إلى 3)
         binding.mainScrollView.setOnTouchListener { v, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
-                val page = if (screenWidth > 0) ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 2) else 0
+                val page = if (screenWidth > 0) ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 3) else 0
                 binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(page * screenWidth, 0) }
-                when (page) { 0 -> bottomNav?.selectedItemId = R.id.nav_settings; 1 -> bottomNav?.selectedItemId = R.id.nav_servers; 2 -> bottomNav?.selectedItemId = R.id.nav_home }
+                when (page) { 
+                    0 -> bottomNav?.selectedItemId = R.id.nav_settings
+                    1 -> bottomNav?.selectedItemId = R.id.nav_profile
+                    2 -> bottomNav?.selectedItemId = R.id.nav_servers
+                    3 -> bottomNav?.selectedItemId = R.id.nav_home 
+                }
                 return@setOnTouchListener true
             }
             false
         }
 
+        // ربط أزرار الأسفل بأماكن السحب
         bottomNav?.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_settings -> { binding.mainScrollView.smoothScrollTo(0, 0); true }
-                R.id.nav_servers -> { binding.mainScrollView.smoothScrollTo(screenWidth, 0); true }
-                R.id.nav_home -> { binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0); true }
-                R.id.nav_profile -> { 
-                    startActivity(Intent(this, ProfileActivity::class.java))
-                    false 
-                }
+                R.id.nav_profile -> { binding.mainScrollView.smoothScrollTo(screenWidth, 0); true }
+                R.id.nav_servers -> { binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0); true }
+                R.id.nav_home -> { binding.mainScrollView.smoothScrollTo(screenWidth * 3, 0); true }
                 else -> false
             }
         }
         bottomNav?.selectedItemId = R.id.nav_home
-        binding.mainScrollView.post { binding.mainScrollView.scrollTo(screenWidth * 2, 0) }
+        binding.mainScrollView.post { binding.mainScrollView.scrollTo(screenWidth * 3, 0) }
 
         setupToolbar(binding.toolbar, false, "اشور لود")
 
@@ -204,7 +205,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             override fun handleOnBackPressed() {
                 if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) binding.drawerLayout.closeDrawer(GravityCompat.START)
                 else {
-                    if (binding.mainScrollView.scrollX != screenWidth * 2) { binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0); bottomNav?.selectedItemId = R.id.nav_home } 
+                    if (binding.mainScrollView.scrollX != screenWidth * 3) { binding.mainScrollView.smoothScrollTo(screenWidth * 3, 0); bottomNav?.selectedItemId = R.id.nav_home } 
                     else { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
                 }
             }
