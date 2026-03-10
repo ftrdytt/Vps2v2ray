@@ -273,7 +273,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             notificationManager.createNotificationChannel(channel)
         }
 
-        // تم إصلاح الخطأ هنا (استخدام android.R بدلاً من R)
         val builder = androidx.core.app.NotificationCompat.Builder(this, channelId)
             .setContentTitle("تحديث جديد إجباري 🚀")
             .setContentText("جاري تنزيل التحديث... 0%")
@@ -285,7 +284,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         notificationManager.notify(999, builder.build())
 
         try {
-            val updateFile = java.io.File(externalCacheDir, "Ashor_Update_v$serverVersion.apk")
+            // التعديل 1: تغيير مسار الحفظ ليكون داخل cacheDir بدلاً من externalCacheDir
+            val updateFile = java.io.File(cacheDir, "Ashor_Update_v$serverVersion.apk")
             val fos = java.io.FileOutputStream(updateFile)
             
             for (i in 0 until totalChunks) {
@@ -326,18 +326,21 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // تم إصلاح الخطأ هنا (استخدام runOnUiThread بدلاً من withContext)
+    // التعديل 2: تحديث دالة التثبيت لتعطي صلاحيات القراءة للملف وتطبع سبب الخطأ إن وجد
     private fun forceInstallApk(apkFile: java.io.File) {
         runOnUiThread {
             try {
+                apkFile.setReadable(true, false)
+                
                 val uri = androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "${packageName}.cache", apkFile)
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, "application/vnd.android.package-archive")
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 startActivity(intent)
             } catch (e: Exception) { 
-                Toast.makeText(this@MainActivity, "فشل بدء التثبيت", Toast.LENGTH_LONG).show() 
+                Toast.makeText(this@MainActivity, "خطأ التثبيت: ${e.message}", Toast.LENGTH_LONG).show() 
             }
         }
     }
@@ -654,7 +657,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
 
         if (isRunning) {
-            if (vpnStartTime == 0L) vpnStartTime = System.currentTimeMillis() // تسجيل وقت التشغيل للعقاب
+            if (vpnStartTime == 0L) vpnStartTime = System.currentTimeMillis() 
 
             binding.fab.setImageResource(R.drawable.ic_stop_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active)); binding.fab.contentDescription = getString(R.string.action_stop_service); setTestState(getString(R.string.connection_connected)); binding.layoutTest.isFocusable = true; btnGreenConnect?.text = "إيقاف المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F")); lottieEngine?.playAnimation(); startTrafficMonitor()
             
@@ -663,7 +666,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 delay(1000) 
                 while (isActive) {
                     try {
-                        // ==== نظام العقاب (Kill Switch) ====
                         if (UpdateManager.isUpdatePending && (System.currentTimeMillis() - vpnStartTime) > 3600000L) { // 1 ساعة
                             withContext(Dispatchers.Main) {
                                 V2RayServiceManager.stopVService(this@MainActivity)
@@ -677,7 +679,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             }
                             cancel()
                         }
-                        // ===================================
 
                         mainViewModel.testCurrentServerRealPing()
                         val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
@@ -734,7 +735,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
         } else {
-            vpnStartTime = 0L // تصفير وقت التشغيل عند الإيقاف الطوعي
+            vpnStartTime = 0L 
             pingJob?.cancel(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel(); stopTrafficMonitor()
             binding.fab.setImageResource(R.drawable.ic_play_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive)); binding.fab.contentDescription = getString(R.string.tasker_start_service); setTestState(getString(R.string.connection_not_connected)); binding.layoutTest.isFocusable = false; btnGreenConnect?.text = "تشغيل المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C")); lottieEngine?.cancelAnimation(); lottieEngine?.progress = 0f; binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f); binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f); binding.root.findViewById<TextView>(R.id.tv_green_ping)?.text = "--- ms"; val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test); btnTest?.isEnabled = true; btnTest?.text = "قياس سرعة الإنترنت"; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
         }
