@@ -146,7 +146,8 @@ class UpdatesFragment : Fragment() {
         }
 
         try {
-            val updateFile = File(requireContext().externalCacheDir, "Ashor_Update_v$serverVersion.apk")
+            // התعديل 1: التنزيل في مسار cacheDir الآمن
+            val updateFile = File(requireContext().cacheDir, "Ashor_Update_v$serverVersion.apk")
             val fos = FileOutputStream(updateFile)
             
             for (i in 0 until totalChunks) {
@@ -269,16 +270,21 @@ class UpdatesFragment : Fragment() {
         }
     }
 
+    // התعديل 2: تحديث دالة التثبيت لتطبع سبب الخطأ وتعطي صلاحيات كاملة
     private fun forceInstallApk(apkFile: File) {
         requireActivity().runOnUiThread {
             try {
+                apkFile.setReadable(true, false) // السماح للنظام بقراءة الملف
                 val uri = FileProvider.getUriForFile(requireContext(), "${requireContext().packageName}.cache", apkFile)
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, "application/vnd.android.package-archive")
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 startActivity(intent)
-            } catch (e: Exception) { Toast.makeText(requireContext(), "فشل التثبيت", Toast.LENGTH_SHORT).show() }
+            } catch (e: Exception) { 
+                Toast.makeText(requireContext(), "خطأ التثبيت: ${e.message}", Toast.LENGTH_LONG).show() 
+            }
         }
     }
 }
