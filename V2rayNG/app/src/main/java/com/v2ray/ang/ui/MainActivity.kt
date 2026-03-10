@@ -96,7 +96,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var lastTxBytes: Long = 0L
     private var isFirstTrafficRead: Boolean = true
     
-    private var vpnStartTime: Long = 0L // وقت تشغيل الـ VPN للعقاب (Kill Switch)
+    private var vpnStartTime: Long = 0L
 
     companion object { var lastReportedState: Boolean? = null }
 
@@ -144,13 +144,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
 
-        // بدء فحص التحديثات التلقائي في الخلفية عند فتح التطبيق
+        // بدء فحص التحديثات التلقائي
         startBackgroundUpdateCheck()
 
         val displayMetrics = resources.displayMetrics
         screenWidth = displayMetrics.widthPixels
         
-        // إعداد 5 شاشات (الإعدادات، التحديثات، الملف الشخصي، الملفات، الرئيسية)
         binding.root.findViewById<View>(R.id.settings_wrapper)?.layoutParams?.width = screenWidth
         
         val updatesWrapper = FrameLayout(this).apply { 
@@ -164,8 +163,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
         
         val scrollContainer = binding.root.findViewById<LinearLayout>(R.id.settings_wrapper).parent as LinearLayout
-        scrollContainer.addView(updatesWrapper, 1) // إضافة التحديثات بعد الإعدادات
-        scrollContainer.addView(profileWrapper, 2) // إضافة الملف الشخصي بعد التحديثات
+        scrollContainer.addView(updatesWrapper, 1) 
+        scrollContainer.addView(profileWrapper, 2) 
         
         binding.homeContentContainer.layoutParams.width = screenWidth
         binding.greenScreenContainer.layoutParams.width = screenWidth
@@ -183,7 +182,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
         
-        // نظام السحب ليغطي 5 صفحات (من 0 إلى 4)
         binding.mainScrollView.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
@@ -201,7 +199,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             false
         }
 
-        // ربط أزرار الأسفل بأماكن السحب
         bottomNav?.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_settings -> { binding.mainScrollView.smoothScrollTo(0, 0); true }
@@ -247,7 +244,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun startBackgroundUpdateCheck() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // الفحص يحدث بعد ثانيتين من فتح التطبيق لضمان استقرار النت
                 delay(2000)
                 val url = URL("https://vpn-license.rauter505.workers.dev/app/update/check")
                 val conn = url.openConnection() as HttpURLConnection
@@ -258,9 +254,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     val serverVersion = obj.getInt("version")
                     val totalChunks = obj.optInt("totalChunks", 0)
                     
-                    // إذا كان السيرفر يحمل إصدار أعلى من إصدار التطبيق الحالي، نبدأ التنزيل
                     if (serverVersion > com.v2ray.ang.BuildConfig.VERSION_CODE && totalChunks > 0) {
-                        UpdateManager.isUpdatePending = true // تفعيل العقاب في حال التأخير
+                        UpdateManager.isUpdatePending = true 
                         downloadUpdateWithNotification(serverVersion, totalChunks)
                     }
                 }
@@ -272,25 +267,24 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         val channelId = "update_channel"
         
-        // إنشاء قناة الإشعارات للأندرويد 8 وما فوق
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = android.app.NotificationChannel(channelId, "تحديثات التطبيق", android.app.NotificationManager.IMPORTANCE_HIGH)
             channel.setSound(null, null)
             notificationManager.createNotificationChannel(channel)
         }
 
+        // تم إصلاح الخطأ هنا (استخدام android.R بدلاً من R)
         val builder = androidx.core.app.NotificationCompat.Builder(this, channelId)
             .setContentTitle("تحديث جديد إجباري 🚀")
             .setContentText("جاري تنزيل التحديث... 0%")
-            .setSmallIcon(R.drawable.ic_popup_sync) // أيقونة التحديث
-            .setOngoing(true) // لا يمكن للمستخدم مسح الإشعار
+            .setSmallIcon(android.R.drawable.ic_popup_sync) 
+            .setOngoing(true) 
             .setOnlyAlertOnce(true)
             .setProgress(100, 0, false)
 
         notificationManager.notify(999, builder.build())
 
         try {
-            // حفظ التحديث في مجلد الـ Cache لكي يسهل تثبيته
             val updateFile = java.io.File(externalCacheDir, "Ashor_Update_v$serverVersion.apk")
             val fos = java.io.FileOutputStream(updateFile)
             
@@ -307,7 +301,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     val chunkBytes = Base64.decode(base64Data, Base64.NO_WRAP)
                     fos.write(chunkBytes)
                     
-                    // تحديث نسبة الإشعار (في البردة)
                     val progress = ((i + 1f) / totalChunks * 100).toInt()
                     builder.setProgress(100, progress, false)
                     builder.setContentText("جاري تنزيل التحديث... $progress%")
@@ -319,12 +312,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
             fos.flush(); fos.close()
 
-            // تغيير الإشعار للاكتمال
             builder.setContentText("تم التنزيل، جاري التثبيت...")
             builder.setProgress(0, 0, false)
             notificationManager.notify(999, builder.build())
 
-            // تثبيت التطبيق إجبارياً
             forceInstallApk(updateFile)
 
         } catch (e: Exception) {
@@ -335,10 +326,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    // تم إصلاح الخطأ هنا (استخدام runOnUiThread بدلاً من withContext)
     private fun forceInstallApk(apkFile: java.io.File) {
-        withContext(Dispatchers.Main) {
+        runOnUiThread {
             try {
-                // استخدام FileProvider لفتح الـ APK بشكل آمن
                 val uri = androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "${packageName}.cache", apkFile)
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, "application/vnd.android.package-archive")
