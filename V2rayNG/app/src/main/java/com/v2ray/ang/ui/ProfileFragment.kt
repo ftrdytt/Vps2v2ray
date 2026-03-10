@@ -71,11 +71,13 @@ class ProfileFragment : Fragment() {
         val btnSave = view.findViewById<Button>(R.id.btn_save_profile)
         val btnLogout = view.findViewById<Button>(R.id.btn_logout)
 
-        etId.setText(AuthManager.getId(requireContext()))
+        val userId = AuthManager.getId(requireContext())
+        etId.setText(userId)
         etName.setText(AuthManager.getName(requireContext()))
         etPass.setText(AuthManager.getPass(requireContext()))
         currentBase64Pfp = AuthManager.getPfp(requireContext())
         
+        // التحقق مما إذا كان هناك صورة محفوظة
         if (currentBase64Pfp.isNotEmpty()) {
             try {
                 val decodedBytes = Base64.decode(currentBase64Pfp, Base64.NO_WRAP)
@@ -83,6 +85,9 @@ class ProfileFragment : Fragment() {
                 ivPfp.setImageBitmap(bitmap)
                 ivPfp.imageTintList = null 
             } catch (e: Exception) {}
+        } else {
+            // إذا لم يكن هناك صورة، نقوم بتحميل صورة افتراضية (أنمي/أفاتار) بناءً على ID المستخدم
+            loadDefaultAvatar(userId)
         }
 
         ivPfp.setOnClickListener {
@@ -159,6 +164,30 @@ class ProfileFragment : Fragment() {
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             startActivity(intent)
             requireActivity().finish()
+        }
+    }
+
+    // دالة مساعدة لتحميل الأفاتار الافتراضي من الإنترنت
+    private fun loadDefaultAvatar(seed: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // نستخدم خدمة DiceBear للحصول على أفاتار شخصية أنمي (adventurer)
+                val avatarUrl = URL("https://api.dicebear.com/7.x/adventurer/png?seed=$seed&backgroundColor=b6e3f4,c0aede,d1d4f9")
+                val connection = avatarUrl.openConnection() as HttpURLConnection
+                connection.doInput = true
+                connection.connect()
+                val inputStream = connection.inputStream
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+
+                withContext(Dispatchers.Main) {
+                    if (bitmap != null) {
+                        ivPfp.setImageBitmap(bitmap)
+                        ivPfp.imageTintList = null // إزالة الفلتر الرمادي
+                    }
+                }
+            } catch (e: Exception) {
+                // في حال فشل التحميل، نترك الصورة الافتراضية
+            }
         }
     }
 }
