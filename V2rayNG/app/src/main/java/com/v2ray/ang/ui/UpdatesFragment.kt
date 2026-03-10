@@ -1,7 +1,6 @@
 package com.v2ray.ang.ui
 
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -19,6 +18,7 @@ import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AuthManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -28,8 +28,8 @@ import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.ceil
 
-// نظام العقاب العالمي (Kill Switch)
 object UpdateManager {
     var isUpdatePending = false
 }
@@ -42,13 +42,14 @@ class UpdatesFragment : Fragment() {
     private lateinit var tvPercent: TextView
     private lateinit var pb: ProgressBar
     private lateinit var etVersion: EditText
+    private lateinit var btnUpload: MaterialButton
 
     private var pendingVersion = ""
 
     private val pickApk = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val uri = result.data?.data
-            if (uri != null) uploadApkToServer(uri)
+            if (uri != null) uploadApkToServerChunked(uri)
         }
     }
 
@@ -65,9 +66,8 @@ class UpdatesFragment : Fragment() {
         tvPercent = view.findViewById(R.id.tv_progress_percent)
         pb = view.findViewById(R.id.pb_download_upload)
         etVersion = view.findViewById(R.id.et_version_code)
-        val btnUpload = view.findViewById<MaterialButton>(R.id.btn_upload_apk)
+        btnUpload = view.findViewById(R.id.btn_upload_apk)
 
-        // إظهار لوحة الرفع للأدمن فقط
         if (AuthManager.getRole(requireContext()) == "admin") {
             layoutAdmin.visibility = View.VISIBLE
         }
@@ -82,94 +82,155 @@ class UpdatesFragment : Fragment() {
             pickApk.launch(intent)
         }
 
-        // فحص التحديثات للمستخدم العادي بصمت
         checkAndDownloadUpdateSilently()
     }
 
-    // ================== نظام الأدمن: رفع التحديث ==================
-    private fun uploadApkToServer(uri: Uri) {
+    // ================== نظام الأدمن: الرفع المجزأ (تخطي حد الـ 25 ميجا) ==================
+    private fun uploadApkToServerChunked(uri: Uri) {
         layoutProgress.visibility = View.VISIBLE
-        tvStatus.text = "جاري رفع التحديث للسيرفر..."
+        btnUpload.isEnabled = false
+        tvStatus.text = "جاري تهيئة الملف وتقطيعه..."
+        pb.progress = 0
+        tvPercent.text = "0%"
         
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val inputStream = requireActivity().contentResolver.openInputStream(uri)
-                val bytes = inputStream?.readBytes() ?: return@launch
+                if (inputStream == null) throw Exception("Cannot open file")
+                
+                val fileBytes = inputStream.readBytes()
                 inputStream.close()
-                
-                // محاكاة شريط الرفع
-                for (i in 1..100 step 5) {
-                    withContext(Dispatchers.Main) { pb.progress = i; tvPercent.text = "$i%" }
-                    kotlinx.coroutines.delay(100)
-                }
 
-                val base64Apk = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                val url = URL("https://vpn-license.rauter505.workers.dev/app/update/upload")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.doOutput = true
+                // تقطيع الملف إلى أجزاء بحجم 3 ميجابايت
+                val chunkSize = 3 * 1024 * 1024
+                val totalChunks = ceil(fileBytes.size.toDouble() / chunkSize).toInt()
+
+                // 1. إرسال طلب التهيئة للسيرفر
+                val initUrl = URL("https://vpn-license.rauter505.workers.dev/app/update/upload_init")
+                val initConn = initUrl.openConnection() as HttpURLConnection
+                initConn.requestMethod = "POST"
+                initConn.setRequestProperty("Content-Type", "application/json")
+                initConn.connectTimeout = 15000
+                initConn.doOutput = true
+                val initPayload = JSONObject().apply { put("version", pendingVersion.toInt()); put("totalChunks", totalChunks) }
+                initConn.outputStream.use { it.write(initPayload.toString().toByteArray()) }
                 
-                val payload = JSONObject().apply { put("version", pendingVersion.toInt()); put("apkData", base64Apk) }
-                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                if (initConn.responseCode != 200) throw Exception("Failed to initialize upload")
+
+                // 2. رفع الأجزاء (Chunks) واحداً تلو الآخر
+                for (i in 0 until totalChunks) {
+                    withContext(Dispatchers.Main) { 
+                        tvStatus.text = "جاري رفع الجزء ${i + 1} من $totalChunks للسيرفر..." 
+                    }
+                    
+                    val start = i * chunkSize
+                    val end = if (i == totalChunks - 1) fileBytes.size else (i + 1) * chunkSize
+                    val chunkBytes = fileBytes.copyOfRange(start, end)
+                    val base64Chunk = Base64.encodeToString(chunkBytes, Base64.NO_WRAP)
+
+                    var success = false
+                    var retries = 3
+                    
+                    // إعادة المحاولة في حال ضعف الإنترنت
+                    while (!success && retries > 0) {
+                        try {
+                            val chunkUrl = URL("https://vpn-license.rauter505.workers.dev/app/update/upload_chunk")
+                            val chunkConn = chunkUrl.openConnection() as HttpURLConnection
+                            chunkConn.requestMethod = "POST"
+                            chunkConn.setRequestProperty("Content-Type", "application/json")
+                            chunkConn.connectTimeout = 30000 // 30 ثانية
+                            chunkConn.readTimeout = 60000 // 60 ثانية
+                            chunkConn.doOutput = true
+                            
+                            val chunkPayload = JSONObject().apply { 
+                                put("version", pendingVersion.toInt())
+                                put("chunkIndex", i)
+                                put("chunkData", base64Chunk) 
+                            }
+                            chunkConn.outputStream.use { it.write(chunkPayload.toString().toByteArray()) }
+                            
+                            if (chunkConn.responseCode == 200) success = true
+                        } catch (e: Exception) { retries-- ; delay(2000) }
+                    }
+                    
+                    if (!success) throw Exception("Failed to upload chunk $i")
+
+                    withContext(Dispatchers.Main) {
+                        val progress = ((i + 1f) / totalChunks * 100).toInt()
+                        pb.progress = progress
+                        tvPercent.text = "$progress%"
+                    }
+                }
 
                 withContext(Dispatchers.Main) {
-                    if (conn.responseCode == 200) {
-                        tvStatus.text = "تم الحفظ في السيرفر بنجاح!"
-                        pb.progress = 100; tvPercent.text = "100%"
-                        Toast.makeText(requireContext(), "تم رفع التحديث للمستخدمين!", Toast.LENGTH_LONG).show()
-                    } else { tvStatus.text = "فشل الرفع." }
+                    tvStatus.text = "✅ تم حفظ التحديث في السيرفر بنجاح!"
+                    pb.progress = 100; tvPercent.text = "100%"
+                    btnUpload.isEnabled = true
+                    Toast.makeText(requireContext(), "تم إصدار التحديث للمستخدمين!", Toast.LENGTH_LONG).show()
                 }
+
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { tvStatus.text = "خطأ أثناء الرفع." }
+                withContext(Dispatchers.Main) { 
+                    tvStatus.text = "❌ خطأ أثناء الرفع: ${e.message}"
+                    btnUpload.isEnabled = true 
+                }
             }
         }
     }
 
-    // ================== نظام المستخدم: التنزيل والتثبيت والعقاب ==================
+    // ================== نظام المستخدم: التنزيل المجزأ والتثبيت ==================
     private fun checkAndDownloadUpdateSilently() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val url = URL("https://vpn-license.rauter505.workers.dev/app/update/check")
                 val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 10000
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
                     val obj = JSONObject(resp)
                     val serverVersion = obj.getInt("version")
+                    val totalChunks = obj.optInt("totalChunks", 0)
                     
-                    // إذا كان إصدار السيرفر أكبر من إصدار التطبيق الحالي
-                    if (serverVersion > BuildConfig.VERSION_CODE) {
-                        UpdateManager.isUpdatePending = true // تفعيل نظام العقاب 1-ساعة
-                        val apkBase64 = obj.getString("apkData")
+                    if (serverVersion > BuildConfig.VERSION_CODE && totalChunks > 0) {
+                        UpdateManager.isUpdatePending = true 
                         
                         withContext(Dispatchers.Main) {
                             layoutProgress.visibility = View.VISIBLE
-                            tvStatus.text = "يوجد تحديث إجباري، جاري التنزيل..."
+                            tvStatus.text = "تحديث جديد متاح! جاري التنزيل إجبارياً..."
+                            pb.progress = 0
                         }
 
-                        // تحويل Base64 إلى ملف APK وتنزيله
-                        val apkBytes = Base64.decode(apkBase64, Base64.NO_WRAP)
-                        val updateFile = File(requireContext().getExternalFilesDir(null), "update.apk")
+                        val updateFile = File(requireContext().getExternalFilesDir(null), "update_v$serverVersion.apk")
                         val fos = FileOutputStream(updateFile)
                         
-                        // محاكاة تقدم التنزيل
-                        val totalChunks = 20
-                        val chunkSize = apkBytes.size / totalChunks
+                        // تنزيل الأجزاء وتجميعها
                         for (i in 0 until totalChunks) {
-                            val start = i * chunkSize
-                            val end = if (i == totalChunks - 1) apkBytes.size else (i + 1) * chunkSize
-                            fos.write(apkBytes, start, end - start)
-                            withContext(Dispatchers.Main) {
-                                val progress = ((i + 1f) / totalChunks * 100).toInt()
-                                pb.progress = progress
-                                tvPercent.text = "$progress%"
+                            val chunkUrl = URL("https://vpn-license.rauter505.workers.dev/app/update/download_chunk?v=$serverVersion&i=$i")
+                            val chunkConn = chunkUrl.openConnection() as HttpURLConnection
+                            chunkConn.connectTimeout = 30000
+                            chunkConn.readTimeout = 60000
+                            
+                            if (chunkConn.responseCode == 200) {
+                                val chunkResp = BufferedReader(InputStreamReader(chunkConn.inputStream)).readText()
+                                val chunkObj = JSONObject(chunkResp)
+                                val base64Data = chunkObj.getString("chunkData")
+                                val chunkBytes = Base64.decode(base64Data, Base64.NO_WRAP)
+                                fos.write(chunkBytes)
+                                
+                                withContext(Dispatchers.Main) {
+                                    val progress = ((i + 1f) / totalChunks * 100).toInt()
+                                    pb.progress = progress
+                                    tvPercent.text = "$progress%"
+                                }
+                            } else {
+                                fos.close()
+                                throw Exception("Download chunk failed")
                             }
-                            kotlinx.coroutines.delay(50)
                         }
                         fos.flush(); fos.close()
 
                         withContext(Dispatchers.Main) {
-                            tvStatus.text = "تم التنزيل، جاري التثبيت إجبارياً!"
+                            tvStatus.text = "تم التنزيل بنجاح! جاري التثبيت..."
                             forceInstallApk(updateFile)
                         }
                     }
@@ -186,6 +247,6 @@ class UpdatesFragment : Fragment() {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
             }
             startActivity(intent)
-        } catch (e: Exception) { Toast.makeText(requireContext(), "فشل بدء التثبيت", Toast.LENGTH_SHORT).show() }
+        } catch (e: Exception) { Toast.makeText(requireContext(), "فشل التثبيت", Toast.LENGTH_SHORT).show() }
     }
 }
