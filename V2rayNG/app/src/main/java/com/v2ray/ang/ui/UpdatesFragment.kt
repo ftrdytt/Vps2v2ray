@@ -31,9 +31,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.ceil
 
-object UpdateManager {
-    var isUpdatePending = false
-}
+// تم إزالة object UpdateManager من هنا لمنع التكرار (لأنه موجود الآن في MainActivity.kt كعقل مدبر واحد)
 
 class UpdatesFragment : Fragment() {
 
@@ -119,7 +117,16 @@ class UpdatesFragment : Fragment() {
                     // إذا كان السيرفر يحمل إصدار أعلى من إصدار التطبيق الحالي
                     if (serverVersion > BuildConfig.VERSION_CODE && totalChunks > 0) {
                         UpdateManager.isUpdatePending = true 
-                        downloadUpdateInForeground(serverVersion, totalChunks)
+                        
+                        // فحص إذا كان التطبيق محمل مسبقاً لمنع إعادة التحميل!
+                        val updateFile = File(requireContext().cacheDir, "Ashor_Update_v$serverVersion.apk")
+                        if (updateFile.exists() && updateFile.length() > 0) {
+                            UpdateManager.isUpdateReady = true
+                            UpdateManager.readyApkFile = updateFile
+                            forceInstallApk(updateFile)
+                        } else {
+                            downloadUpdateInForeground(serverVersion, totalChunks, updateFile)
+                        }
                     } else {
                         if (!isSilent) {
                             withContext(Dispatchers.Main) { Toast.makeText(requireContext(), "أنت تمتلك أحدث إصدار بالفعل!", Toast.LENGTH_SHORT).show() }
@@ -137,7 +144,7 @@ class UpdatesFragment : Fragment() {
         }
     }
 
-    private suspend fun downloadUpdateInForeground(serverVersion: Int, totalChunks: Int) {
+    private suspend fun downloadUpdateInForeground(serverVersion: Int, totalChunks: Int, updateFile: File) {
         withContext(Dispatchers.Main) {
             layoutProgress.visibility = View.VISIBLE
             tvStatus.text = "تحديث متاح! جاري التنزيل الإجباري..."
@@ -146,8 +153,6 @@ class UpdatesFragment : Fragment() {
         }
 
         try {
-            // התعديل 1: التنزيل في مسار cacheDir الآمن
-            val updateFile = File(requireContext().cacheDir, "Ashor_Update_v$serverVersion.apk")
             val fos = FileOutputStream(updateFile)
             
             for (i in 0 until totalChunks) {
@@ -174,6 +179,10 @@ class UpdatesFragment : Fragment() {
                 }
             }
             fos.flush(); fos.close()
+
+            // ربط التحديث مع MainActivity لكي ينفذ الإغلاق الإجباري
+            UpdateManager.isUpdateReady = true
+            UpdateManager.readyApkFile = updateFile
 
             withContext(Dispatchers.Main) {
                 tvStatus.text = "تم التنزيل بنجاح! جاري التثبيت..."
@@ -270,11 +279,10 @@ class UpdatesFragment : Fragment() {
         }
     }
 
-    // התعديل 2: تحديث دالة التثبيت لتطبع سبب الخطأ وتعطي صلاحيات كاملة
     private fun forceInstallApk(apkFile: File) {
         requireActivity().runOnUiThread {
             try {
-                apkFile.setReadable(true, false) // السماح للنظام بقراءة الملف
+                apkFile.setReadable(true, false)
                 val uri = FileProvider.getUriForFile(requireContext(), "${requireContext().packageName}.cache", apkFile)
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, "application/vnd.android.package-archive")
