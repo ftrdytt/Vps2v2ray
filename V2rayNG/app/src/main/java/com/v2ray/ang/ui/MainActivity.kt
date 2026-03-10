@@ -24,6 +24,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -93,6 +94,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
     private var isFirstTrafficRead: Boolean = true
+    
+    private var vpnStartTime: Long = 0L // وقت تشغيل الـ VPN للعقاب (Kill Switch)
 
     companion object { var lastReportedState: Boolean? = null }
 
@@ -143,15 +146,30 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val displayMetrics = resources.displayMetrics
         screenWidth = displayMetrics.widthPixels
         
-        // إعطاء العرض لـ 4 شاشات (الإعدادات، الملف الشخصي، الملفات، الرئيسية)
+        // إعداد 5 شاشات (الإعدادات، التحديثات، الملف الشخصي، الملفات، الرئيسية)
         binding.root.findViewById<View>(R.id.settings_wrapper)?.layoutParams?.width = screenWidth
-        binding.root.findViewById<View>(R.id.profile_wrapper)?.layoutParams?.width = screenWidth // حاوية الملف الشخصي
+        
+        val updatesWrapper = FrameLayout(this).apply { 
+            id = View.generateViewId()
+            layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) 
+        }
+        
+        val profileWrapper = FrameLayout(this).apply { 
+            id = View.generateViewId()
+            layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) 
+        }
+        
+        val scrollContainer = binding.root.findViewById<LinearLayout>(R.id.settings_wrapper).parent as LinearLayout
+        scrollContainer.addView(updatesWrapper, 1) // إضافة التحديثات بعد الإعدادات
+        scrollContainer.addView(profileWrapper, 2) // إضافة الملف الشخصي بعد التحديثات
+        
         binding.homeContentContainer.layoutParams.width = screenWidth
         binding.greenScreenContainer.layoutParams.width = screenWidth
 
         supportFragmentManager.beginTransaction()
             .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
-            .replace(R.id.profile_wrapper, ProfileFragment()) // تحميل واجهة الملف الشخصي هنا
+            .replace(updatesWrapper.id, UpdatesFragment())
+            .replace(profileWrapper.id, ProfileFragment())
             .commit()
 
         binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)?.setOnClickListener { handleFabAction() }
@@ -161,17 +179,18 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
         
-        // تعديل نظام السحب ليغطي 4 صفحات (من 0 إلى 3)
-        binding.mainScrollView.setOnTouchListener { v, event ->
+        // نظام السحب ليغطي 5 صفحات (من 0 إلى 4)
+        binding.mainScrollView.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_UP) {
                 val scrollX = binding.mainScrollView.scrollX
-                val page = if (screenWidth > 0) ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 3) else 0
+                val page = if (screenWidth > 0) ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 4) else 0
                 binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(page * screenWidth, 0) }
                 when (page) { 
                     0 -> bottomNav?.selectedItemId = R.id.nav_settings
-                    1 -> bottomNav?.selectedItemId = R.id.nav_profile
-                    2 -> bottomNav?.selectedItemId = R.id.nav_servers
-                    3 -> bottomNav?.selectedItemId = R.id.nav_home 
+                    1 -> bottomNav?.selectedItemId = R.id.nav_updates
+                    2 -> bottomNav?.selectedItemId = R.id.nav_profile
+                    3 -> bottomNav?.selectedItemId = R.id.nav_servers
+                    4 -> bottomNav?.selectedItemId = R.id.nav_home 
                 }
                 return@setOnTouchListener true
             }
@@ -182,14 +201,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         bottomNav?.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_settings -> { binding.mainScrollView.smoothScrollTo(0, 0); true }
-                R.id.nav_profile -> { binding.mainScrollView.smoothScrollTo(screenWidth, 0); true }
-                R.id.nav_servers -> { binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0); true }
-                R.id.nav_home -> { binding.mainScrollView.smoothScrollTo(screenWidth * 3, 0); true }
+                R.id.nav_updates -> { binding.mainScrollView.smoothScrollTo(screenWidth, 0); true }
+                R.id.nav_profile -> { binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0); true }
+                R.id.nav_servers -> { binding.mainScrollView.smoothScrollTo(screenWidth * 3, 0); true }
+                R.id.nav_home -> { binding.mainScrollView.smoothScrollTo(screenWidth * 4, 0); true }
                 else -> false
             }
         }
         bottomNav?.selectedItemId = R.id.nav_home
-        binding.mainScrollView.post { binding.mainScrollView.scrollTo(screenWidth * 3, 0) }
+        binding.mainScrollView.post { binding.mainScrollView.scrollTo(screenWidth * 4, 0) }
 
         setupToolbar(binding.toolbar, false, "اشور لود")
 
@@ -205,7 +225,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             override fun handleOnBackPressed() {
                 if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) binding.drawerLayout.closeDrawer(GravityCompat.START)
                 else {
-                    if (binding.mainScrollView.scrollX != screenWidth * 3) { binding.mainScrollView.smoothScrollTo(screenWidth * 3, 0); bottomNav?.selectedItemId = R.id.nav_home } 
+                    if (binding.mainScrollView.scrollX != screenWidth * 4) { binding.mainScrollView.smoothScrollTo(screenWidth * 4, 0); bottomNav?.selectedItemId = R.id.nav_home } 
                     else { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
                 }
             }
@@ -526,6 +546,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
 
         if (isRunning) {
+            if (vpnStartTime == 0L) vpnStartTime = System.currentTimeMillis() // تسجيل وقت التشغيل للعقاب
+
             binding.fab.setImageResource(R.drawable.ic_stop_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active)); binding.fab.contentDescription = getString(R.string.action_stop_service); setTestState(getString(R.string.connection_connected)); binding.layoutTest.isFocusable = true; btnGreenConnect?.text = "إيقاف المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F")); lottieEngine?.playAnimation(); startTrafficMonitor()
             
             pingJob?.cancel(); var lastCloudflareCheck = 0L 
@@ -533,6 +555,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 delay(1000) 
                 while (isActive) {
                     try {
+                        // ==== نظام العقاب (Kill Switch) ====
+                        if (UpdateManager.isUpdatePending && (System.currentTimeMillis() - vpnStartTime) > 3600000L) { // 1 ساعة
+                            withContext(Dispatchers.Main) {
+                                V2RayServiceManager.stopVService(this@MainActivity)
+                                vpnStartTime = 0L
+                                AlertDialog.Builder(this@MainActivity)
+                                    .setTitle("تحديث إجباري 🛑")
+                                    .setMessage("انتهت مهلة السماح (ساعة واحدة). تم إيقاف التطبيق لوجود تحديث أمني هام. يرجى الذهاب لقسم التحديثات وتثبيته للاستمرار في الاستخدام.")
+                                    .setPositiveButton("موافق", null)
+                                    .setCancelable(false)
+                                    .show()
+                            }
+                            cancel()
+                        }
+                        // ===================================
+
                         mainViewModel.testCurrentServerRealPing()
                         val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
                         val isProtected = V2rayCrypt.isProtected(this@MainActivity, guid)
@@ -588,6 +626,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
         } else {
+            vpnStartTime = 0L // تصفير وقت التشغيل عند الإيقاف الطوعي
             pingJob?.cancel(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel(); stopTrafficMonitor()
             binding.fab.setImageResource(R.drawable.ic_play_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive)); binding.fab.contentDescription = getString(R.string.tasker_start_service); setTestState(getString(R.string.connection_not_connected)); binding.layoutTest.isFocusable = false; btnGreenConnect?.text = "تشغيل المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C")); lottieEngine?.cancelAnimation(); lottieEngine?.progress = 0f; binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f); binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f); binding.root.findViewById<TextView>(R.id.tv_green_ping)?.text = "--- ms"; val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test); btnTest?.isEnabled = true; btnTest?.text = "قياس سرعة الإنترنت"; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
         }
