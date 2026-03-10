@@ -80,6 +80,13 @@ import java.net.Proxy
 import java.net.URL
 import java.util.Locale
 
+// نظام إدارة التحديثات لمنع الاستخدام وإظهار الواجهة الإجبارية
+object UpdateManager {
+    var isUpdatePending = false 
+    var isUpdateReady = false // هل التطبيق نزل وجاهز للتثبيت؟
+    var readyApkFile: java.io.File? = null // ملف التطبيق الجاهز
+}
+
 class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener, MainAdapterListener {
     private val binding by lazy { ActivityMainBinding.inflate(layoutInflater) }
     val mainViewModel: MainViewModel by viewModels()
@@ -97,6 +104,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var isFirstTrafficRead: Boolean = true
     
     private var vpnStartTime: Long = 0L
+    
+    // متغير للواجهة المنبثقة لمنع تكرار ظهورها
+    private var updateDialog: AlertDialog? = null
 
     companion object { var lastReportedState: Boolean? = null }
 
@@ -232,7 +242,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
         })
 
-        binding.fab.setOnClickListener { handleFabAction() }; binding.layoutTest.setOnClickListener { handleLayoutTestClick() }
+        binding.layoutTest.setOnClickListener { handleLayoutTestClick() }
         setupGroupTab(); setupViewModel(); mainViewModel.reloadServerList()
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
@@ -256,14 +266,24 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     
                     if (serverVersion > com.v2ray.ang.BuildConfig.VERSION_CODE && totalChunks > 0) {
                         UpdateManager.isUpdatePending = true 
-                        downloadUpdateWithNotification(serverVersion, totalChunks)
+                        val updateFile = java.io.File(cacheDir, "Ashor_Update_v$serverVersion.apk")
+                        
+                        // فحص إذا كان التطبيق منزل مسبقاً لمنع إعادة التنزيل
+                        if (updateFile.exists() && updateFile.length() > 0) {
+                            UpdateManager.isUpdateReady = true
+                            UpdateManager.readyApkFile = updateFile
+                            showMandatoryUpdateDialog(updateFile)
+                        } else {
+                            // لم يتم التنزيل مسبقاً، نبدأ التنزيل
+                            downloadUpdateWithNotification(serverVersion, totalChunks, updateFile)
+                        }
                     }
                 }
             } catch (e: Exception) {}
         }
     }
 
-    private suspend fun downloadUpdateWithNotification(serverVersion: Int, totalChunks: Int) {
+    private suspend fun downloadUpdateWithNotification(serverVersion: Int, totalChunks: Int, updateFile: java.io.File) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         val channelId = "update_channel"
         
@@ -284,8 +304,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         notificationManager.notify(999, builder.build())
 
         try {
-            // التعديل 1: تغيير مسار الحفظ ليكون داخل cacheDir بدلاً من externalCacheDir
-            val updateFile = java.io.File(cacheDir, "Ashor_Update_v$serverVersion.apk")
             val fos = java.io.FileOutputStream(updateFile)
             
             for (i in 0 until totalChunks) {
@@ -312,11 +330,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
             fos.flush(); fos.close()
 
-            builder.setContentText("تم التنزيل، جاري التثبيت...")
-            builder.setProgress(0, 0, false)
-            notificationManager.notify(999, builder.build())
+            // مسح الإشعار نهائياً بعد اكتمال التحميل
+            notificationManager.cancel(999)
 
-            forceInstallApk(updateFile)
+            // تحديد أن التحديث جاهز
+            UpdateManager.isUpdateReady = true
+            UpdateManager.readyApkFile = updateFile
+
+            // إظهار الواجهة الإجبارية
+            showMandatoryUpdateDialog(updateFile)
 
         } catch (e: Exception) {
             builder.setContentText("فشل تنزيل التحديث، يرجى المحاولة لاحقاً.")
@@ -326,12 +348,35 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // التعديل 2: تحديث دالة التثبيت لتعطي صلاحيات القراءة للملف وتطبع سبب الخطأ إن وجد
+    // الواجهة المنبثقة الإجبارية للتحديث
+    private fun showMandatoryUpdateDialog(apkFile: java.io.File) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            
+            if (updateDialog?.isShowing == true) return@runOnUiThread
+
+            updateDialog = AlertDialog.Builder(this@MainActivity)
+                .setTitle("تحديث إجباري 🚀")
+                .setMessage("تم تنزيل الإصدار الجديد بنجاح.\nلا يمكنك الاستمرار في استخدام التطبيق حتى تقوم بتثبيت هذا التحديث للأهمية.")
+                .setCancelable(false) // لا يمكن الخروج منه
+                .setPositiveButton("تثبيت التحديث الآن") { _, _ ->
+                    forceInstallApk(apkFile)
+                    // في حال لم يثبت ورجع للتطبيق، تظهر النافذة مرة أخرى
+                    lifecycleScope.launch {
+                        delay(1000)
+                        showMandatoryUpdateDialog(apkFile)
+                    }
+                }
+                .create()
+                
+            updateDialog?.show()
+        }
+    }
+
     private fun forceInstallApk(apkFile: java.io.File) {
         runOnUiThread {
             try {
-                apkFile.setReadable(true, false)
-                
+                apkFile.setReadable(true, false) 
                 val uri = androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "${packageName}.cache", apkFile)
                 val intent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, "application/vnd.android.package-archive")
@@ -346,6 +391,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
     
     // ====================================================================
+
+    private fun handleFabAction() {
+        // فحص أمني: إذا كان التحديث جاهزاً، امنع الاتصال واظهر الواجهة!
+        if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) {
+            if (mainViewModel.isRunning.value == true) {
+                V2RayServiceManager.stopVService(this) // إيقاف المحرك إذا كان يعمل
+            }
+            showMandatoryUpdateDialog(UpdateManager.readyApkFile!!)
+            return
+        }
+
+        applyRunningState(isLoading = true, isRunning = false)
+        if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this)
+        else if (SettingsManager.isVpnMode()) { val intent = VpnService.prepare(this); if (intent == null) startV2Ray() else requestVpnPermission.launch(intent) } 
+        else startV2Ray()
+    }
 
     private fun startLiveUpdates() {
         liveUpdateJob?.cancel()
@@ -607,13 +668,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         binding.tabGroup.isVisible = groups.size > 1
     }
 
-    private fun handleFabAction() {
-        applyRunningState(isLoading = true, isRunning = false)
-        if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this)
-        else if (SettingsManager.isVpnMode()) { val intent = VpnService.prepare(this); if (intent == null) startV2Ray() else requestVpnPermission.launch(intent) } 
-        else startV2Ray()
-    }
-
     private fun handleLayoutTestClick() { if (mainViewModel.isRunning.value == true) { setTestState(getString(R.string.connection_test_testing)); mainViewModel.testCurrentServerRealPing() } }
 
     private fun startV2Ray() { if (MmkvManager.getSelectServer().isNullOrEmpty()) { toast(R.string.title_file_chooser); return }; V2RayServiceManager.startVService(this) }
@@ -745,6 +799,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         super.onResume()
         if (mainViewModel.isRunning.value == true) startTrafficMonitor() else updateTrafficDisplay() 
         startLiveUpdates()
+        
+        // إظهار واجهة التحديث الإجبارية مرة أخرى إذا رجع للتطبيق دون أن يثبت!
+        if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) {
+            showMandatoryUpdateDialog(UpdateManager.readyApkFile!!)
+        }
     }
     
     override fun onPause() { 
