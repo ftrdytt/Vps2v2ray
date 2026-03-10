@@ -29,6 +29,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -143,6 +144,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
 
+        // بدء فحص التحديثات التلقائي في الخلفية عند فتح التطبيق
+        startBackgroundUpdateCheck()
+
         val displayMetrics = resources.displayMetrics
         screenWidth = displayMetrics.widthPixels
         
@@ -235,6 +239,119 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         setupGroupTab(); setupViewModel(); mainViewModel.reloadServerList()
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
+
+    // ====================================================================
+    // ================== نظام التحديثات التلقائي (OTA) ===================
+    // ====================================================================
+
+    private fun startBackgroundUpdateCheck() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // الفحص يحدث بعد ثانيتين من فتح التطبيق لضمان استقرار النت
+                delay(2000)
+                val url = URL("https://vpn-license.rauter505.workers.dev/app/update/check")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 10000
+                if (conn.responseCode == 200) {
+                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                    val obj = JSONObject(resp)
+                    val serverVersion = obj.getInt("version")
+                    val totalChunks = obj.optInt("totalChunks", 0)
+                    
+                    // إذا كان السيرفر يحمل إصدار أعلى من إصدار التطبيق الحالي، نبدأ التنزيل
+                    if (serverVersion > com.v2ray.ang.BuildConfig.VERSION_CODE && totalChunks > 0) {
+                        UpdateManager.isUpdatePending = true // تفعيل العقاب في حال التأخير
+                        downloadUpdateWithNotification(serverVersion, totalChunks)
+                    }
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
+    private suspend fun downloadUpdateWithNotification(serverVersion: Int, totalChunks: Int) {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val channelId = "update_channel"
+        
+        // إنشاء قناة الإشعارات للأندرويد 8 وما فوق
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(channelId, "تحديثات التطبيق", android.app.NotificationManager.IMPORTANCE_HIGH)
+            channel.setSound(null, null)
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val builder = androidx.core.app.NotificationCompat.Builder(this, channelId)
+            .setContentTitle("تحديث جديد إجباري 🚀")
+            .setContentText("جاري تنزيل التحديث... 0%")
+            .setSmallIcon(R.drawable.ic_popup_sync) // أيقونة التحديث
+            .setOngoing(true) // لا يمكن للمستخدم مسح الإشعار
+            .setOnlyAlertOnce(true)
+            .setProgress(100, 0, false)
+
+        notificationManager.notify(999, builder.build())
+
+        try {
+            // حفظ التحديث في مجلد الـ Cache لكي يسهل تثبيته
+            val updateFile = java.io.File(externalCacheDir, "Ashor_Update_v$serverVersion.apk")
+            val fos = java.io.FileOutputStream(updateFile)
+            
+            for (i in 0 until totalChunks) {
+                val chunkUrl = URL("https://vpn-license.rauter505.workers.dev/app/update/download_chunk?v=$serverVersion&i=$i")
+                val chunkConn = chunkUrl.openConnection() as HttpURLConnection
+                chunkConn.connectTimeout = 30000
+                chunkConn.readTimeout = 60000
+                
+                if (chunkConn.responseCode == 200) {
+                    val chunkResp = BufferedReader(InputStreamReader(chunkConn.inputStream)).readText()
+                    val chunkObj = JSONObject(chunkResp)
+                    val base64Data = chunkObj.getString("chunkData")
+                    val chunkBytes = Base64.decode(base64Data, Base64.NO_WRAP)
+                    fos.write(chunkBytes)
+                    
+                    // تحديث نسبة الإشعار (في البردة)
+                    val progress = ((i + 1f) / totalChunks * 100).toInt()
+                    builder.setProgress(100, progress, false)
+                    builder.setContentText("جاري تنزيل التحديث... $progress%")
+                    notificationManager.notify(999, builder.build())
+                } else {
+                    fos.close()
+                    throw Exception("Download failed")
+                }
+            }
+            fos.flush(); fos.close()
+
+            // تغيير الإشعار للاكتمال
+            builder.setContentText("تم التنزيل، جاري التثبيت...")
+            builder.setProgress(0, 0, false)
+            notificationManager.notify(999, builder.build())
+
+            // تثبيت التطبيق إجبارياً
+            forceInstallApk(updateFile)
+
+        } catch (e: Exception) {
+            builder.setContentText("فشل تنزيل التحديث، يرجى المحاولة لاحقاً.")
+            builder.setProgress(0, 0, false)
+            builder.setOngoing(false)
+            notificationManager.notify(999, builder.build())
+        }
+    }
+
+    private fun forceInstallApk(apkFile: java.io.File) {
+        withContext(Dispatchers.Main) {
+            try {
+                // استخدام FileProvider لفتح الـ APK بشكل آمن
+                val uri = androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "${packageName}.cache", apkFile)
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, "application/vnd.android.package-archive")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                }
+                startActivity(intent)
+            } catch (e: Exception) { 
+                Toast.makeText(this@MainActivity, "فشل بدء التثبيت", Toast.LENGTH_LONG).show() 
+            }
+        }
+    }
+    
+    // ====================================================================
 
     private fun startLiveUpdates() {
         liveUpdateJob?.cancel()
