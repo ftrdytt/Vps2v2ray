@@ -72,6 +72,13 @@
                         android:background="#0A0A0C" />
                 </LinearLayout>
 
+                <FrameLayout
+                    android:id="@+id/profile_wrapper"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layoutDirection="rtl"
+                    android:background="#0A0A0C" />
+
                 <RelativeLayout
                     android:id="@+id/home_content_container"
                     android:layout_width="match_parent"
