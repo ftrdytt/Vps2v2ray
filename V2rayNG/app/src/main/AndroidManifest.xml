@@ -175,6 +175,11 @@
             android:name=".ui.AdminDashboardActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".ui.UpdateLogsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
             
         <service
             android:name=".service.V2RayVpnService"
