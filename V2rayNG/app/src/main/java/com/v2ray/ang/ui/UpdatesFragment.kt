@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Base64
 import android.view.Gravity
@@ -49,6 +50,7 @@ class UpdatesFragment : Fragment() {
     private lateinit var btnUpload: MaterialButton
 
     private var pendingVersion = ""
+    private var pendingArch = "" // لتحديد نوع المعالج أثناء الرفع
 
     private val pickApk = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -80,7 +82,7 @@ class UpdatesFragment : Fragment() {
         val isAdmin = AuthManager.getRole(requireContext()) == "admin"
         if (isAdmin) {
             layoutAdmin.visibility = View.VISIBLE
-            loadAdminUpdateHistory() // جلب السجل للأدمن
+            loadAdminUpdateHistory() 
         }
 
         btnUpload.setOnClickListener {
@@ -89,8 +91,18 @@ class UpdatesFragment : Fragment() {
                 Toast.makeText(requireContext(), "أدخل رقم الإصدار أولاً", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            val intent = Intent(Intent.ACTION_GET_CONTENT).apply { type = "application/vnd.android.package-archive" }
-            pickApk.launch(intent)
+            
+            // نافذة اختيار نوع المعالج قبل الرفع
+            val options = arrayOf("نسخة 64-بت (arm64-v8a)", "نسخة 32-بت (armeabi-v7a)", "نسخة المحاكيات (x86)")
+            val archValues = arrayOf("arm64-v8a", "armeabi-v7a", "x86")
+            
+            AlertDialog.Builder(requireContext())
+                .setTitle("اختر نوع النسخة التي تريد رفعها:")
+                .setItems(options) { _, which ->
+                    pendingArch = archValues[which]
+                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply { type = "application/vnd.android.package-archive" }
+                    pickApk.launch(intent)
+                }.show()
         }
 
         swipeRefresh.setOnRefreshListener {
@@ -101,11 +113,19 @@ class UpdatesFragment : Fragment() {
         manualCheckForUpdates(true)
     }
 
-    // ================== نظام الفحص للمستخدم ==================
+    private fun getDeviceArchitecture(): String {
+        val abi = Build.SUPPORTED_ABIS[0]
+        return when {
+            abi.contains("arm64") -> "arm64-v8a"
+            abi.contains("armeabi") -> "armeabi-v7a"
+            abi.contains("x86") -> "x86"
+            else -> "arm64-v8a"
+        }
+    }
+
     private fun manualCheckForUpdates(isSilent: Boolean = false) {
         if (!isSilent) swipeRefresh.isRefreshing = true
 
-        // منع التحديث الإجباري للأدمن
         if (AuthManager.getRole(requireContext()) == "admin" && isSilent) {
             swipeRefresh.isRefreshing = false
             return
@@ -113,7 +133,8 @@ class UpdatesFragment : Fragment() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val url = URL("https://vpn-license.rauter505.workers.dev/app/update/check")
+                val arch = getDeviceArchitecture()
+                val url = URL("https://vpn-license.rauter505.workers.dev/app/update/check?arch=$arch")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 10000
                 if (conn.responseCode == 200) {
@@ -133,7 +154,7 @@ class UpdatesFragment : Fragment() {
                             UpdateManager.readyApkFile = updateFile
                             forceInstallApk(updateFile)
                         } else {
-                            downloadUpdateInForeground(serverVersion, totalChunks, updateFile)
+                            downloadUpdateInForeground(serverVersion, arch, totalChunks, updateFile)
                         }
                     } else {
                         if (!isSilent) {
@@ -152,7 +173,7 @@ class UpdatesFragment : Fragment() {
         }
     }
 
-    private suspend fun downloadUpdateInForeground(serverVersion: Int, totalChunks: Int, updateFile: File) {
+    private suspend fun downloadUpdateInForeground(serverVersion: Int, arch: String, totalChunks: Int, updateFile: File) {
         withContext(Dispatchers.Main) {
             layoutProgress.visibility = View.VISIBLE
             tvStatus.text = "تحديث متاح! جاري التنزيل..."
@@ -163,7 +184,7 @@ class UpdatesFragment : Fragment() {
         try {
             val fos = FileOutputStream(updateFile)
             for (i in 0 until totalChunks) {
-                val chunkUrl = URL("https://vpn-license.rauter505.workers.dev/app/update/download_chunk?v=$serverVersion&i=$i")
+                val chunkUrl = URL("https://vpn-license.rauter505.workers.dev/app/update/download_chunk?v=$serverVersion&arch=$arch&i=$i")
                 val chunkConn = chunkUrl.openConnection() as HttpURLConnection
                 chunkConn.connectTimeout = 30000; chunkConn.readTimeout = 60000
                 
@@ -190,7 +211,6 @@ class UpdatesFragment : Fragment() {
         } catch (e: Exception) { withContext(Dispatchers.Main) { tvStatus.text = "حدث خطأ أثناء التنزيل." } }
     }
 
-    // ================== نظام الأدمن: جلب السجل وإدارته ==================
     private fun loadAdminUpdateHistory() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -201,12 +221,22 @@ class UpdatesFragment : Fragment() {
                     val array = JSONArray(resp)
                     withContext(Dispatchers.Main) {
                         layoutAdminHistory.removeAllViews()
-                        for (i in array.length() - 1 downTo 0) { // الأحدث أولاً
+                        for (i in array.length() - 1 downTo 0) { 
                             val item = array.getJSONObject(i)
                             val v = item.getInt("version")
                             val isActive = item.getBoolean("active")
                             val date = item.optString("date", "غير محدد")
-                            addHistoryCard(v, date, isActive)
+                            
+                            // استخراج المعالجات المرفوعة لهذا التحديث
+                            val archsObj = item.optJSONObject("architectures")
+                            val availableArchs = mutableListOf<String>()
+                            if (archsObj != null) {
+                                val keys = archsObj.keys()
+                                while(keys.hasNext()) { availableArchs.add(keys.next() as String) }
+                            }
+                            val archsStr = if (availableArchs.isEmpty()) "لا يوجد" else availableArchs.joinToString(", ")
+                            
+                            addHistoryCard(v, date, isActive, archsStr)
                         }
                     }
                 }
@@ -214,7 +244,7 @@ class UpdatesFragment : Fragment() {
         }
     }
 
-    private fun addHistoryCard(version: Int, date: String, isActive: Boolean) {
+    private fun addHistoryCard(version: Int, date: String, isActive: Boolean, archsStr: String) {
         val card = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#252529"))
@@ -223,7 +253,7 @@ class UpdatesFragment : Fragment() {
         }
 
         val tvInfo = TextView(requireContext()).apply {
-            text = "إصدار: $version\nالتاريخ: $date\nالحالة: ${if(isActive) "🟢 نشط (يظهر للمستخدمين)" else "🔴 متوقف"}"
+            text = "إصدار: $version\nالنسخ المرفوعة: $archsStr\nالتاريخ: $date\nالحالة: ${if(isActive) "🟢 نشط (يظهر للمستخدمين)" else "🔴 متوقف"}"
             setTextColor(Color.WHITE)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
         }
@@ -277,7 +307,7 @@ class UpdatesFragment : Fragment() {
         }.setNegativeButton("إلغاء", null).show()
     }
 
-    // ================== نظام الأدمن: الرفع المجزأ ==================
+    // ================== نظام الأدمن: الرفع المجزأ المتعدد ==================
     private fun uploadApkToServerChunked(uri: Uri) {
         layoutProgress.visibility = View.VISIBLE; btnUpload.isEnabled = false
         tvStatus.text = "جاري تهيئة الملف وتقطيعه..."; pb.progress = 0; tvPercent.text = "0%"
@@ -290,11 +320,18 @@ class UpdatesFragment : Fragment() {
 
                 val initConn = URL("https://vpn-license.rauter505.workers.dev/app/update/upload_init").openConnection() as HttpURLConnection
                 initConn.requestMethod = "POST"; initConn.setRequestProperty("Content-Type", "application/json"); initConn.doOutput = true
-                initConn.outputStream.use { it.write(JSONObject().put("version", pendingVersion.toInt()).put("totalChunks", totalChunks).toString().toByteArray()) }
+                
+                // إرسال نوع المعالج مع رقم الإصدار
+                val initPayload = JSONObject()
+                    .put("version", pendingVersion.toInt())
+                    .put("arch", pendingArch)
+                    .put("totalChunks", totalChunks)
+                
+                initConn.outputStream.use { it.write(initPayload.toString().toByteArray()) }
                 if (initConn.responseCode != 200) throw Exception("Failed init")
 
                 for (i in 0 until totalChunks) {
-                    withContext(Dispatchers.Main) { tvStatus.text = "جاري رفع الجزء ${i + 1} من $totalChunks..." }
+                    withContext(Dispatchers.Main) { tvStatus.text = "جاري رفع الجزء ${i + 1} من $totalChunks للنسخة $pendingArch..." }
                     val start = i * chunkSize; val end = if (i == totalChunks - 1) fileBytes.size else (i + 1) * chunkSize
                     val base64Chunk = Base64.encodeToString(fileBytes.copyOfRange(start, end), Base64.NO_WRAP)
                     var success = false; var retries = 3
@@ -303,14 +340,26 @@ class UpdatesFragment : Fragment() {
                         try {
                             val chunkConn = URL("https://vpn-license.rauter505.workers.dev/app/update/upload_chunk").openConnection() as HttpURLConnection
                             chunkConn.requestMethod = "POST"; chunkConn.setRequestProperty("Content-Type", "application/json"); chunkConn.doOutput = true
-                            chunkConn.outputStream.use { it.write(JSONObject().put("version", pendingVersion.toInt()).put("chunkIndex", i).put("chunkData", base64Chunk).toString().toByteArray()) }
+                            
+                            val chunkPayload = JSONObject()
+                                .put("version", pendingVersion.toInt())
+                                .put("arch", pendingArch)
+                                .put("chunkIndex", i)
+                                .put("chunkData", base64Chunk)
+                                
+                            chunkConn.outputStream.use { it.write(chunkPayload.toString().toByteArray()) }
                             if (chunkConn.responseCode == 200) success = true
                         } catch (e: Exception) { retries--; delay(2000) }
                     }
                     if (!success) throw Exception("Failed chunk $i")
                     withContext(Dispatchers.Main) { pb.progress = ((i + 1f) / totalChunks * 100).toInt(); tvPercent.text = "${pb.progress}%" }
                 }
-                withContext(Dispatchers.Main) { tvStatus.text = "✅ تم حفظ التحديث بنجاح!"; btnUpload.isEnabled = true; loadAdminUpdateHistory() }
+                withContext(Dispatchers.Main) { 
+                    tvStatus.text = "✅ تم حفظ النسخة $pendingArch بنجاح!"
+                    pb.progress = 100; tvPercent.text = "100%"
+                    btnUpload.isEnabled = true; 
+                    loadAdminUpdateHistory() 
+                }
             } catch (e: Exception) { withContext(Dispatchers.Main) { tvStatus.text = "❌ خطأ: ${e.message}"; btnUpload.isEnabled = true } }
         }
     }
