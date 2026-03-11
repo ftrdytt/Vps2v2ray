@@ -94,6 +94,7 @@ class ProfileFragment : Fragment() {
             
             btnUpdateLogs.visibility = View.VISIBLE
             btnUpdateLogs.setOnClickListener {
+                // فتح شاشة سجل التحديثات الجديدة
                 startActivity(Intent(requireContext(), UpdateLogsActivity::class.java))
             }
         }
