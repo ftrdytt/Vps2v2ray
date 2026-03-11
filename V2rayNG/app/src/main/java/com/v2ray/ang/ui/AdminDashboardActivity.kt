@@ -45,7 +45,14 @@ class AdminDashboardActivity : AppCompatActivity() {
         // إعداد وتفعيل قسم النشطين
         val layoutActive = findViewById<LinearLayout>(R.id.layout_active_container)
         layoutActive.removeAllViews()
-        tvTotalActive = TextView(this).apply { text = "النشطين الآن: جاري التحميل..."; setTextColor(Color.parseColor("#4CAF50")); textSize = 16f; textStyle = android.graphics.Typeface.BOLD; gravity = Gravity.CENTER; setPadding(10, 10, 10, 10) }
+        tvTotalActive = TextView(this).apply { 
+            text = "النشطين الآن: جاري التحميل..."
+            setTextColor(Color.parseColor("#4CAF50"))
+            textSize = 16f
+            setTypeface(null, android.graphics.Typeface.BOLD) // تم الإصلاح هنا
+            gravity = Gravity.CENTER
+            setPadding(10, 10, 10, 10) 
+        }
         listActiveUsers = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(10, 10, 10, 10) }
         layoutActive.addView(tvTotalActive)
         layoutActive.addView(ScrollView(this).apply { addView(listActiveUsers) })
@@ -165,11 +172,11 @@ class AdminDashboardActivity : AppCompatActivity() {
     private fun addActiveUserCard(id: String, name: String, pfp: String, timeStr: String) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
         val ivAvatar = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(100, 100).apply { setMargins(0, 0, 30, 0) }
-            if (pfp.isNotEmpty()) try { val b = Base64.decode(pfp, Base64.DEFAULT); setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size)) } catch (e: Exception) { setImageResource(R.drawable.ic_launcher) }
-            else setImageResource(R.drawable.ic_launcher)
+            if (pfp.isNotEmpty()) try { val b = Base64.decode(pfp, Base64.DEFAULT); setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size)) } catch (e: Exception) { setImageResource(R.mipmap.ic_launcher) } // تم الإصلاح هنا (استخدام mipmap بدلا من drawable)
+            else setImageResource(R.mipmap.ic_launcher) // تم الإصلاح هنا
         }
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        infoLayout.addView(TextView(this).apply { text = name; setTextColor(Color.WHITE); textSize = 16f; textStyle = android.graphics.Typeface.BOLD })
+        infoLayout.addView(TextView(this).apply { text = name; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) // تم الإصلاح هنا
         infoLayout.addView(TextView(this).apply { text = "ID: $id"; setTextColor(Color.parseColor("#FF9800")); textSize = 12f })
         infoLayout.addView(TextView(this).apply { text = "مدة النشاط: $timeStr"; setTextColor(Color.parseColor("#4CAF50")); textSize = 12f })
         card.addView(ivAvatar); card.addView(infoLayout); listActiveUsers.addView(card)
@@ -197,7 +204,7 @@ class AdminDashboardActivity : AppCompatActivity() {
 
     private fun loadCalendarStats(title: String, type: String) {
         val dialogView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(40, 40, 40, 40); setBackgroundColor(Color.parseColor("#141417")) }
-        val tvTitle = TextView(this).apply { text = title; setTextColor(Color.parseColor("#FF9800")); textSize = 20f; textStyle = android.graphics.Typeface.BOLD; gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,0,30) } }
+        val tvTitle = TextView(this).apply { text = title; setTextColor(Color.parseColor("#FF9800")); textSize = 20f; setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,0,30) } } // تم الإصلاح هنا
         val scrollContent = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         dialogView.addView(tvTitle); dialogView.addView(ScrollView(this).apply { addView(scrollContent) })
 
@@ -240,7 +247,7 @@ class AdminDashboardActivity : AppCompatActivity() {
 
     private fun showUsersForDate(date: String, idsArray: JSONArray) {
         val dialogView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(40, 40, 40, 40); setBackgroundColor(Color.parseColor("#141417")) }
-        val tvTitle = TextView(this).apply { text = "المستخدمين في $date"; setTextColor(Color.parseColor("#4CAF50")); textSize = 18f; textStyle = android.graphics.Typeface.BOLD; gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,0,30) } }
+        val tvTitle = TextView(this).apply { text = "المستخدمين في $date"; setTextColor(Color.parseColor("#4CAF50")); textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,0,30) } } // تم الإصلاح هنا
         val scrollContent = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         dialogView.addView(tvTitle); dialogView.addView(ScrollView(this).apply { addView(scrollContent) })
 
@@ -271,17 +278,17 @@ class AdminDashboardActivity : AppCompatActivity() {
                 try {
                     val bytes = Base64.decode(pfp, Base64.DEFAULT)
                     setImageBitmap(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
-                } catch (e: Exception) { setImageResource(R.drawable.ic_launcher) }
-            } else { setImageResource(R.drawable.ic_launcher) }
+                } catch (e: Exception) { setImageResource(R.mipmap.ic_launcher) } // تم الإصلاح هنا
+            } else { setImageResource(R.mipmap.ic_launcher) } // تم الإصلاح هنا
         }
         
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        infoLayout.addView(TextView(this).apply { text = "الاسم: $name"; setTextColor(Color.WHITE); textSize = 16f; textStyle = android.graphics.Typeface.BOLD })
+        infoLayout.addView(TextView(this).apply { text = "الاسم: $name"; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) // تم الإصلاح هنا
         infoLayout.addView(TextView(this).apply { text = "ID: $id"; setTextColor(Color.parseColor("#FF9800")); textSize = 14f })
         infoLayout.addView(TextView(this).apply { text = "الرمز: $pass"; setTextColor(Color.parseColor("#80FFFFFF")); textSize = 14f })
         
         if (isBanned) {
-            infoLayout.addView(TextView(this).apply { text = "🚫 محظور"; setTextColor(Color.RED); textSize = 14f; textStyle = android.graphics.Typeface.BOLD })
+            infoLayout.addView(TextView(this).apply { text = "🚫 محظور"; setTextColor(Color.RED); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD) }) // تم الإصلاح هنا
         }
 
         topLayout.addView(ivAvatar)
