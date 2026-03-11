@@ -26,44 +26,67 @@
             android:gravity="center_horizontal">
 
             <FrameLayout
-                android:layout_width="140dp"
-                android:layout_height="140dp"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp">
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
+
+                <ImageView
+                    android:id="@+id/btn_admin_dashboard"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_gravity="center_vertical|start"
+                    android:layout_marginStart="20dp"
                     android:background="@drawable/ic_circle"
-                    android:backgroundTint="#FF9800"
-                    android:alpha="0.2"/>
-                <androidx.cardview.widget.CardView
-                    android:layout_width="128dp"
-                    android:layout_height="128dp"
-                    android:layout_gravity="center"
-                    app:cardCornerRadius="64dp"
-                    app:cardBackgroundColor="#1A1A1D"
-                    app:cardElevation="0dp">
-                    <ImageView
-                        android:id="@+id/iv_profile_pic"
+                    android:backgroundTint="#252529"
+                    android:padding="12dp"
+                    android:src="@android:drawable/ic_menu_sort_by_size"
+                    app:tint="#FF9800"
+                    android:visibility="gone" />
+
+                <FrameLayout
+                    android:layout_width="140dp"
+                    android:layout_height="140dp"
+                    android:layout_gravity="center">
+
+                    <View
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        android:scaleType="centerCrop"
-                        android:src="@drawable/ic_stat_name"
-                        app:tint="#80FFFFFF"/>
-                </androidx.cardview.widget.CardView>
-                <androidx.cardview.widget.CardView
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:layout_gravity="bottom|end"
-                    android:layout_margin="8dp"
-                    app:cardCornerRadius="18dp"
-                    app:cardBackgroundColor="#FF9800">
-                    <ImageView
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
+                        android:background="@drawable/ic_circle"
+                        android:backgroundTint="#FF9800"
+                        android:alpha="0.2"/>
+
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="128dp"
+                        android:layout_height="128dp"
                         android:layout_gravity="center"
-                        android:src="@android:drawable/ic_menu_camera"
-                        app:tint="#FFFFFF"/>
-                </androidx.cardview.widget.CardView>
+                        app:cardCornerRadius="64dp"
+                        app:cardBackgroundColor="#1A1A1D"
+                        app:cardElevation="0dp">
+                        <ImageView
+                            android:id="@+id/iv_profile_pic"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:scaleType="centerCrop"
+                            android:src="@drawable/ic_stat_name"
+                            app:tint="#80FFFFFF"/>
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:layout_gravity="bottom|end"
+                        android:layout_margin="8dp"
+                        app:cardCornerRadius="18dp"
+                        app:cardBackgroundColor="#FF9800">
+                        <ImageView
+                            android:id="@+id/btn_change_avatar"
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:layout_gravity="center"
+                            android:src="@android:drawable/ic_menu_camera"
+                            app:tint="#FFFFFF"/>
+                    </androidx.cardview.widget.CardView>
+                </FrameLayout>
             </FrameLayout>
 
             <TextView
