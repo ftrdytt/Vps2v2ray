@@ -33,6 +33,7 @@ class ProfileFragment : Fragment() {
 
     private lateinit var ivPfp: ImageView
     private lateinit var btnAdminDashboard: ImageView
+    private lateinit var btnUpdateLogs: ImageView // الزر الجديد لسجل التحديثات
     private var currentBase64Pfp: String = ""
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -68,6 +69,7 @@ class ProfileFragment : Fragment() {
 
         ivPfp = view.findViewById(R.id.iv_profile_pic)
         btnAdminDashboard = view.findViewById(R.id.btn_admin_dashboard)
+        btnUpdateLogs = view.findViewById(R.id.btn_update_logs) // ربط الزر الجديد
         
         val etId = view.findViewById<EditText>(R.id.et_profile_id)
         val etName = view.findViewById<EditText>(R.id.et_profile_name)
@@ -83,11 +85,16 @@ class ProfileFragment : Fragment() {
         etPass.setText(AuthManager.getPass(requireContext()))
         currentBase64Pfp = AuthManager.getPfp(requireContext())
         
-        // إظهار زر لوحة التحكم للأدمن فقط
+        // إظهار أزرار لوحة التحكم للأدمن فقط
         if (userRole == "admin") {
             btnAdminDashboard.visibility = View.VISIBLE
             btnAdminDashboard.setOnClickListener {
                 startActivity(Intent(requireContext(), AdminDashboardActivity::class.java))
+            }
+            
+            btnUpdateLogs.visibility = View.VISIBLE
+            btnUpdateLogs.setOnClickListener {
+                startActivity(Intent(requireContext(), UpdateLogsActivity::class.java))
             }
         }
 
