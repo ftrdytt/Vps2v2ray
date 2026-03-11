@@ -153,6 +153,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
 
+        // إرسال إشعار للسيرفر إذا قام المستخدم بالتحديث
+        reportUpdateSuccess()
+
         startBackgroundUpdateCheck()
 
         val displayMetrics = resources.displayMetrics
@@ -243,6 +246,39 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         binding.layoutTest.setOnClickListener { handleLayoutTestClick() }
         setupGroupTab(); setupViewModel(); mainViewModel.reloadServerList()
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
+    }
+
+    // ====================================================================
+    // ================== نظام إشعار التحديث للسيرفر ======================
+    // ====================================================================
+    private fun reportUpdateSuccess() {
+        val prefs = getSharedPreferences("update_prefs", Context.MODE_PRIVATE)
+        val reportedVersion = prefs.getInt("reported_version", 0)
+        val currentVersion = com.v2ray.ang.BuildConfig.VERSION_CODE
+        
+        if (reportedVersion < currentVersion) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val userId = AuthManager.getId(this@MainActivity)
+                    if (userId.isNotEmpty() && AuthManager.getRole(this@MainActivity) != "admin") {
+                        val url = URL("https://vpn-license.rauter505.workers.dev/app/log_update")
+                        val conn = url.openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        
+                        val payload = JSONObject()
+                            .put("id", userId)
+                            .put("version", currentVersion)
+                        
+                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                        if (conn.responseCode == 200) {
+                            prefs.edit().putInt("reported_version", currentVersion).apply()
+                        }
+                    }
+                } catch (e: Exception) {}
+            }
+        }
     }
 
     private fun getDeviceArchitecture(): String {
@@ -449,7 +485,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
             binding.fab.setImageResource(R.drawable.ic_stop_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active)); binding.fab.contentDescription = getString(R.string.action_stop_service); setTestState(getString(R.string.connection_connected)); binding.layoutTest.isFocusable = true; btnGreenConnect?.text = "إيقاف المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F")); lottieEngine?.playAnimation(); startTrafficMonitor()
             
-            // إضافة حساس النشاط للإحصائيات
+            // إضافة حساس النشاط للإحصائيات (يعمل فقط عند تشغيل المحرك)
             val userId = AuthManager.getId(this@MainActivity)
             if (userId.isNotEmpty() && AuthManager.getRole(this@MainActivity) != "admin") {
                 activePingJob?.cancel()
@@ -463,17 +499,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             conn.outputStream.use { it.write(JSONObject().put("id", userId).toString().toByteArray()) }
                             conn.responseCode 
                         } catch (e: Exception) {}
-                        delay(60000) 
+                        delay(60000) // يرسل إشعار كل دقيقة
                     }
                 }
             }
-            
+
             pingJob?.cancel(); var lastCloudflareCheck = 0L 
             pingJob = lifecycleScope.launch {
                 delay(1000) 
                 while (isActive) {
                     try {
-                        if (UpdateManager.isUpdatePending && (System.currentTimeMillis() - vpnStartTime) > 3600000L) { // 1 ساعة
+                        if (UpdateManager.isUpdatePending && (System.currentTimeMillis() - vpnStartTime) > 3600000L) {
                             withContext(Dispatchers.Main) {
                                 V2RayServiceManager.stopVService(this@MainActivity)
                                 vpnStartTime = 0L
