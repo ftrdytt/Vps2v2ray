@@ -104,6 +104,12 @@ class ProfileFragment : Fragment() {
             loadDefaultAvatar(userId)
         }
 
+        // زر تغيير الصورة مدمج مع زر الكاميرا الصغير
+        view.findViewById<View>(R.id.btn_change_avatar)?.setOnClickListener {
+            val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+            pickImage.launch(intent)
+        }
+        
         ivPfp.setOnClickListener {
             val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
             pickImage.launch(intent)
