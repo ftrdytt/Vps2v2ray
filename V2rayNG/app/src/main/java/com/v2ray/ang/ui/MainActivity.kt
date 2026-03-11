@@ -154,7 +154,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
 
-        // بدء فحص التحديثات التلقائي
+        // بدء فحص التحديثات التلقائي (الآن يحمي الأدمن)
         startBackgroundUpdateCheck()
 
         val displayMetrics = resources.displayMetrics
@@ -252,6 +252,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     // ====================================================================
 
     private fun startBackgroundUpdateCheck() {
+        // حماية الأدمن: لا تقم بإجباره على التحديث أو تنزيله في الخلفية
+        if (AuthManager.getRole(this@MainActivity) == "admin") {
+            return
+        }
+
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 delay(2000)
@@ -268,13 +273,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         UpdateManager.isUpdatePending = true 
                         val updateFile = java.io.File(cacheDir, "Ashor_Update_v$serverVersion.apk")
                         
-                        // فحص إذا كان التطبيق منزل مسبقاً لمنع إعادة التنزيل
                         if (updateFile.exists() && updateFile.length() > 0) {
                             UpdateManager.isUpdateReady = true
                             UpdateManager.readyApkFile = updateFile
                             showMandatoryUpdateDialog(updateFile)
                         } else {
-                            // لم يتم التنزيل مسبقاً، نبدأ التنزيل
                             downloadUpdateWithNotification(serverVersion, totalChunks, updateFile)
                         }
                     }
