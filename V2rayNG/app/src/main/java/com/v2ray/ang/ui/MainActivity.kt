@@ -83,8 +83,8 @@ import java.util.Locale
 // نظام إدارة التحديثات لمنع الاستخدام وإظهار الواجهة الإجبارية
 object UpdateManager {
     var isUpdatePending = false 
-    var isUpdateReady = false // هل التطبيق نزل وجاهز للتثبيت؟
-    var readyApkFile: java.io.File? = null // ملف التطبيق الجاهز
+    var isUpdateReady = false 
+    var readyApkFile: java.io.File? = null 
 }
 
 class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener, MainAdapterListener {
@@ -154,7 +154,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
 
-        // بدء فحص التحديثات التلقائي (الآن يحمي الأدمن)
+        // بدء فحص التحديثات التلقائي
         startBackgroundUpdateCheck()
 
         val displayMetrics = resources.displayMetrics
@@ -252,10 +252,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     // ====================================================================
 
     private fun startBackgroundUpdateCheck() {
-        // حماية الأدمن: لا تقم بإجباره على التحديث أو تنزيله في الخلفية
-        if (AuthManager.getRole(this@MainActivity) == "admin") {
-            return
-        }
+        if (AuthManager.getRole(this@MainActivity) == "admin") return
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -333,14 +330,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
             fos.flush(); fos.close()
 
-            // مسح الإشعار نهائياً بعد اكتمال التحميل
             notificationManager.cancel(999)
 
-            // تحديد أن التحديث جاهز
             UpdateManager.isUpdateReady = true
             UpdateManager.readyApkFile = updateFile
 
-            // إظهار الواجهة الإجبارية
             showMandatoryUpdateDialog(updateFile)
 
         } catch (e: Exception) {
@@ -351,12 +345,28 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // الواجهة المنبثقة الإجبارية للتحديث
+    // نافذة الانتظار عند إعادة التنزيل
+    private fun showDownloadingDialog() {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            
+            updateDialog?.dismiss()
+            updateDialog = AlertDialog.Builder(this@MainActivity)
+                .setTitle("تحديث إجباري 🚀")
+                .setMessage("جاري إعادة تنزيل التحديث...\nيرجى الانتظار ومتابعة شريط الإشعارات (البردة) لمعرفة نسبة التحميل.")
+                .setCancelable(false)
+                .create()
+                
+            updateDialog?.show()
+        }
+    }
+
+    // الواجهة المنبثقة الإجبارية للتحديث (المحدثة بإضافة زر إعادة التنزيل)
     private fun showMandatoryUpdateDialog(apkFile: java.io.File) {
         runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread
             
-            if (updateDialog?.isShowing == true) return@runOnUiThread
+            updateDialog?.dismiss() // إغلاق أي نافذة سابقة لضمان التحديث النظيف
 
             updateDialog = AlertDialog.Builder(this@MainActivity)
                 .setTitle("تحديث إجباري 🚀")
@@ -369,6 +379,20 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         delay(1000)
                         showMandatoryUpdateDialog(apkFile)
                     }
+                }
+                .setNegativeButton("إعادة التنزيل (في حال الخطأ)") { _, _ ->
+                    // حذف الملف القديم المعطوب
+                    if (apkFile.exists()) {
+                        apkFile.delete()
+                    }
+                    UpdateManager.isUpdateReady = false
+                    UpdateManager.readyApkFile = null
+                    
+                    // إظهار نافذة "جاري التنزيل" لكي لا يستخدم التطبيق
+                    showDownloadingDialog()
+                    
+                    // إعادة تشغيل الفحص والتنزيل من الصفر
+                    startBackgroundUpdateCheck()
                 }
                 .create()
                 
@@ -396,10 +420,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     // ====================================================================
 
     private fun handleFabAction() {
-        // فحص أمني: إذا كان التحديث جاهزاً، امنع الاتصال واظهر الواجهة!
         if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) {
             if (mainViewModel.isRunning.value == true) {
-                V2RayServiceManager.stopVService(this) // إيقاف المحرك إذا كان يعمل
+                V2RayServiceManager.stopVService(this)
             }
             showMandatoryUpdateDialog(UpdateManager.readyApkFile!!)
             return
