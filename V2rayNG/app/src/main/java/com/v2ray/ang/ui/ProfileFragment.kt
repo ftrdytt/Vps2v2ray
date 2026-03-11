@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.R
@@ -31,6 +32,7 @@ import kotlin.math.roundToInt
 class ProfileFragment : Fragment() {
 
     private lateinit var ivPfp: ImageView
+    private lateinit var btnAdminDashboard: ImageView
     private var currentBase64Pfp: String = ""
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -65,6 +67,8 @@ class ProfileFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         ivPfp = view.findViewById(R.id.iv_profile_pic)
+        btnAdminDashboard = view.findViewById(R.id.btn_admin_dashboard)
+        
         val etId = view.findViewById<EditText>(R.id.et_profile_id)
         val etName = view.findViewById<EditText>(R.id.et_profile_name)
         val etPass = view.findViewById<EditText>(R.id.et_profile_pass)
@@ -72,11 +76,21 @@ class ProfileFragment : Fragment() {
         val btnLogout = view.findViewById<Button>(R.id.btn_logout)
 
         val userId = AuthManager.getId(requireContext())
+        val userRole = AuthManager.getRole(requireContext())
+        
         etId.setText(userId)
         etName.setText(AuthManager.getName(requireContext()))
         etPass.setText(AuthManager.getPass(requireContext()))
         currentBase64Pfp = AuthManager.getPfp(requireContext())
         
+        // إظهار زر لوحة التحكم للأدمن فقط
+        if (userRole == "admin") {
+            btnAdminDashboard.visibility = View.VISIBLE
+            btnAdminDashboard.setOnClickListener {
+                startActivity(Intent(requireContext(), AdminDashboardActivity::class.java))
+            }
+        }
+
         // التحقق مما إذا كان هناك صورة محفوظة
         if (currentBase64Pfp.isNotEmpty()) {
             try {
@@ -159,11 +173,30 @@ class ProfileFragment : Fragment() {
         }
 
         btnLogout.setOnClickListener {
-            AuthManager.logout(requireContext())
-            val intent = Intent(requireActivity(), LoginActivity::class.java)
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            startActivity(intent)
-            requireActivity().finish()
+            AlertDialog.Builder(requireContext())
+                .setTitle("تسجيل خروج")
+                .setMessage("هل أنت متأكد من تسجيل الخروج؟")
+                .setPositiveButton("نعم") { _, _ ->
+                    // تسجيل الخروج السحابي للإحصائيات
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        try {
+                            val conn = URL("https://vpn-license.rauter505.workers.dev/admin/log_logout").openConnection() as HttpURLConnection
+                            conn.requestMethod = "POST"
+                            conn.setRequestProperty("Content-Type", "application/json")
+                            conn.doOutput = true
+                            conn.outputStream.use { it.write(JSONObject().put("id", userId).toString().toByteArray()) }
+                            conn.responseCode 
+                        } catch (e: Exception) {}
+                    }
+                    
+                    AuthManager.logout(requireContext())
+                    val intent = Intent(requireActivity(), LoginActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    startActivity(intent)
+                    requireActivity().finish()
+                }
+                .setNegativeButton("إلغاء", null)
+                .show()
         }
     }
 
