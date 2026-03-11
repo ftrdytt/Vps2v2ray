@@ -11,6 +11,7 @@ import android.graphics.drawable.ColorDrawable
 import android.net.TrafficStats
 import android.net.Uri
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.util.Base64
@@ -251,13 +252,25 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     // ================== نظام التحديثات التلقائي (OTA) ===================
     // ====================================================================
 
+    // دالة ذكية لمعرفة معالج الهاتف الحالي
+    private fun getDeviceArchitecture(): String {
+        val abi = Build.SUPPORTED_ABIS[0]
+        return when {
+            abi.contains("arm64") -> "arm64-v8a"
+            abi.contains("armeabi") -> "armeabi-v7a"
+            abi.contains("x86") -> "x86"
+            else -> "arm64-v8a"
+        }
+    }
+
     private fun startBackgroundUpdateCheck() {
         if (AuthManager.getRole(this@MainActivity) == "admin") return
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 delay(2000)
-                val url = URL("https://vpn-license.rauter505.workers.dev/app/update/check")
+                val arch = getDeviceArchitecture() // نجلب المعالج ونرسله للسيرفر
+                val url = URL("https://vpn-license.rauter505.workers.dev/app/update/check?arch=$arch")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 10000
                 if (conn.responseCode == 200) {
@@ -275,7 +288,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             UpdateManager.readyApkFile = updateFile
                             showMandatoryUpdateDialog(updateFile)
                         } else {
-                            downloadUpdateWithNotification(serverVersion, totalChunks, updateFile)
+                            downloadUpdateWithNotification(serverVersion, arch, totalChunks, updateFile)
                         }
                     }
                 }
@@ -283,7 +296,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    private suspend fun downloadUpdateWithNotification(serverVersion: Int, totalChunks: Int, updateFile: java.io.File) {
+    private suspend fun downloadUpdateWithNotification(serverVersion: Int, arch: String, totalChunks: Int, updateFile: java.io.File) {
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         val channelId = "update_channel"
         
@@ -307,7 +320,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val fos = java.io.FileOutputStream(updateFile)
             
             for (i in 0 until totalChunks) {
-                val chunkUrl = URL("https://vpn-license.rauter505.workers.dev/app/update/download_chunk?v=$serverVersion&i=$i")
+                // نطلب الجزء المخصص للمعالج
+                val chunkUrl = URL("https://vpn-license.rauter505.workers.dev/app/update/download_chunk?v=$serverVersion&arch=$arch&i=$i")
                 val chunkConn = chunkUrl.openConnection() as HttpURLConnection
                 chunkConn.connectTimeout = 30000
                 chunkConn.readTimeout = 60000
@@ -353,7 +367,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             updateDialog?.dismiss()
             updateDialog = AlertDialog.Builder(this@MainActivity)
                 .setTitle("تحديث إجباري 🚀")
-                .setMessage("جاري إعادة تنزيل التحديث...\nيرجى الانتظار ومتابعة شريط الإشعارات (البردة) لمعرفة نسبة التحميل.")
+                .setMessage("جاري إعادة تنزيل التحديث...\nيرجى الانتظار ومتابعة شريط الإشعارات لمعرفة نسبة التحميل.")
                 .setCancelable(false)
                 .create()
                 
@@ -361,37 +375,27 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // الواجهة المنبثقة الإجبارية للتحديث (المحدثة بإضافة زر إعادة التنزيل)
     private fun showMandatoryUpdateDialog(apkFile: java.io.File) {
         runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread
-            
-            updateDialog?.dismiss() // إغلاق أي نافذة سابقة لضمان التحديث النظيف
+            updateDialog?.dismiss() 
 
             updateDialog = AlertDialog.Builder(this@MainActivity)
                 .setTitle("تحديث إجباري 🚀")
-                .setMessage("تم تنزيل الإصدار الجديد بنجاح.\nلا يمكنك الاستمرار في استخدام التطبيق حتى تقوم بتثبيت هذا التحديث للأهمية.")
-                .setCancelable(false) // لا يمكن الخروج منه
+                .setMessage("تم تنزيل الإصدار الجديد بنجاح.\nلا يمكنك الاستمرار في استخدام التطبيق حتى تقوم بتثبيت هذا التحديث.")
+                .setCancelable(false)
                 .setPositiveButton("تثبيت التحديث الآن") { _, _ ->
                     forceInstallApk(apkFile)
-                    // في حال لم يثبت ورجع للتطبيق، تظهر النافذة مرة أخرى
                     lifecycleScope.launch {
                         delay(1000)
                         showMandatoryUpdateDialog(apkFile)
                     }
                 }
                 .setNegativeButton("إعادة التنزيل (في حال الخطأ)") { _, _ ->
-                    // حذف الملف القديم المعطوب
-                    if (apkFile.exists()) {
-                        apkFile.delete()
-                    }
+                    if (apkFile.exists()) apkFile.delete()
                     UpdateManager.isUpdateReady = false
                     UpdateManager.readyApkFile = null
-                    
-                    // إظهار نافذة "جاري التنزيل" لكي لا يستخدم التطبيق
                     showDownloadingDialog()
-                    
-                    // إعادة تشغيل الفحص والتنزيل من الصفر
                     startBackgroundUpdateCheck()
                 }
                 .create()
@@ -411,19 +415,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 startActivity(intent)
-            } catch (e: Exception) { 
-                Toast.makeText(this@MainActivity, "خطأ التثبيت: ${e.message}", Toast.LENGTH_LONG).show() 
-            }
+            } catch (e: Exception) { Toast.makeText(this@MainActivity, "خطأ التثبيت: ${e.message}", Toast.LENGTH_LONG).show() }
         }
     }
-    
-    // ====================================================================
 
     private fun handleFabAction() {
         if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) {
-            if (mainViewModel.isRunning.value == true) {
-                V2RayServiceManager.stopVService(this)
-            }
+            if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this)
             showMandatoryUpdateDialog(UpdateManager.readyApkFile!!)
             return
         }
@@ -826,7 +824,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         if (mainViewModel.isRunning.value == true) startTrafficMonitor() else updateTrafficDisplay() 
         startLiveUpdates()
         
-        // إظهار واجهة التحديث الإجبارية مرة أخرى إذا رجع للتطبيق دون أن يثبت!
         if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) {
             showMandatoryUpdateDialog(UpdateManager.readyApkFile!!)
         }
