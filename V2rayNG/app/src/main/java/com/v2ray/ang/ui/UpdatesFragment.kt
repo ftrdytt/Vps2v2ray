@@ -225,7 +225,7 @@ class UpdatesFragment : Fragment() {
         val tvInfo = TextView(requireContext()).apply {
             text = "إصدار: $version\nالتاريخ: $date\nالحالة: ${if(isActive) "🟢 نشط (يظهر للمستخدمين)" else "🔴 متوقف"}"
             setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginBottom = 20 }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
         }
         card.addView(tvInfo)
 
@@ -234,7 +234,7 @@ class UpdatesFragment : Fragment() {
         val btnToggle = MaterialButton(requireContext()).apply {
             text = if(isActive) "إيقاف" else "تشغيل"
             setBackgroundColor(if(isActive) Color.parseColor("#FF9800") else Color.parseColor("#4CAF50"))
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, 20, 0) }
             setOnClickListener { toggleUpdateStatus(version) }
         }
         val btnDelete = MaterialButton(requireContext()).apply {
