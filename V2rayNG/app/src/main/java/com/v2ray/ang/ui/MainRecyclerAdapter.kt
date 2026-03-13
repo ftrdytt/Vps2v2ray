@@ -1,12 +1,14 @@
 package com.v2ray.ang.ui
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
@@ -89,12 +91,24 @@ class MainRecyclerAdapter(
                 holder.itemMainBinding.tvTestResult.setTextColor(Color.parseColor("#00E676"))
             }
 
-            // --- عرض عداد النشطين ---
+            // --- عرض عداد النشطين وبرمجة النقر عليه ---
             val tvActiveCount = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_active_count)
             if (isProtected || isAdmin) {
                 val activeCount = V2rayCrypt.getActiveCount(context, guid)
                 tvActiveCount?.visibility = View.VISIBLE
                 tvActiveCount?.text = "🟢 $activeCount"
+                
+                // برمجة حدث النقر لفتح شاشة المتصلين (للأدمن فقط)
+                tvActiveCount?.setOnClickListener {
+                    val userRole = com.v2ray.ang.handler.AuthManager.getRole(context)
+                    if (userRole == "admin") {
+                        val intent = Intent(context, FileActiveUsersActivity::class.java)
+                        intent.putExtra("guid", guid) // تمرير ID الملف
+                        context.startActivity(intent)
+                    } else {
+                        Toast.makeText(context, "هذه الميزة للإدارة فقط", Toast.LENGTH_SHORT).show()
+                    }
+                }
             } else {
                 tvActiveCount?.visibility = View.GONE
             }
