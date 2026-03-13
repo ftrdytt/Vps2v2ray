@@ -98,7 +98,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var speedTestJob: Job? = null
     private var resetSpeedButtonJob: Job? = null 
     private var liveUpdateJob: Job? = null 
-    private var activePingJob: Job? = null // إضافة وظيفة النبض النشط
+    private var activePingJob: Job? = null
     
     private var lastRxBytes: Long = 0L
     private var lastTxBytes: Long = 0L
@@ -153,9 +153,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
 
-        // إرسال إشعار للسيرفر إذا قام المستخدم بالتحديث
         reportUpdateSuccess()
-
         startBackgroundUpdateCheck()
 
         val displayMetrics = resources.displayMetrics
@@ -248,9 +246,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
-    // ====================================================================
-    // ================== نظام إشعار التحديث للسيرفر ======================
-    // ====================================================================
     private fun reportUpdateSuccess() {
         val prefs = getSharedPreferences("update_prefs", Context.MODE_PRIVATE)
         val reportedVersion = prefs.getInt("reported_version", 0)
@@ -465,6 +460,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         
+        val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+
         val isNowRunning = isRunning && !isLoading
         if (lastReportedState != isNowRunning && guid.isNotEmpty()) {
             lastReportedState = isNowRunning
@@ -485,22 +482,51 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
             binding.fab.setImageResource(R.drawable.ic_stop_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active)); binding.fab.contentDescription = getString(R.string.action_stop_service); setTestState(getString(R.string.connection_connected)); binding.layoutTest.isFocusable = true; btnGreenConnect?.text = "إيقاف المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F")); lottieEngine?.playAnimation(); startTrafficMonitor()
             
-            // إضافة حساس النشاط للإحصائيات (يعمل فقط عند تشغيل المحرك)
-            val userId = AuthManager.getId(this@MainActivity)
-            if (userId.isNotEmpty() && AuthManager.getRole(this@MainActivity) != "admin") {
-                activePingJob?.cancel()
-                activePingJob = lifecycleScope.launch(Dispatchers.IO) {
-                    while (isActive) {
-                        try {
-                            val conn = URL("https://vpn-license.rauter505.workers.dev/admin/ping_active").openConnection() as HttpURLConnection
-                            conn.requestMethod = "POST"
-                            conn.setRequestProperty("Content-Type", "application/json")
-                            conn.doOutput = true
-                            conn.outputStream.use { it.write(JSONObject().put("id", userId).toString().toByteArray()) }
-                            conn.responseCode 
-                        } catch (e: Exception) {}
-                        delay(60000) // يرسل إشعار كل دقيقة
+            // فحص هل الجهاز محظور من هذا الملف؟
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val banCheckUrl = URL("https://vpn-license.rauter505.workers.dev/file/check_ban?guid=$guid&deviceId=$deviceId")
+                    val conn = banCheckUrl.openConnection() as HttpURLConnection
+                    if (conn.responseCode == 200) {
+                        val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                        val obj = JSONObject(resp)
+                        if (obj.optBoolean("banned", false)) {
+                            delay(1000)
+                            withContext(Dispatchers.Main) {
+                                V2RayServiceManager.stopVService(this@MainActivity)
+                                Toast.makeText(this@MainActivity, "تم حظرك من هذا الملف من قبل الأدمن", Toast.LENGTH_LONG).show()
+                            }
+                            return@launch
+                        }
                     }
+                } catch (e: Exception) {}
+            }
+
+            // حساس النشاط المخصص للملفات (يرسل اسم أو مجهول)
+            activePingJob?.cancel()
+            activePingJob = lifecycleScope.launch(Dispatchers.IO) {
+                while (isActive) {
+                    try {
+                        val userId = AuthManager.getId(this@MainActivity)
+                        val name = if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول الهوية"
+                        val pfp = if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else ""
+
+                        val conn = URL("https://vpn-license.rauter505.workers.dev/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        
+                        val payload = JSONObject()
+                            .put("guid", guid)
+                            .put("deviceId", deviceId)
+                            .put("userId", userId)
+                            .put("name", name)
+                            .put("pfp", pfp)
+
+                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                        conn.responseCode 
+                    } catch (e: Exception) {}
+                    delay(30000)
                 }
             }
 
@@ -579,7 +605,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
         } else {
             vpnStartTime = 0L 
-            activePingJob?.cancel() // إيقاف إرسال النبض عند إيقاف المحرك
+            activePingJob?.cancel() 
             pingJob?.cancel(); speedTestJob?.cancel(); resetSpeedButtonJob?.cancel(); stopTrafficMonitor()
             binding.fab.setImageResource(R.drawable.ic_play_24dp); binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive)); binding.fab.contentDescription = getString(R.string.tasker_start_service); setTestState(getString(R.string.connection_not_connected)); binding.layoutTest.isFocusable = false; btnGreenConnect?.text = "تشغيل المحرك"; btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C")); lottieEngine?.cancelAnimation(); lottieEngine?.progress = 0f; binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f); binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f); binding.root.findViewById<TextView>(R.id.tv_green_ping)?.text = "--- ms"; val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test); btnTest?.isEnabled = true; btnTest?.text = "قياس سرعة الإنترنت"; btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
         }
@@ -659,7 +685,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         createOptionButton("إضافة ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) { importEncryptedFile() }
 
         addSectionTitle("الإضافة اليدوية")
-        createOptionButton("إضافة [Policy group]", android.R.drawable.ic_menu_sort_by_size) { importManually(EConfigType.POLICYGROUP.value) }
         createOptionButton("VMess", android.R.drawable.ic_menu_edit) { importManually(EConfigType.VMESS.value) }
         createOptionButton("VLESS", android.R.drawable.ic_menu_edit) { importManually(EConfigType.VLESS.value) }
         createOptionButton("Shadowsocks", android.R.drawable.ic_menu_edit) { importManually(EConfigType.SHADOWSOCKS.value) }
