@@ -2,6 +2,7 @@ package com.v2ray.ang.handler
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -16,7 +17,7 @@ object ActiveStatsHelper {
         val currentVersion = BuildConfig.VERSION_CODE
 
         if (reportedVersion < currentVersion) {
-            kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+            GlobalScope.launch(Dispatchers.IO) {
                 try {
                     val userId = AuthManager.getId(context)
                     if (userId.isNotEmpty() && AuthManager.getRole(context) != "admin") {
@@ -38,7 +39,7 @@ object ActiveStatsHelper {
     }
 
     fun sendFileActivePing(context: Context, guid: String, deviceId: String) {
-        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+        GlobalScope.launch(Dispatchers.IO) {
             try {
                 val userId = AuthManager.getId(context)
                 val name = if (userId.isNotEmpty()) AuthManager.getName(context) else "مجهول الهوية"
@@ -63,7 +64,7 @@ object ActiveStatsHelper {
     }
 
     fun sendAppActivePing(context: Context) {
-        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+        GlobalScope.launch(Dispatchers.IO) {
             try {
                 val userId = AuthManager.getId(context)
                 if (userId.isNotEmpty() && AuthManager.getRole(context) != "admin") {
