@@ -652,16 +652,26 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
 
         addSectionTitle("الاستيراد السريع")
+        createOptionButton("استيراد من رمز الاستجابة (QR)", android.R.drawable.ic_menu_camera) { startActivity(Intent(this, ScannerActivity::class.java)) }
         createOptionButton("استيراد من الحافظة (عادي)", android.R.drawable.ic_menu_add) { if (importClipboard()) bottomSheetDialog.dismiss() }
         createOptionButton("استيراد من حافظة مشفرة", android.R.drawable.ic_lock_idle_lock) { if (importClipboardEncrypted()) bottomSheetDialog.dismiss() }
+        createOptionButton("استيراد ملف من الجهاز", android.R.drawable.ic_menu_upload) { if (importConfigLocal()) bottomSheetDialog.dismiss() }
         createOptionButton("إضافة ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) { importEncryptedFile() }
 
         addSectionTitle("الإضافة اليدوية")
-        createOptionButton("VLESS", android.R.drawable.ic_menu_edit) { importManually(EConfigType.VLESS.value) }
+        createOptionButton("إضافة [Policy group]", android.R.drawable.ic_menu_sort_by_size) { importManually(EConfigType.POLICYGROUP.value) }
         createOptionButton("VMess", android.R.drawable.ic_menu_edit) { importManually(EConfigType.VMESS.value) }
+        createOptionButton("VLESS", android.R.drawable.ic_menu_edit) { importManually(EConfigType.VLESS.value) }
+        createOptionButton("Shadowsocks", android.R.drawable.ic_menu_edit) { importManually(EConfigType.SHADOWSOCKS.value) }
+        createOptionButton("SOCKS", android.R.drawable.ic_menu_edit) { importManually(EConfigType.SOCKS.value) }
+        createOptionButton("HTTP", android.R.drawable.ic_menu_edit) { importManually(EConfigType.HTTP.value) }
         createOptionButton("Trojan", android.R.drawable.ic_menu_edit) { importManually(EConfigType.TROJAN.value) }
+        createOptionButton("Wireguard", android.R.drawable.ic_menu_edit) { importManually(EConfigType.WIREGUARD.value) }
+        createOptionButton("Hysteria2", android.R.drawable.ic_menu_edit) { importManually(EConfigType.HYSTERIA2.value) }
         
-        bottomSheetDialog.setContentView(scrollView); bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT); bottomSheetDialog.show()
+        bottomSheetDialog.setContentView(scrollView)
+        bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
+        bottomSheetDialog.show()
     }
 
     fun showExtendLicenseDialog(guid: String) {
