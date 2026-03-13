@@ -3,6 +3,8 @@ package com.v2ray.ang.ui
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Base64
 import android.view.Gravity
 import android.view.View
@@ -26,7 +28,12 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
     private lateinit var mainContainer: LinearLayout
     private lateinit var tvLoading: TextView
+    private lateinit var etSearch: EditText
     private var currentGuid: String = ""
+    
+    // لتخزين البيانات محلياً وإجراء البحث عليها بدون الحاجة للاتصال بالسيرفر في كل مرة
+    private var allLoadedUsers = JSONArray() 
+    private var currentTabType = "ACTIVE"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,10 +62,32 @@ class FileActiveUsersActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#1A1A1D"))
         }
 
+        // حقل البحث الذكي 🔍
+        etSearch = EditText(this).apply {
+            hint = "🔍 ابحث بالاسم، ID، أو Device ID..."
+            setHintTextColor(Color.parseColor("#80FFFFFF"))
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#141417"))
+            setPadding(30, 30, 30, 30)
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(20, 20, 20, 20)
+            }
+            
+            // إضافة مستمع للبحث عند كتابة أي حرف
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    filterUsers(s.toString())
+                }
+                override fun afterTextChanged(s: Editable?) {}
+            })
+        }
+
         // تبويبات (النشطين - المحظورين)
         val tabsLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            padding = 10
+            setPadding(10, 10, 10, 10) 
             setBackgroundColor(Color.parseColor("#141417"))
         }
 
@@ -97,6 +126,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
         scrollView.addView(mainContainer)
         root.addView(header)
+        root.addView(etSearch) // إضافة حقل البحث تحت العنوان
         root.addView(tabsLayout)
         root.addView(tvLoading)
         root.addView(scrollView)
@@ -105,6 +135,8 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
         // برمجة الأزرار
         btnActiveTab.setOnClickListener {
+            currentTabType = "ACTIVE"
+            etSearch.text.clear() // مسح البحث عند التبديل
             btnActiveTab.setBackgroundColor(Color.parseColor("#4CAF50"))
             btnActiveTab.setTextColor(Color.WHITE)
             btnBannedTab.setBackgroundColor(Color.parseColor("#252529"))
@@ -113,6 +145,8 @@ class FileActiveUsersActivity : AppCompatActivity() {
         }
 
         btnBannedTab.setOnClickListener {
+            currentTabType = "BANNED"
+            etSearch.text.clear() // مسح البحث عند التبديل
             btnBannedTab.setBackgroundColor(Color.parseColor("#F44336"))
             btnBannedTab.setTextColor(Color.WHITE)
             btnActiveTab.setBackgroundColor(Color.parseColor("#252529"))
@@ -127,6 +161,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
     private fun loadUsers(type: String) {
         tvLoading.visibility = View.VISIBLE
         mainContainer.removeAllViews()
+        allLoadedUsers = JSONArray() // تصفير المصفوفة القديمة
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -135,35 +170,62 @@ class FileActiveUsersActivity : AppCompatActivity() {
                 val conn = url.openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                    val array = JSONArray(resp)
+                    allLoadedUsers = JSONArray(resp) // حفظ البيانات للبحث المستقبلي
 
                     withContext(Dispatchers.Main) {
                         tvLoading.visibility = View.GONE
-                        if (array.length() == 0) {
-                            mainContainer.addView(TextView(this@FileActiveUsersActivity).apply { 
-                                text = if (type == "ACTIVE") "لا يوجد متصلين حالياً" else "لا يوجد محظورين في هذا الملف"
-                                setTextColor(Color.GRAY); gravity = Gravity.CENTER; setPadding(0, 50, 0, 0)
-                            })
-                            return@withContext
-                        }
-
-                        for (i in 0 until array.length()) {
-                            val obj = array.getJSONObject(i)
-                            val isBanned = obj.optBoolean("isBanned", type == "BANNED")
-                            addUserCard(
-                                obj.optString("deviceId"),
-                                obj.optString("name", "مجهول الهوية"),
-                                obj.optString("userId", ""),
-                                obj.optString("pfp", ""),
-                                isBanned,
-                                type
-                            )
-                        }
+                        renderUsersList(allLoadedUsers, type)
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { tvLoading.text = "خطأ في الاتصال بالإنترنت" }
             }
+        }
+    }
+
+    // دالة جديدة لتصفية النتائج بناءً على البحث
+    private fun filterUsers(query: String) {
+        val filteredArray = JSONArray()
+        val lowerQuery = query.lowercase()
+
+        for (i in 0 until allLoadedUsers.length()) {
+            val obj = allLoadedUsers.getJSONObject(i)
+            val name = obj.optString("name", "مجهول الهوية").lowercase()
+            val userId = obj.optString("userId", "").lowercase()
+            val deviceId = obj.optString("deviceId", "").lowercase()
+
+            if (name.contains(lowerQuery) || userId.contains(lowerQuery) || deviceId.contains(lowerQuery)) {
+                filteredArray.put(obj)
+            }
+        }
+        
+        mainContainer.removeAllViews()
+        renderUsersList(filteredArray, currentTabType)
+    }
+
+    // دالة جديدة مسؤولة عن رسم بطاقات المستخدمين
+    private fun renderUsersList(array: JSONArray, type: String) {
+        if (array.length() == 0) {
+            mainContainer.addView(TextView(this@FileActiveUsersActivity).apply { 
+                text = if (etSearch.text.isNotEmpty()) "لم يتم العثور على نتائج تطابق بحثك" 
+                       else if (type == "ACTIVE") "لا يوجد متصلين حالياً" 
+                       else "لا يوجد محظورين في هذا الملف"
+                setTextColor(Color.GRAY); gravity = Gravity.CENTER; setPadding(0, 50, 0, 0)
+            })
+            return
+        }
+
+        for (i in 0 until array.length()) {
+            val obj = array.getJSONObject(i)
+            val isBanned = obj.optBoolean("isBanned", type == "BANNED")
+            addUserCard(
+                obj.optString("deviceId"),
+                obj.optString("name", "مجهول الهوية"),
+                obj.optString("userId", ""),
+                obj.optString("pfp", ""),
+                isBanned,
+                type
+            )
         }
     }
 
@@ -182,7 +244,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             clipToOutline = true
         }
 
-        // تحميل الصورة (إذا كان مجهول نعطيه صورة أنمي عشوائية بناءً على جهازة)
         if (pfp.isNotEmpty()) {
             try {
                 val bytes = Base64.decode(pfp, Base64.DEFAULT)
@@ -203,8 +264,10 @@ class FileActiveUsersActivity : AppCompatActivity() {
         } else {
             infoLayout.addView(TextView(this).apply { text = "غير مسجل (حساب جهاز)"; setTextColor(Color.GRAY); textSize = 12f })
         }
+        
+        // عرض جزء من Device ID للتأكد
+        infoLayout.addView(TextView(this).apply { text = "Device: ${deviceId.takeLast(6)}"; setTextColor(Color.parseColor("#4CAF50")); textSize = 10f })
 
-        // زر الحظر / إلغاء الحظر
         val btnAction = MaterialButton(this).apply {
             if (isBanned) {
                 text = "إلغاء الحظر"
