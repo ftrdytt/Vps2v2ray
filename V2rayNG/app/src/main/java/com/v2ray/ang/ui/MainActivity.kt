@@ -3,7 +3,6 @@ package com.v2ray.ang.ui
 import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
-import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -22,9 +21,7 @@ import androidx.appcompat.widget.SearchView
 import androidx.cardview.widget.CardView
 import androidx.core.view.GravityCompat
 import androidx.core.view.isVisible
-import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
-import com.airbnb.lottie.LottieAnimationView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.navigation.NavigationView
@@ -44,7 +41,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.GlobalScope
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -103,24 +99,67 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun setupScreenLayouts() {
-        screenWidth = resources.displayMetrics.widthPixels
-        binding.root.findViewById<View>(R.id.settings_wrapper)?.layoutParams?.width = screenWidth
-        val updatesWrapper = FrameLayout(this).apply { id = View.generateViewId(); layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) }
-        val profileWrapper = FrameLayout(this).apply { id = View.generateViewId(); layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) }
-        val scrollContainer = binding.root.findViewById<LinearLayout>(R.id.settings_wrapper).parent as LinearLayout
-        scrollContainer.addView(updatesWrapper, 1) ; scrollContainer.addView(profileWrapper, 2)
-        binding.homeContentContainer.layoutParams.width = screenWidth
-        supportFragmentManager.beginTransaction().replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment()).replace(updatesWrapper.id, UpdatesFragment()).replace(profileWrapper.id, ProfileFragment()).commit()
+        try {
+            screenWidth = resources.displayMetrics.widthPixels
+            val settingsWrapper = binding.root.findViewById<View>(R.id.settings_wrapper)
+            settingsWrapper?.layoutParams?.width = screenWidth
+            
+            val updatesWrapper = FrameLayout(this).apply { id = View.generateViewId(); layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) }
+            val profileWrapper = FrameLayout(this).apply { id = View.generateViewId(); layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) }
+            
+            val scrollContainer = settingsWrapper?.parent as? LinearLayout
+            scrollContainer?.addView(updatesWrapper, 1) 
+            scrollContainer?.addView(profileWrapper, 2)
+            
+            binding.homeContentContainer.layoutParams.width = screenWidth
+            
+            supportFragmentManager.beginTransaction()
+                .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
+                .replace(updatesWrapper.id, UpdatesFragment())
+                .replace(profileWrapper.id, ProfileFragment())
+                .commit()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun setupUIInteractions() {
         binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)?.setOnClickListener { handleFabAction() }
         binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)?.let { it.setOnClickListener { SpeedTestHelper.runSpeedTest(this, mainViewModel.isRunning.value == true) } }
         binding.root.findViewById<CardView>(R.id.card_traffic_meter)?.setOnClickListener { TrafficMonitorHelper.showTrafficDetailsDialog(this, mainViewModel.isRunning.value == true) }
+        
         val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
-        bottomNav?.setOnItemSelectedListener { item -> when (item.itemId) { R.id.nav_settings -> binding.mainScrollView.smoothScrollTo(0, 0); R.id.nav_updates -> binding.mainScrollView.smoothScrollTo(screenWidth, 0); R.id.nav_profile -> binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0); R.id.nav_servers -> binding.mainScrollView.smoothScrollTo(screenWidth * 3, 0); R.id.nav_home -> binding.mainScrollView.smoothScrollTo(screenWidth * 4, 0) }; true }
+        binding.mainScrollView.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_UP) {
+                val scrollX = binding.mainScrollView.scrollX
+                val page = if (screenWidth > 0) ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 4) else 0
+                binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(page * screenWidth, 0) }
+                when (page) { 
+                    0 -> bottomNav?.selectedItemId = R.id.nav_settings
+                    1 -> bottomNav?.selectedItemId = R.id.nav_updates
+                    2 -> bottomNav?.selectedItemId = R.id.nav_profile
+                    3 -> bottomNav?.selectedItemId = R.id.nav_servers
+                    4 -> bottomNav?.selectedItemId = R.id.nav_home 
+                }
+                return@setOnTouchListener true
+            }
+            false
+        }
+
+        bottomNav?.setOnItemSelectedListener { item -> 
+            when (item.itemId) { 
+                R.id.nav_settings -> binding.mainScrollView.smoothScrollTo(0, 0)
+                R.id.nav_updates -> binding.mainScrollView.smoothScrollTo(screenWidth, 0)
+                R.id.nav_profile -> binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
+                R.id.nav_servers -> binding.mainScrollView.smoothScrollTo(screenWidth * 3, 0)
+                R.id.nav_home -> binding.mainScrollView.smoothScrollTo(screenWidth * 4, 0) 
+            }
+            true 
+        }
+        
         binding.mainScrollView.post { binding.mainScrollView.scrollTo(screenWidth * 4, 0) }
         setupToolbar(binding.toolbar, false, "اشور لود")
+        
         val toggle = ActionBarDrawerToggle(this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
         binding.drawerLayout.addDrawerListener(toggle); toggle.syncState(); binding.navView.setNavigationItemSelectedListener(this)
         
@@ -170,7 +209,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun setupViewModel() { mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }; mainViewModel.isRunning.observe(this) { isRunning -> VpnEngineHelper.applyRunningState(this, mainViewModel, false, isRunning) }; mainViewModel.startListenBroadcast(); mainViewModel.initAssets(assets) }
-    private fun setupGroupTab() { val groups = mainViewModel.getSubscriptions(this); groupPagerAdapter = GroupPagerAdapter(this, groups); tabMediator?.detach(); tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position -> tab.text = groups.getOrNull(position)?.remarks }.also { it.attach() }; binding.viewPager.adapter = groupPagerAdapter; binding.tabGroup.isVisible = groups.size > 1 }
+    
+    private fun setupGroupTab() { 
+        val groups = mainViewModel.getSubscriptions(this)
+        groupPagerAdapter = GroupPagerAdapter(this, groups)
+        tabMediator?.detach()
+        tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position -> tab.text = groups.getOrNull(position)?.remarks }.also { it.attach() }
+        binding.viewPager.adapter = groupPagerAdapter
+        binding.tabGroup.isVisible = groups.size > 1 
+    }
 
     private fun setTestState(content: String?) { binding.tvTestState.text = content; val tvPing = binding.root.findViewById<TextView>(R.id.tv_green_ping); if (content?.contains("ms", true) == true) tvPing?.text = content else if (content?.contains("Timeout", true) == true) tvPing?.text = "Timeout" else if (content == getString(R.string.connection_connected)) tvPing?.text = "متصل" }
 
