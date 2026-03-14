@@ -21,7 +21,7 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
-object UpdateHelper {
+object UpdateManager {
     var isUpdatePending = false
     var isUpdateReady = false
     var readyApkFile: File? = null
