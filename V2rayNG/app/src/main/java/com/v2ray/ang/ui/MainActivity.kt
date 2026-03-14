@@ -64,7 +64,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var tabMediator: TabLayoutMediator? = null 
     private var screenWidth = 0
     
-    // إرجاع المتغيرات الأصلية لضمان عمل عداد البنج
     private var pingJob: Job? = null
     private var vpnStartTime: Long = 0L
     companion object { var lastReportedState: Boolean? = null }
@@ -233,13 +232,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         else startV2Ray()
     }
 
-    // تمت إعادة دالة applyRunningState الأصلية لضمان عمل النبض والمؤشرات 100%
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
-        val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
         val isNowRunning = isRunning && !isLoading
 
         if (lastReportedState != isNowRunning && guid.isNotEmpty()) {
@@ -286,10 +283,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 vpnStartTime = 0L
                                 AlertDialog.Builder(this@MainActivity).setTitle("تحديث إجباري 🛑").setMessage("انتهت مهلة السماح (ساعة واحدة). تم إيقاف التطبيق لوجود تحديث أمني هام.").setPositiveButton("موافق", null).setCancelable(false).show()
                             }
-                            cancel()
+                            break // تم استبدال cancel بـ break
                         }
                         
-                        // هنا النبضة التي تشغل الكيج المستمرة!
                         mainViewModel.testCurrentServerRealPing()
 
                         val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
@@ -322,10 +318,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                                 if (count > 0) {
                                                     val newGuid = ((MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()) - beforeGuids).firstOrNull() 
                                                     if (newGuid != null) {
-                                                        V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid)); V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId); V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, liveExpiry); V2rayCrypt.saveLastConfigHash(this@MainActivity, newGuid, incomingHash); mainViewModel.removeServer(guid); MmkvManager.setSelectServer(newGuid); toastSuccess("تم تحديث إعدادات السيرفر بنجاح!"); restartV2Ray(); cancel() 
+                                                        V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid)); V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId); V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, liveExpiry); V2rayCrypt.saveLastConfigHash(this@MainActivity, newGuid, incomingHash); mainViewModel.removeServer(guid); MmkvManager.setSelectServer(newGuid); toastSuccess("تم تحديث إعدادات السيرفر بنجاح!"); restartV2Ray() 
                                                     }
                                                 }
                                             }
+                                            break // تم استبدال cancel بـ break
                                         }
                                     }
                                 }
@@ -339,7 +336,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 AlertDialog.Builder(this@MainActivity).setTitle("انتهى الاشتراك").setMessage("تم إيقاف المحرك لانتهاء مدة الصلاحية.").setPositiveButton("حسناً", null).setCancelable(false).show()
                                 mainViewModel.reloadServerList()
                             }
-                            cancel() 
+                            break // تم استبدال cancel بـ break
                         }
                     } catch (e: Exception) {}
                     delay(3000) 
