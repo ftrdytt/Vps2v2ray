@@ -22,6 +22,7 @@ import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AuthManager
+import com.v2ray.ang.handler.UpdateManager // الاستدعاء الجديد لحل المشكلة 🚀
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
