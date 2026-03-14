@@ -3,6 +3,7 @@ package com.v2ray.ang.ui
 import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
+import android.util.Base64
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -11,6 +12,10 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
+import android.graphics.Color
+import android.content.res.ColorStateList
+import androidx.core.content.ContextCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -23,6 +28,7 @@ import androidx.core.view.GravityCompat
 import androidx.core.view.isVisible
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
+import com.airbnb.lottie.LottieAnimationView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.navigation.NavigationView
@@ -57,7 +63,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private lateinit var groupPagerAdapter: GroupPagerAdapter
     private var tabMediator: TabLayoutMediator? = null 
     private var screenWidth = 0
-    private var pingJob: Job? = null // تمت إعادته لضمان استمرار قراءة الكيج
+    
+    // إرجاع المتغيرات الأصلية لضمان عمل عداد البنج
+    private var pingJob: Job? = null
+    private var vpnStartTime: Long = 0L
+    companion object { var lastReportedState: Boolean? = null }
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { if (it.resultCode == RESULT_OK) startV2Ray() }
     private val requestActivityLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { if (SettingsChangeManager.consumeRestartService() && mainViewModel.isRunning.value == true) restartV2Ray() }
@@ -111,7 +121,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun setupScreenLayoutsSafe() {
         try {
             screenWidth = resources.displayMetrics.widthPixels
-            
             val settingsWrapper = binding.root.findViewById<View>(R.id.settings_wrapper)
             settingsWrapper?.layoutParams?.width = screenWidth
             
@@ -213,9 +222,150 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun handleFabAction() {
-        if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) return UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!)
-        VpnEngineHelper.applyRunningState(this, mainViewModel, true, false)
-        if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this) else if (SettingsManager.isVpnMode()) VpnService.prepare(this)?.let { requestVpnPermission.launch(it) } ?: startV2Ray() else startV2Ray()
+        if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) {
+            if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this)
+            UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!)
+            return
+        }
+        applyRunningState(isLoading = true, isRunning = false)
+        if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this)
+        else if (SettingsManager.isVpnMode()) { val intent = VpnService.prepare(this); if (intent == null) startV2Ray() else requestVpnPermission.launch(intent) }
+        else startV2Ray()
+    }
+
+    // تمت إعادة دالة applyRunningState الأصلية لضمان عمل النبض والمؤشرات 100%
+    private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
+        val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
+        val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
+        val guid = MmkvManager.getSelectServer().orEmpty()
+        val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
+        val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+        val isNowRunning = isRunning && !isLoading
+
+        if (lastReportedState != isNowRunning && guid.isNotEmpty()) {
+            lastReportedState = isNowRunning
+            lifecycleScope.launch(Dispatchers.IO) {
+                CloudflareAPI.sendActiveState(idToTrack, isNowRunning)
+                val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
+                V2rayCrypt.saveActiveCount(this@MainActivity, guid, updatedData.third)
+                withContext(Dispatchers.Main) { mainViewModel.reloadServerList() }
+            }
+        }
+
+        if (isLoading) {
+            binding.fab.setImageResource(R.drawable.ic_fab_check)
+            btnGreenConnect?.text = "جاري تشغيل المحرك..."
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
+            binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f)
+            binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f)
+            lottieEngine?.playAnimation()
+            return
+        }
+
+        if (isRunning) {
+            if (vpnStartTime == 0L) vpnStartTime = System.currentTimeMillis()
+            binding.fab.setImageResource(R.drawable.ic_stop_24dp)
+            binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
+            binding.fab.contentDescription = getString(R.string.action_stop_service)
+            setTestState(getString(R.string.connection_connected))
+            binding.layoutTest.isFocusable = true
+            btnGreenConnect?.text = "إيقاف المحرك"
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F"))
+            lottieEngine?.playAnimation()
+            TrafficMonitorHelper.startTrafficMonitor(this)
+
+            pingJob?.cancel()
+            var lastCloudflareCheck = 0L
+            pingJob = lifecycleScope.launch {
+                delay(1000)
+                while (isActive) {
+                    try {
+                        if (UpdateManager.isUpdatePending && (System.currentTimeMillis() - vpnStartTime) > 3600000L) {
+                            withContext(Dispatchers.Main) {
+                                V2RayServiceManager.stopVService(this@MainActivity)
+                                vpnStartTime = 0L
+                                AlertDialog.Builder(this@MainActivity).setTitle("تحديث إجباري 🛑").setMessage("انتهت مهلة السماح (ساعة واحدة). تم إيقاف التطبيق لوجود تحديث أمني هام.").setPositiveButton("موافق", null).setCancelable(false).show()
+                            }
+                            cancel()
+                        }
+                        
+                        // هنا النبضة التي تشغل الكيج المستمرة!
+                        mainViewModel.testCurrentServerRealPing()
+
+                        val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
+                        val isProtected = V2rayCrypt.isProtected(this@MainActivity, guid)
+                        val isAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid)
+                        
+                        if (licenseId.isNotEmpty() && licenseId != "LEGACY" && (isProtected || isAdmin)) {
+                            if (System.currentTimeMillis() - lastCloudflareCheck > 60000L) {
+                                lastCloudflareCheck = System.currentTimeMillis()
+                                val cloudData = CloudflareAPI.checkLiveConfig(licenseId)
+                                val liveExpiry = cloudData.first
+                                val liveConfigBase64 = cloudData.second
+                                val activeCount = cloudData.third
+                                
+                                if (liveExpiry >= 0L) {
+                                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, activeCount)
+                                    withContext(Dispatchers.Main) { mainViewModel.reloadServerList() } 
+                                    
+                                    val allProtected = V2rayCrypt.getAllProtectedGuids(this@MainActivity)
+                                    allProtected.forEach { pGuid -> if (V2rayCrypt.getLicenseId(this@MainActivity, pGuid) == licenseId) V2rayCrypt.saveExpiryTime(this@MainActivity, pGuid, liveExpiry) }
+                                    if (isAdmin) V2rayCrypt.saveExpiryTime(this@MainActivity, guid, liveExpiry)
+                                    
+                                    if (!isAdmin && liveConfigBase64 != null) {
+                                        val incomingHash = liveConfigBase64.hashCode(); val currentHash = V2rayCrypt.getLastConfigHash(this@MainActivity, guid)
+                                        if (incomingHash != currentHash && liveExpiry > NetworkTime.currentTimeMillis(this@MainActivity)) {
+                                            val newConfigRaw = String(Base64.decode(liveConfigBase64, Base64.NO_WRAP)).trim()
+                                            withContext(Dispatchers.Main) {
+                                                val beforeGuids = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
+                                                val (count, _) = AngConfigManager.importBatchConfig(newConfigRaw, mainViewModel.subscriptionId, true)
+                                                if (count > 0) {
+                                                    val newGuid = ((MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()) - beforeGuids).firstOrNull() 
+                                                    if (newGuid != null) {
+                                                        V2rayCrypt.addProtectedGuids(this@MainActivity, setOf(newGuid)); V2rayCrypt.saveLicenseId(this@MainActivity, newGuid, licenseId); V2rayCrypt.saveExpiryTime(this@MainActivity, newGuid, liveExpiry); V2rayCrypt.saveLastConfigHash(this@MainActivity, newGuid, incomingHash); mainViewModel.removeServer(guid); MmkvManager.setSelectServer(newGuid); toastSuccess("تم تحديث إعدادات السيرفر بنجاح!"); restartV2Ray(); cancel() 
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
+                        if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
+                            withContext(Dispatchers.Main) {
+                                V2RayServiceManager.stopVService(this@MainActivity)
+                                AlertDialog.Builder(this@MainActivity).setTitle("انتهى الاشتراك").setMessage("تم إيقاف المحرك لانتهاء مدة الصلاحية.").setPositiveButton("حسناً", null).setCancelable(false).show()
+                                mainViewModel.reloadServerList()
+                            }
+                            cancel() 
+                        }
+                    } catch (e: Exception) {}
+                    delay(3000) 
+                }
+            }
+        } else {
+            vpnStartTime = 0L 
+            pingJob?.cancel()
+            TrafficMonitorHelper.stopTrafficMonitor()
+            binding.fab.setImageResource(R.drawable.ic_play_24dp)
+            binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
+            binding.fab.contentDescription = getString(R.string.tasker_start_service)
+            setTestState(getString(R.string.connection_not_connected))
+            binding.layoutTest.isFocusable = false
+            btnGreenConnect?.text = "تشغيل المحرك"
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
+            lottieEngine?.cancelAnimation()
+            lottieEngine?.progress = 0f
+            binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f)
+            binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f)
+            binding.root.findViewById<TextView>(R.id.tv_green_ping)?.text = "--- ms"
+            val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
+            btnTest?.isEnabled = true
+            btnTest?.text = "قياس سرعة الإنترنت"
+            btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
+        }
     }
 
     private fun startV2Ray() { if (MmkvManager.getSelectServer().isNullOrEmpty()) toast(R.string.title_file_chooser) else V2RayServiceManager.startVService(this) }
@@ -246,23 +396,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     private fun setupViewModel() { 
         mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }
-        mainViewModel.isRunning.observe(this) { isRunning -> 
-            VpnEngineHelper.applyRunningState(this, mainViewModel, false, isRunning) 
-            
-            // تشغيل وإيقاف نبض الكيج مع حالة الاتصال
-            pingJob?.cancel()
-            if (isRunning) {
-                pingJob = lifecycleScope.launch {
-                    delay(1000)
-                    while (isActive) {
-                        mainViewModel.testCurrentServerRealPing()
-                        delay(3000) // يتحدث كل 3 ثواني
-                    }
-                }
-            } else {
-                setTestState(null)
-            }
-        }
+        mainViewModel.isRunning.observe(this) { isRunning -> applyRunningState(false, isRunning) }
         mainViewModel.startListenBroadcast()
         mainViewModel.initAssets(assets) 
     }
