@@ -21,10 +21,13 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.SearchView
 import androidx.cardview.widget.CardView
 import androidx.core.view.GravityCompat
+import androidx.core.view.isVisible
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
+import com.airbnb.lottie.LottieAnimationView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.navigation.NavigationView
 import com.google.android.material.tabs.TabLayoutMediator
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
@@ -33,16 +36,26 @@ import com.v2ray.ang.databinding.ActivityMainBinding
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.extension.toast
+import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.*
+import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.GlobalScope
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener, MainAdapterListener {
     private val binding by lazy { ActivityMainBinding.inflate(layoutInflater) }
     val mainViewModel: MainViewModel by viewModels()
     private lateinit var groupPagerAdapter: GroupPagerAdapter
+    private var tabMediator: TabLayoutMediator? = null 
     private var screenWidth = 0
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { if (it.resultCode == RESULT_OK) startV2Ray() }
@@ -61,13 +74,32 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         setContentView(binding.root)
         lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
-        UpdateHelper.startBackgroundUpdateCheck(this)
+        
+        checkInitialAuth()
+        ActiveStatsHelper.reportUpdateSuccess(this)
+        UpdateManager.startBackgroundUpdateCheck(this) 
+
         setupScreenLayouts()
         setupUIInteractions()
         setupGroupTab()
         setupViewModel()
         mainViewModel.reloadServerList()
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
+    }
+
+    private fun checkInitialAuth() {
+        if (!AuthManager.isLoggedIn(this)) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val conn = URL("https://vpn-license.rauter505.workers.dev/auth/init").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    if (conn.responseCode == 200) {
+                        val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
+                        if (obj.getBoolean("success")) AuthManager.saveUser(this@MainActivity, obj.getString("id"), obj.getString("name"), obj.getString("password"), "user", "")
+                    }
+                } catch (e: Exception) {}
+            }
+        }
     }
 
     private fun setupScreenLayouts() {
@@ -91,23 +123,58 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         setupToolbar(binding.toolbar, false, "اشور لود")
         val toggle = ActionBarDrawerToggle(this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
         binding.drawerLayout.addDrawerListener(toggle); toggle.syncState(); binding.navView.setNavigationItemSelectedListener(this)
+        
+        binding.layoutTest.setOnClickListener { if (mainViewModel.isRunning.value == true) { setTestState(getString(R.string.connection_test_testing)); mainViewModel.testCurrentServerRealPing() } }
+        
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) binding.drawerLayout.closeDrawer(GravityCompat.START)
+                else {
+                    if (binding.mainScrollView.scrollX != screenWidth * 4) { binding.mainScrollView.smoothScrollTo(screenWidth * 4, 0); bottomNav?.selectedItemId = R.id.nav_home } 
+                    else { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
+                }
+            }
+        })
     }
 
     private fun handleFabAction() {
-        if (UpdateHelper.isUpdateReady && UpdateHelper.readyApkFile != null) return UpdateHelper.showMandatoryUpdateDialog(this, UpdateHelper.readyApkFile!!)
+        if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) return UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!)
         VpnEngineHelper.applyRunningState(this, mainViewModel, true, false)
         if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this) else if (SettingsManager.isVpnMode()) VpnService.prepare(this)?.let { requestVpnPermission.launch(it) } ?: startV2Ray() else startV2Ray()
     }
 
     private fun startV2Ray() { if (MmkvManager.getSelectServer().isNullOrEmpty()) toast(R.string.title_file_chooser) else V2RayServiceManager.startVService(this) }
-    private fun restartV2Ray() { if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this); lifecycleScope.launch { delay(500); startV2Ray() } }
+    
+    fun restartV2Ray() { if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this); lifecycleScope.launch { delay(500); startV2Ray() } }
+
+    fun forceManualSync() {
+        showLoadingDialog()
+        lifecycleScope.launch(Dispatchers.IO) {
+            val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
+            for (guid in guids) {
+                val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
+                if (licenseId.isNotEmpty() && licenseId != "LEGACY") {
+                    val cloudData = CloudflareAPI.checkLiveConfig(licenseId)
+                    if (cloudData.first >= 0L) {
+                        V2rayCrypt.saveActiveCount(this@MainActivity, guid, cloudData.third)
+                        V2rayCrypt.saveExpiryTime(this@MainActivity, guid, cloudData.first)
+                    }
+                }
+            }
+            withContext(Dispatchers.Main) { 
+                mainViewModel.reloadServerList()
+                hideLoadingDialog()
+                toastSuccess("تم تحديث البيانات بنجاح!")
+            }
+        }
+    }
 
     private fun setupViewModel() { mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }; mainViewModel.isRunning.observe(this) { isRunning -> VpnEngineHelper.applyRunningState(this, mainViewModel, false, isRunning) }; mainViewModel.startListenBroadcast(); mainViewModel.initAssets(assets) }
     private fun setupGroupTab() { val groups = mainViewModel.getSubscriptions(this); groupPagerAdapter = GroupPagerAdapter(this, groups); tabMediator?.detach(); tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position -> tab.text = groups.getOrNull(position)?.remarks }.also { it.attach() }; binding.viewPager.adapter = groupPagerAdapter; binding.tabGroup.isVisible = groups.size > 1 }
 
     private fun setTestState(content: String?) { binding.tvTestState.text = content; val tvPing = binding.root.findViewById<TextView>(R.id.tv_green_ping); if (content?.contains("ms", true) == true) tvPing?.text = content else if (content?.contains("Timeout", true) == true) tvPing?.text = "Timeout" else if (content == getString(R.string.connection_connected)) tvPing?.text = "متصل" }
 
-    override fun onResume() { super.onResume(); if (mainViewModel.isRunning.value == true) TrafficMonitorHelper.startTrafficMonitor(this) else TrafficMonitorHelper.updateTrafficDisplay(this); VpnEngineHelper.startLiveUpdates(this, mainViewModel); if (UpdateHelper.isUpdateReady && UpdateHelper.readyApkFile != null) UpdateHelper.showMandatoryUpdateDialog(this, UpdateHelper.readyApkFile!!) }
+    override fun onResume() { super.onResume(); if (mainViewModel.isRunning.value == true) TrafficMonitorHelper.startTrafficMonitor(this) else TrafficMonitorHelper.updateTrafficDisplay(this); VpnEngineHelper.startLiveUpdates(this, mainViewModel); if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) }
     override fun onPause() { super.onPause(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs() }
     override fun onDestroy() { tabMediator?.detach(); VpnEngineHelper.cancelAllJobs(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs(); super.onDestroy() }
 
@@ -115,6 +182,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) { R.id.import_qrcode -> { ImportHelper.showAddBottomSheet(this, mainViewModel, { openLocalFileLauncher.launch(arrayOf("*/*")) }, { openEncryptedFileLauncher.launch(arrayOf("*/*")) }); true } else -> super.onOptionsItemSelected(item) }
     override fun onNavigationItemSelected(item: MenuItem): Boolean { binding.drawerLayout.closeDrawer(GravityCompat.START); return true }
     
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
+    private fun handleIntent(intent: Intent?) { if (intent?.action == Intent.ACTION_VIEW) intent.data?.let { ImportHelper.importEncryptedContentFromUri(this, mainViewModel, it) } }
+
     fun openSubscribersPanel(parentGuid: String) { startActivity(Intent(this, SubscribersActivity::class.java).putExtra("parentGuid", parentGuid)) }
     fun showExtendLicenseDialog(guid: String) { AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
     fun replaceAndSyncConfigFromClipboard(guid: String) { AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
