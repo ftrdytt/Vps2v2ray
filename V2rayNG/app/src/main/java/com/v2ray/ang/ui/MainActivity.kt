@@ -128,7 +128,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             // إضافتهم بالترتيب الصحيح ليتجاوروا أفقياً
             val scrollContainer = settingsWrapper?.parent as? LinearLayout
             if (scrollContainer != null) {
-                // التأكد من أن الترتيب أفقي (وهذا هو الحل السحري لمشكلة التداخل!)
                 scrollContainer.orientation = LinearLayout.HORIZONTAL
                 
                 scrollContainer.addView(updatesWrapper, 1)
@@ -262,7 +261,40 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    private fun setTestState(content: String?) { binding.tvTestState.text = content; val tvPing = binding.root.findViewById<TextView>(R.id.tv_green_ping); if (content?.contains("ms", true) == true) tvPing?.text = content else if (content?.contains("Timeout", true) == true) tvPing?.text = "Timeout" else if (content == getString(R.string.connection_connected)) tvPing?.text = "متصل" }
+    // هنا دالة البنج الجديدة التي تحرك المؤشر الدائري
+    private fun setTestState(content: String?) {
+        binding.tvTestState.text = content
+        val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
+        val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
+        
+        if (content.isNullOrEmpty()) return
+        
+        try {
+            val normalizedContent = content.replace("٠", "0").replace("١", "1").replace("٢", "2").replace("٣", "3").replace("٤", "4").replace("٥", "5").replace("٦", "6").replace("٧", "7").replace("٨", "8").replace("٩", "9")
+            
+            if (normalizedContent.contains("ms", ignoreCase = true) || normalizedContent.contains("م.ث")) {
+                val match = Regex("(\\d+)\\s*(ms|م\\.ث)", RegexOption.IGNORE_CASE).find(normalizedContent)
+                if (match != null) { 
+                    val pingValue = match.groupValues[1].toFloat()
+                    gaugePing?.setPing(pingValue) 
+                    tvGreenPing?.text = "${pingValue.toInt()} ms" 
+                } 
+                else Regex("(\\d+)").find(normalizedContent)?.let { 
+                    gaugePing?.setPing(it.value.toFloat()) 
+                    tvGreenPing?.text = "${it.value} ms" 
+                }
+            } else if (normalizedContent.contains("Timeout", ignoreCase = true) || normalizedContent.contains("Failed", ignoreCase = true) || normalizedContent.contains("فشل", ignoreCase = true)) { 
+                gaugePing?.setPing(500f) 
+                tvGreenPing?.text = "Timeout" 
+            } 
+            else if (normalizedContent == getString(R.string.connection_connected)) { 
+                gaugePing?.setPing(0f)
+                tvGreenPing?.text = "متصل..." 
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
     override fun onResume() { super.onResume(); if (mainViewModel.isRunning.value == true) TrafficMonitorHelper.startTrafficMonitor(this) else TrafficMonitorHelper.updateTrafficDisplay(this); VpnEngineHelper.startLiveUpdates(this, mainViewModel); if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) }
     override fun onPause() { super.onPause(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs() }
