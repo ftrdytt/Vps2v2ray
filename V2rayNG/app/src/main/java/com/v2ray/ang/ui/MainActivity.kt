@@ -3,6 +3,7 @@ package com.v2ray.ang.ui
 import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -21,6 +22,7 @@ import androidx.appcompat.widget.SearchView
 import androidx.cardview.widget.CardView
 import androidx.core.view.GravityCompat
 import androidx.core.view.isVisible
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
@@ -66,6 +68,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onCreate(savedInstanceState: Bundle?) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
+        
         if (AuthManager.hasLoggedOut(this)) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
 
         setContentView(binding.root)
@@ -75,8 +78,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         ActiveStatsHelper.reportUpdateSuccess(this)
         UpdateManager.startBackgroundUpdateCheck(this) 
 
-        setupScreenLayouts()
-        setupUIInteractions()
+        setupScreenLayoutsSafe() // الدالة المحمية لمنع الكراش
+        setupUIInteractionsSafe() // الدالة المحمية
         setupGroupTab()
         setupViewModel()
         mainViewModel.reloadServerList()
@@ -98,7 +101,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    private fun setupScreenLayouts() {
+    // تم إضافة درع الحماية (Try-Catch) هنا لمنع التطبيق من الانهيار
+    private fun setupScreenLayoutsSafe() {
         try {
             screenWidth = resources.displayMetrics.widthPixels
             val settingsWrapper = binding.root.findViewById<View>(R.id.settings_wrapper)
@@ -107,73 +111,86 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val updatesWrapper = FrameLayout(this).apply { id = View.generateViewId(); layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) }
             val profileWrapper = FrameLayout(this).apply { id = View.generateViewId(); layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) }
             
-            val scrollContainer = settingsWrapper?.parent as? LinearLayout
-            scrollContainer?.addView(updatesWrapper, 1) 
-            scrollContainer?.addView(profileWrapper, 2)
+            // استخدام Safe Cast (as? ViewGroup) لمنع خطأ ClassCastException
+            val scrollContainer = settingsWrapper?.parent as? ViewGroup
+            
+            if (scrollContainer != null) {
+                val index1 = if (scrollContainer.childCount >= 1) 1 else scrollContainer.childCount
+                scrollContainer.addView(updatesWrapper, index1)
+                val index2 = if (scrollContainer.childCount >= 2) 2 else scrollContainer.childCount
+                scrollContainer.addView(profileWrapper, index2)
+            }
             
             binding.homeContentContainer.layoutParams.width = screenWidth
             
+            // استخدام commitAllowingStateLoss لمنع الكراش الخاص بالـ Fragments
             supportFragmentManager.beginTransaction()
                 .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
                 .replace(updatesWrapper.id, UpdatesFragment())
                 .replace(profileWrapper.id, ProfileFragment())
-                .commit()
+                .commitAllowingStateLoss()
+                
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    private fun setupUIInteractions() {
-        binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)?.setOnClickListener { handleFabAction() }
-        binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)?.let { it.setOnClickListener { SpeedTestHelper.runSpeedTest(this, mainViewModel.isRunning.value == true) } }
-        binding.root.findViewById<CardView>(R.id.card_traffic_meter)?.setOnClickListener { TrafficMonitorHelper.showTrafficDetailsDialog(this, mainViewModel.isRunning.value == true) }
-        
-        val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
-        binding.mainScrollView.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_UP) {
-                val scrollX = binding.mainScrollView.scrollX
-                val page = if (screenWidth > 0) ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 4) else 0
-                binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(page * screenWidth, 0) }
-                when (page) { 
-                    0 -> bottomNav?.selectedItemId = R.id.nav_settings
-                    1 -> bottomNav?.selectedItemId = R.id.nav_updates
-                    2 -> bottomNav?.selectedItemId = R.id.nav_profile
-                    3 -> bottomNav?.selectedItemId = R.id.nav_servers
-                    4 -> bottomNav?.selectedItemId = R.id.nav_home 
+    // تم إضافة درع الحماية هنا أيضاً
+    private fun setupUIInteractionsSafe() {
+        try {
+            binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)?.setOnClickListener { handleFabAction() }
+            binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)?.let { it.setOnClickListener { SpeedTestHelper.runSpeedTest(this, mainViewModel.isRunning.value == true) } }
+            binding.root.findViewById<CardView>(R.id.card_traffic_meter)?.setOnClickListener { TrafficMonitorHelper.showTrafficDetailsDialog(this, mainViewModel.isRunning.value == true) }
+            
+            val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
+            binding.mainScrollView.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_UP) {
+                    val scrollX = binding.mainScrollView.scrollX
+                    val page = if (screenWidth > 0) ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 4) else 0
+                    binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(page * screenWidth, 0) }
+                    when (page) { 
+                        0 -> bottomNav?.selectedItemId = R.id.nav_settings
+                        1 -> bottomNav?.selectedItemId = R.id.nav_updates
+                        2 -> bottomNav?.selectedItemId = R.id.nav_profile
+                        3 -> bottomNav?.selectedItemId = R.id.nav_servers
+                        4 -> bottomNav?.selectedItemId = R.id.nav_home 
+                    }
+                    return@setOnTouchListener true
                 }
-                return@setOnTouchListener true
+                false
             }
-            false
-        }
 
-        bottomNav?.setOnItemSelectedListener { item -> 
-            when (item.itemId) { 
-                R.id.nav_settings -> binding.mainScrollView.smoothScrollTo(0, 0)
-                R.id.nav_updates -> binding.mainScrollView.smoothScrollTo(screenWidth, 0)
-                R.id.nav_profile -> binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
-                R.id.nav_servers -> binding.mainScrollView.smoothScrollTo(screenWidth * 3, 0)
-                R.id.nav_home -> binding.mainScrollView.smoothScrollTo(screenWidth * 4, 0) 
-            }
-            true 
-        }
-        
-        binding.mainScrollView.post { binding.mainScrollView.scrollTo(screenWidth * 4, 0) }
-        setupToolbar(binding.toolbar, false, "اشور لود")
-        
-        val toggle = ActionBarDrawerToggle(this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
-        binding.drawerLayout.addDrawerListener(toggle); toggle.syncState(); binding.navView.setNavigationItemSelectedListener(this)
-        
-        binding.layoutTest.setOnClickListener { if (mainViewModel.isRunning.value == true) { setTestState(getString(R.string.connection_test_testing)); mainViewModel.testCurrentServerRealPing() } }
-        
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) binding.drawerLayout.closeDrawer(GravityCompat.START)
-                else {
-                    if (binding.mainScrollView.scrollX != screenWidth * 4) { binding.mainScrollView.smoothScrollTo(screenWidth * 4, 0); bottomNav?.selectedItemId = R.id.nav_home } 
-                    else { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
+            bottomNav?.setOnItemSelectedListener { item -> 
+                when (item.itemId) { 
+                    R.id.nav_settings -> binding.mainScrollView.smoothScrollTo(0, 0)
+                    R.id.nav_updates -> binding.mainScrollView.smoothScrollTo(screenWidth, 0)
+                    R.id.nav_profile -> binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
+                    R.id.nav_servers -> binding.mainScrollView.smoothScrollTo(screenWidth * 3, 0)
+                    R.id.nav_home -> binding.mainScrollView.smoothScrollTo(screenWidth * 4, 0) 
                 }
+                true 
             }
-        })
+            
+            binding.mainScrollView.post { binding.mainScrollView.scrollTo(screenWidth * 4, 0) }
+            setupToolbar(binding.toolbar, false, "اشور لود")
+            
+            val toggle = ActionBarDrawerToggle(this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
+            binding.drawerLayout.addDrawerListener(toggle); toggle.syncState(); binding.navView.setNavigationItemSelectedListener(this)
+            
+            binding.layoutTest.setOnClickListener { if (mainViewModel.isRunning.value == true) { setTestState(getString(R.string.connection_test_testing)); mainViewModel.testCurrentServerRealPing() } }
+            
+            onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) binding.drawerLayout.closeDrawer(GravityCompat.START)
+                    else {
+                        if (binding.mainScrollView.scrollX != screenWidth * 4) { binding.mainScrollView.smoothScrollTo(screenWidth * 4, 0); bottomNav?.selectedItemId = R.id.nav_home } 
+                        else { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
+                    }
+                }
+            })
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun handleFabAction() {
