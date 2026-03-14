@@ -3,7 +3,6 @@ package com.v2ray.ang.ui
 import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
-import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -48,6 +47,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.max
 
 class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener, MainAdapterListener {
     private val binding by lazy { ActivityMainBinding.inflate(layoutInflater) }
@@ -78,8 +78,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         ActiveStatsHelper.reportUpdateSuccess(this)
         UpdateManager.startBackgroundUpdateCheck(this) 
 
-        setupScreenLayoutsSafe() // الدالة المحمية لمنع الكراش
-        setupUIInteractionsSafe() // الدالة المحمية
+        // الترتيب السليم لمنع الـ Crash
+        groupPagerAdapter = GroupPagerAdapter(this, emptyList())
+        binding.viewPager.adapter = groupPagerAdapter
+        binding.viewPager.isUserInputEnabled = true
+
+        setupScreenLayoutsSafe()
+        setupUIInteractionsSafe()
         setupGroupTab()
         setupViewModel()
         mainViewModel.reloadServerList()
@@ -101,7 +106,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // تم إضافة درع الحماية (Try-Catch) هنا لمنع التطبيق من الانهيار
     private fun setupScreenLayoutsSafe() {
         try {
             screenWidth = resources.displayMetrics.widthPixels
@@ -111,31 +115,29 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val updatesWrapper = FrameLayout(this).apply { id = View.generateViewId(); layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) }
             val profileWrapper = FrameLayout(this).apply { id = View.generateViewId(); layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) }
             
-            // استخدام Safe Cast (as? ViewGroup) لمنع خطأ ClassCastException
             val scrollContainer = settingsWrapper?.parent as? ViewGroup
             
             if (scrollContainer != null) {
-                val index1 = if (scrollContainer.childCount >= 1) 1 else scrollContainer.childCount
-                scrollContainer.addView(updatesWrapper, index1)
-                val index2 = if (scrollContainer.childCount >= 2) 2 else scrollContainer.childCount
-                scrollContainer.addView(profileWrapper, index2)
+                scrollContainer.addView(updatesWrapper, 1)
+                scrollContainer.addView(profileWrapper, 2)
+                
+                supportFragmentManager.beginTransaction()
+                    .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
+                    .replace(updatesWrapper.id, UpdatesFragment())
+                    .replace(profileWrapper.id, ProfileFragment())
+                    .commitAllowingStateLoss()
+            } else {
+                supportFragmentManager.beginTransaction()
+                    .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
+                    .commitAllowingStateLoss()
             }
             
             binding.homeContentContainer.layoutParams.width = screenWidth
-            
-            // استخدام commitAllowingStateLoss لمنع الكراش الخاص بالـ Fragments
-            supportFragmentManager.beginTransaction()
-                .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
-                .replace(updatesWrapper.id, UpdatesFragment())
-                .replace(profileWrapper.id, ProfileFragment())
-                .commitAllowingStateLoss()
-                
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    // تم إضافة درع الحماية هنا أيضاً
     private fun setupUIInteractionsSafe() {
         try {
             binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)?.setOnClickListener { handleFabAction() }
@@ -227,13 +229,23 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     private fun setupViewModel() { mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }; mainViewModel.isRunning.observe(this) { isRunning -> VpnEngineHelper.applyRunningState(this, mainViewModel, false, isRunning) }; mainViewModel.startListenBroadcast(); mainViewModel.initAssets(assets) }
     
+    // التعديل الأهم لحل الإغلاق المفاجئ:
     private fun setupGroupTab() { 
-        val groups = mainViewModel.getSubscriptions(this)
-        groupPagerAdapter = GroupPagerAdapter(this, groups)
-        tabMediator?.detach()
-        tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position -> tab.text = groups.getOrNull(position)?.remarks }.also { it.attach() }
-        binding.viewPager.adapter = groupPagerAdapter
-        binding.tabGroup.isVisible = groups.size > 1 
+        try {
+            val groups = mainViewModel.getSubscriptions(this)
+            groupPagerAdapter.update(groups) // نستخدم الدالة الأصلية بدلاً من إنشاء محول جديد
+            
+            tabMediator?.detach()
+            tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position -> 
+                val item = groupPagerAdapter.groups.getOrNull(position)
+                tab.text = item?.remarks
+                tab.tag = item?.id
+            }.also { it.attach() }
+            
+            val index = groups.indexOfFirst { it.id == mainViewModel.subscriptionId }
+            binding.viewPager.setCurrentItem(if (index >= 0) index else max(0, groups.size - 1), false)
+            binding.tabGroup.isVisible = groups.size > 1 
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
     private fun setTestState(content: String?) { binding.tvTestState.text = content; val tvPing = binding.root.findViewById<TextView>(R.id.tv_green_ping); if (content?.contains("ms", true) == true) tvPing?.text = content else if (content?.contains("Timeout", true) == true) tvPing?.text = "Timeout" else if (content == getString(R.string.connection_connected)) tvPing?.text = "متصل" }
