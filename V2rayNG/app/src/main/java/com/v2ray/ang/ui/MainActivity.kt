@@ -110,11 +110,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         try {
             screenWidth = resources.displayMetrics.widthPixels
             
-            // 1. الإعدادات
             val settingsWrapper = binding.root.findViewById<View>(R.id.settings_wrapper)
             settingsWrapper?.layoutParams?.width = screenWidth
             
-            // 2. إنشاء حاويات التحديثات والملف الشخصي
             val updatesWrapper = FrameLayout(this).apply { 
                 id = View.generateViewId()
                 layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) 
@@ -125,11 +123,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) 
             }
             
-            // إضافتهم بالترتيب الصحيح ليتجاوروا أفقياً
             val scrollContainer = settingsWrapper?.parent as? LinearLayout
             if (scrollContainer != null) {
                 scrollContainer.orientation = LinearLayout.HORIZONTAL
-                
                 scrollContainer.addView(updatesWrapper, 1)
                 scrollContainer.addView(profileWrapper, 2)
                 
@@ -140,10 +136,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     .commitAllowingStateLoss()
             }
             
-            // 3. قائمة السيرفرات
             binding.homeContentContainer.layoutParams.width = screenWidth
             
-            // 4. الشاشة الرئيسية (عدادات السرعة)
             val greenScreen = binding.root.findViewById<View>(R.id.green_screen_container)
             greenScreen?.layoutParams?.width = screenWidth
             
@@ -193,7 +187,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val toggle = ActionBarDrawerToggle(this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
             binding.drawerLayout.addDrawerListener(toggle); toggle.syncState(); binding.navView.setNavigationItemSelectedListener(this)
             
-            binding.layoutTest.setOnClickListener { if (mainViewModel.isRunning.value == true) { setTestState(getString(R.string.connection_test_testing)); mainViewModel.testCurrentServerRealPing() } }
+            // هنا يكمن سر تفعيل الفحص اليدوي عند الضغط على العدادات
+            binding.layoutTest.setOnClickListener { 
+                if (mainViewModel.isRunning.value == true) { 
+                    setTestState(getString(R.string.connection_test_testing))
+                    mainViewModel.testCurrentServerRealPing() 
+                } else {
+                    toast(R.string.connection_not_connected)
+                }
+            }
             
             onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
@@ -241,7 +243,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    private fun setupViewModel() { mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }; mainViewModel.isRunning.observe(this) { isRunning -> VpnEngineHelper.applyRunningState(this, mainViewModel, false, isRunning) }; mainViewModel.startListenBroadcast(); mainViewModel.initAssets(assets) }
+    private fun setupViewModel() { 
+        mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }
+        mainViewModel.isRunning.observe(this) { isRunning -> VpnEngineHelper.applyRunningState(this, mainViewModel, false, isRunning) }
+        mainViewModel.startListenBroadcast()
+        mainViewModel.initAssets(assets) 
+    }
     
     private fun setupGroupTab() { 
         try {
@@ -261,13 +268,18 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // هنا دالة البنج الجديدة التي تحرك المؤشر الدائري
     private fun setTestState(content: String?) {
-        binding.tvTestState.text = content
+        val tvTestState = binding.root.findViewById<TextView>(R.id.tv_test_state)
         val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
         val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
         
-        if (content.isNullOrEmpty()) return
+        tvTestState?.text = content ?: ""
+        
+        if (content.isNullOrEmpty()) {
+            gaugePing?.setPing(0f)
+            tvGreenPing?.text = "--- ms"
+            return
+        }
         
         try {
             val normalizedContent = content.replace("٠", "0").replace("١", "1").replace("٢", "2").replace("٣", "3").replace("٤", "4").replace("٥", "5").replace("٦", "6").replace("٧", "7").replace("٨", "8").replace("٩", "9")
