@@ -23,6 +23,7 @@ import androidx.core.view.GravityCompat
 import androidx.core.view.isVisible
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
+import com.airbnb.lottie.LottieAnimationView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.navigation.NavigationView
@@ -78,7 +79,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         ActiveStatsHelper.reportUpdateSuccess(this)
         UpdateManager.startBackgroundUpdateCheck(this) 
 
-        // الترتيب السليم لمنع الـ Crash
         groupPagerAdapter = GroupPagerAdapter(this, emptyList())
         binding.viewPager.adapter = groupPagerAdapter
         binding.viewPager.isUserInputEnabled = true
@@ -109,15 +109,28 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun setupScreenLayoutsSafe() {
         try {
             screenWidth = resources.displayMetrics.widthPixels
+            
+            // 1. الإعدادات
             val settingsWrapper = binding.root.findViewById<View>(R.id.settings_wrapper)
             settingsWrapper?.layoutParams?.width = screenWidth
             
-            val updatesWrapper = FrameLayout(this).apply { id = View.generateViewId(); layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) }
-            val profileWrapper = FrameLayout(this).apply { id = View.generateViewId(); layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) }
+            // 2. إنشاء حاويات التحديثات والملف الشخصي
+            val updatesWrapper = FrameLayout(this).apply { 
+                id = View.generateViewId()
+                layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) 
+            }
             
-            val scrollContainer = settingsWrapper?.parent as? ViewGroup
+            val profileWrapper = FrameLayout(this).apply { 
+                id = View.generateViewId()
+                layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) 
+            }
             
+            // إضافتهم بالترتيب الصحيح ليتجاوروا أفقياً
+            val scrollContainer = settingsWrapper?.parent as? LinearLayout
             if (scrollContainer != null) {
+                // التأكد من أن الترتيب أفقي (وهذا هو الحل السحري لمشكلة التداخل!)
+                scrollContainer.orientation = LinearLayout.HORIZONTAL
+                
                 scrollContainer.addView(updatesWrapper, 1)
                 scrollContainer.addView(profileWrapper, 2)
                 
@@ -126,13 +139,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     .replace(updatesWrapper.id, UpdatesFragment())
                     .replace(profileWrapper.id, ProfileFragment())
                     .commitAllowingStateLoss()
-            } else {
-                supportFragmentManager.beginTransaction()
-                    .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
-                    .commitAllowingStateLoss()
             }
             
+            // 3. قائمة السيرفرات
             binding.homeContentContainer.layoutParams.width = screenWidth
+            
+            // 4. الشاشة الرئيسية (عدادات السرعة)
+            val greenScreen = binding.root.findViewById<View>(R.id.green_screen_container)
+            greenScreen?.layoutParams?.width = screenWidth
+            
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -229,11 +244,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     private fun setupViewModel() { mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }; mainViewModel.isRunning.observe(this) { isRunning -> VpnEngineHelper.applyRunningState(this, mainViewModel, false, isRunning) }; mainViewModel.startListenBroadcast(); mainViewModel.initAssets(assets) }
     
-    // التعديل الأهم لحل الإغلاق المفاجئ:
     private fun setupGroupTab() { 
         try {
             val groups = mainViewModel.getSubscriptions(this)
-            groupPagerAdapter.update(groups) // نستخدم الدالة الأصلية بدلاً من إنشاء محول جديد
+            groupPagerAdapter.update(groups)
             
             tabMediator?.detach()
             tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position -> 
