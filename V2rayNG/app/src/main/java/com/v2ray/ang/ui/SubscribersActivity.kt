@@ -67,12 +67,10 @@ class SubscribersActivity : AppCompatActivity() {
         recycler = findViewById(R.id.recycler_subscribers)
         tvEmptyState = findViewById(R.id.tv_empty_state)
         
-        // ربط الـ SwipeRefreshLayout
         swipeRefresh = findViewById(R.id.swipe_refresh)
 
         toolbar.setNavigationOnClickListener { finish() }
 
-        // تفعيل ميزة السحب للتحديث (Pull to Refresh)
         swipeRefresh.setColorSchemeColors(Color.parseColor("#4CAF50"))
         swipeRefresh.setOnRefreshListener {
             syncSubscribersFromCloud(isManualRefresh = true)
@@ -105,7 +103,6 @@ class SubscribersActivity : AppCompatActivity() {
         filterList(etSearch.text.toString())
     }
 
-    // جلب الوقت وعدد النشطين من السحابة (تحديث للمشتركين)
     private fun syncSubscribersFromCloud(isManualRefresh: Boolean) {
         if (isManualRefresh) swipeRefresh.isRefreshing = true
         
@@ -294,8 +291,6 @@ class SubscribersAdapter(
             onEdit: (V2rayCrypt.SubscriberData) -> Unit
         ) {
             tvName.text = item.name
-            
-            // عرض عدد النشطين بجانب كل مشترك
             tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
             
             btnExtend.setOnClickListener { onExtend(item) }
@@ -313,15 +308,21 @@ class SubscribersAdapter(
                         val d = diffMs / 86400000L
                         val h = (diffMs % 86400000L) / 3600000L
                         val m = (diffMs % 3600000L) / 60000L
-                        val s = (diffMs % 60000L) / 1000L
                         
-                        tvExpiry.text = buildString { if (d > 0) append("$d يوم و "); if (h > 0 || d > 0) append("$h ساعة و "); append("$m دقيقة و $s ثانية") }
+                        val timeText = buildString {
+                            if (d > 0) append("$d يوم و ")
+                            if (h > 0 || d > 0) append("$h ساعة و ")
+                            if (m > 0 || (d == 0L && h == 0L)) append("$m دقيقة")
+                            if (this.isEmpty()) append("أقل من دقيقة ⏳")
+                        }
+                        
+                        tvExpiry.text = timeText.trim().removeSuffix("و").trim()
                         tvExpiry.setTextColor(Color.parseColor("#4CAF50"))
                     } else {
                         tvExpiry.text = "منتهي الصلاحية 🛑"
                         tvExpiry.setTextColor(Color.parseColor("#E53935"))
                     }
-                    delay(1000L)
+                    delay(60000L) // التحديث كل دقيقة لتجنب الثواني المزعجة
                 }
             }
         }
