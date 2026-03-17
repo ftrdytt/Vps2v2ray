@@ -91,21 +91,23 @@ class MainRecyclerAdapter(
                 holder.itemMainBinding.tvTestResult.setTextColor(Color.parseColor("#00E676"))
             }
 
-            // 🌟 التعديل السحري الأول: صلاحيات الضغط على عداد النشطين
             val tvActiveCount = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_active_count)
             if (isProtected || isAdmin) {
                 val activeCount = V2rayCrypt.getActiveCount(context, guid)
                 tvActiveCount?.visibility = View.VISIBLE
                 tvActiveCount?.text = "🟢 $activeCount"
                 
+                // 🌟 حل مشكلة القائمة الفارغة وصلاحيات الدخول
                 tvActiveCount?.setOnClickListener {
-                    if (isAdmin) {
-                        // إذا كان الملف لك (أنت الأدمن)، افتح شاشة المتصلين
+                    val userRole = com.v2ray.ang.handler.AuthManager.getRole(context)
+                    if (isAdmin || userRole == "admin") {
+                        val licenseId = V2rayCrypt.getLicenseId(context, guid)
+                        val targetId = if (licenseId.isNotEmpty() && licenseId != "LEGACY") licenseId else guid
+                        
                         val intent = Intent(context, FileActiveUsersActivity::class.java)
-                        intent.putExtra("guid", guid)
+                        intent.putExtra("guid", targetId) // تمرير المعرف الصحيح للسيرفر
                         context.startActivity(intent)
                     } else {
-                        // إذا كان ملف مشفر لدى مستخدم عادي، امنعه من الدخول
                         Toast.makeText(context, "غير مصرح لك برؤية تفاصيل المتصلين", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -126,6 +128,7 @@ class MainRecyclerAdapter(
                         val currentTime = NetworkTime.currentTimeMillis(context)
                         val diffMs = expiryTime - currentTime
                         
+                        // 🌟 إخفاء الثواني والتحديث كل دقيقة
                         if (diffMs > 0L) {
                             val d = diffMs / 86400000L
                             val h = (diffMs % 86400000L) / 3600000L
@@ -141,10 +144,10 @@ class MainRecyclerAdapter(
                             tvExpiry?.text = timeText.trim().removeSuffix("و").trim()
                             tvExpiry?.setTextColor(Color.parseColor("#FF9800")) 
                         } else {
-                            tvExpiry?.text = "منتهي الصلاحية"
+                            tvExpiry?.text = "منتهي الصلاحية 🛑"
                             tvExpiry?.setTextColor(Color.parseColor("#E53935")) 
                         }
-                        delay(60000L)
+                        delay(60000L) // تحديث كل دقيقة (60000 ملي ثانية)
                     }
                 }
             } else {
