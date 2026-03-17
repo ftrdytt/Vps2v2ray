@@ -8,6 +8,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
+import android.util.Base64
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -100,19 +101,16 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         itemTouchHelper = ItemTouchHelper(SimpleItemTouchHelperCallback(adapter, allowSwipe = false))
         itemTouchHelper?.attachToRecyclerView(binding.recyclerView)
 
-        // تفعيل ميزة السحب للتحديث وإيقاف الأنيميشن عند الانتهاء
         binding.swipeRefresh.setColorSchemeColors(Color.parseColor("#4CAF50"))
         binding.swipeRefresh.setOnRefreshListener {
             ownerActivity.forceManualSync()
             binding.swipeRefresh.postDelayed({
                 binding.swipeRefresh.isRefreshing = false
-            }, 1500) // نوقف دائرة التحميل بعد ثانية ونصف
+            }, 1500)
         }
 
         mainViewModel.updateListAction.observe(viewLifecycleOwner) { index ->
-            if (mainViewModel.subscriptionId != subId) {
-                return@observe
-            }
+            if (mainViewModel.subscriptionId != subId) return@observe
             adapter.setData(mainViewModel.serversCache, index)
         }
     }
@@ -147,9 +145,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         container.addView(title)
         
         val divider = View(ownerActivity).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 2).apply {
-                setMargins(40, 0, 40, 20)
-            }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 2).apply { setMargins(40, 0, 40, 20) }
             setBackgroundColor(Color.parseColor("#33FFFFFF"))
         }
         container.addView(divider)
@@ -167,64 +163,27 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                 ownerActivity.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
                 setBackgroundResource(outValue.resourceId)
                 
-                setOnClickListener {
-                    onClick()
-                    bottomSheetDialog.dismiss()
-                }
+                setOnClickListener { onClick(); bottomSheetDialog.dismiss() }
             }
 
-            val icon = ImageView(ownerActivity).apply {
-                setImageResource(iconRes)
-                setColorFilter(Color.parseColor("#FF9800"))
-                layoutParams = LinearLayout.LayoutParams(56, 56)
-            }
+            val icon = ImageView(ownerActivity).apply { setImageResource(iconRes); setColorFilter(Color.parseColor("#FF9800")); layoutParams = LinearLayout.LayoutParams(56, 56) }
+            val textView = TextView(ownerActivity).apply { text = textStr; textSize = 16f; setTextColor(Color.WHITE); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = 40 } }
 
-            val textView = TextView(ownerActivity).apply {
-                text = textStr
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    marginStart = 40
-                }
-            }
-
-            layout.addView(icon)
-            layout.addView(textView)
-            container.addView(layout)
+            layout.addView(icon); layout.addView(textView); container.addView(layout)
         }
 
         if (!isProtected || isAdmin) {
-            createOptionButton("إضافة مشتركين", android.R.drawable.ic_menu_add) {
-                showAddSubscriberDialog(guid, profile)
-            }
-            
-            createOptionButton("تصدير إلى ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) {
-                exportEncryptedFile(guid)
-            }
-            
-            createOptionButton("تصدير إلى الحافظة مشفر", android.R.drawable.ic_lock_idle_lock) {
-                shareEncryptedClipboard(guid)
-            }
+            createOptionButton("إضافة مشتركين", android.R.drawable.ic_menu_add) { showAddSubscriberDialog(guid, profile) }
+            createOptionButton("تصدير إلى ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) { exportEncryptedFile(guid) }
+            createOptionButton("تصدير إلى الحافظة مشفر", android.R.drawable.ic_lock_idle_lock) { shareEncryptedClipboard(guid) }
 
             val isCustom = profile.configType == EConfigType.CUSTOM || profile.configType == EConfigType.POLICYGROUP
+            createOptionButton("نسخ التكوين العادي للحافظة", android.R.drawable.ic_menu_edit) { share2Clipboard(guid) }
             
-            createOptionButton("نسخ التكوين العادي للحافظة", android.R.drawable.ic_menu_edit) {
-                share2Clipboard(guid)
-            }
-            
-            if (!isCustom) {
-                createOptionButton("نسخ التكوين الكامل للحافظة", android.R.drawable.ic_menu_share) {
-                    shareFullContent(guid)
-                }
-            }
-            
-            createOptionButton("حذف التكوين", android.R.drawable.ic_menu_delete) {
-                removeServer(guid, position)
-            }
+            if (!isCustom) { createOptionButton("نسخ التكوين الكامل للحافظة", android.R.drawable.ic_menu_share) { shareFullContent(guid) } }
+            createOptionButton("حذف التكوين", android.R.drawable.ic_menu_delete) { removeServer(guid, position) }
         } else {
-            createOptionButton("حذف التكوين", android.R.drawable.ic_menu_delete) {
-                removeServer(guid, position)
-            }
+            createOptionButton("حذف التكوين", android.R.drawable.ic_menu_delete) { removeServer(guid, position) }
         }
 
         bottomSheetDialog.setContentView(scrollView)
@@ -233,28 +192,12 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
     }
 
     private fun showAddSubscriberDialog(parentGuid: String, profile: ProfileItem) {
-        val layout = LinearLayout(ownerActivity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(50, 40, 50, 40)
-        }
+        val layout = LinearLayout(ownerActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 40, 50, 40) }
 
-        val titleView = TextView(ownerActivity).apply {
-            text = "إضافة مشترك جديد"
-            textSize = 18f
-            setTextColor(Color.parseColor("#FF9800"))
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setPadding(0, 0, 0, 30)
-            gravity = Gravity.CENTER
-        }
+        val titleView = TextView(ownerActivity).apply { text = "إضافة مشترك جديد"; textSize = 18f; setTextColor(Color.parseColor("#FF9800")); setTypeface(null, android.graphics.Typeface.BOLD); setPadding(0, 0, 0, 30); gravity = Gravity.CENTER }
         layout.addView(titleView)
 
-        val nameInput = EditText(ownerActivity).apply {
-            hint = "اسم المشترك (مثال: علي محمد)"
-            inputType = InputType.TYPE_CLASS_TEXT
-            setHintTextColor(Color.GRAY)
-            setTextColor(Color.BLACK)
-            setText("مشترك_" + (1000..9999).random())
-        }
+        val nameInput = EditText(ownerActivity).apply { hint = "اسم المشترك (مثال: علي محمد)"; inputType = InputType.TYPE_CLASS_TEXT; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK); setText("مشترك_" + (1000..9999).random()) }
         layout.addView(nameInput)
 
         val monthsInput = EditText(ownerActivity).apply { hint = "عدد الأشهر (مثال: 1)"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
@@ -266,9 +209,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         val hoursInput = EditText(ownerActivity).apply { hint = "عدد الساعات (مثال: 12)"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
         layout.addView(hoursInput)
 
-        val builder = AlertDialog.Builder(ownerActivity)
-        builder.setView(layout)
-        builder.setPositiveButton("حفظ المشترك") { dialog, _ ->
+        AlertDialog.Builder(ownerActivity).setView(layout).setPositiveButton("حفظ المشترك") { dialog, _ ->
             val subName = nameInput.text.toString().trim()
             val m = monthsInput.text.toString().toLongOrNull() ?: 0L
             val d = daysInput.text.toString().toLongOrNull() ?: 0L
@@ -276,11 +217,9 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
 
             val totalDurationMs = (m * 30L * 24L * 60L * 60L * 1000L) + (d * 24L * 60L * 60L * 1000L) + (h * 60L * 60L * 1000L)
 
-            if (subName.isEmpty()) {
-                ownerActivity.toastError("يجب إدخال اسم المشترك")
-            } else if (totalDurationMs <= 0L) {
-                ownerActivity.toastError("الرجاء إدخال مدة صحيحة")
-            } else {
+            if (subName.isEmpty()) ownerActivity.toastError("يجب إدخال اسم المشترك")
+            else if (totalDurationMs <= 0L) ownerActivity.toastError("الرجاء إدخال مدة صحيحة")
+            else {
                 val expiryTimeMs = NetworkTime.currentTimeMillis(ownerActivity) + totalDurationMs
                 val licenseId = "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16)
                 
@@ -298,42 +237,33 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                                     V2rayCrypt.saveSubscriberLocally(ownerActivity, parentGuid, licenseId, subName, expiryTimeMs)
                                     ownerActivity.toastSuccess("تم إضافة المشترك بنجاح!")
                                     askToShareSubscriberCode(conf, expiryTimeMs, licenseId, subName)
-                                } else {
-                                    ownerActivity.toastError("فشل الاتصال بكلاود فلير.")
-                                }
+                                } else ownerActivity.toastError("فشل الاتصال بكلاود فلير.")
                             }
                         }
                     }
                 }
             }
             dialog.dismiss()
-        }
-        builder.setNegativeButton("إلغاء") { dialog, _ -> dialog.cancel() }
-        builder.show()
+        }.setNegativeButton("إلغاء") { dialog, _ -> dialog.cancel() }.show()
     }
 
     private fun askToShareSubscriberCode(conf: String, expiryTimeMs: Long, licenseId: String, subName: String) {
         val encryptedConf = V2rayCrypt.encrypt(conf, expiryTimeMs, licenseId)
         if (encryptedConf.isNotEmpty()) {
             val options = arrayOf("نسخ الكود إلى الحافظة", "حفظ كملف (.ashor)")
-            AlertDialog.Builder(ownerActivity)
-                .setTitle("مشاركة المشترك ($subName)")
-                .setItems(options) { _, which ->
-                    when (which) {
-                        0 -> {
-                            val clipboard = ownerActivity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText("Encrypted V2ray Config", encryptedConf)
-                            clipboard.setPrimaryClip(clip)
-                            ownerActivity.toastSuccess("تم نسخ الكود وجاهز للإرسال!")
-                        }
-                        1 -> {
-                            pendingEncryptedConfigToSave = encryptedConf
-                            val fileName = "${subName.replace(" ", "_")}.ashor"
-                            saveEncryptedFileLauncher.launch(fileName)
-                        }
+            AlertDialog.Builder(ownerActivity).setTitle("مشاركة المشترك ($subName)").setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        val clipboard = ownerActivity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Encrypted V2ray Config", encryptedConf))
+                        ownerActivity.toastSuccess("تم نسخ الكود وجاهز للإرسال!")
+                    }
+                    1 -> {
+                        pendingEncryptedConfigToSave = encryptedConf
+                        saveEncryptedFileLauncher.launch("${subName.replace(" ", "_")}.ashor")
                     }
                 }
-                .show()
+            }.show()
         }
     }
 
@@ -347,18 +277,14 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         val hoursInput = EditText(ownerActivity).apply { hint = "عدد الساعات"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
         layout.addView(monthsInput); layout.addView(daysInput); layout.addView(hoursInput)
 
-        val builder = AlertDialog.Builder(ownerActivity)
-        builder.setView(layout)
-        builder.setPositiveButton("تأكيد") { dialog, _ ->
+        AlertDialog.Builder(ownerActivity).setView(layout).setPositiveButton("تأكيد") { dialog, _ ->
             val totalDurationMs = ((monthsInput.text.toString().toLongOrNull() ?: 0L) * 30L * 24L * 60L * 60L * 1000L) + ((daysInput.text.toString().toLongOrNull() ?: 0L) * 24L * 60L * 60L * 1000L) + ((hoursInput.text.toString().toLongOrNull() ?: 0L) * 60L * 60L * 1000L)
             if (totalDurationMs > 0L) {
                 val expiryTimeMs = NetworkTime.currentTimeMillis(ownerActivity) + totalDurationMs
                 onExpirySelected(expiryTimeMs)
             } else ownerActivity.toastError("الرجاء إدخال مدة صحيحة")
             dialog.dismiss()
-        }
-        builder.setNegativeButton("إلغاء") { dialog, _ -> dialog.cancel() }
-        builder.show()
+        }.setNegativeButton("إلغاء") { dialog, _ -> dialog.cancel() }.show()
     }
 
     private fun exportEncryptedFile(guid: String) {
@@ -369,22 +295,29 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             if (conf.isNullOrEmpty()) { ownerActivity.toastError(R.string.toast_failure); return }
 
             showCustomExpiryDialog { expiryTime ->
-                val licenseId = "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16)
+                val childLicenseId = "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16)
                 ownerActivity.showLoadingDialog()
                 ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
-                    val uploaded = CloudflareAPI.createOrUpdateSubscriber(licenseId, expiryTime, conf)
+                    val uploaded = CloudflareAPI.createOrUpdateSubscriber(childLicenseId, expiryTime, conf)
                     withContext(Dispatchers.Main) {
                         ownerActivity.hideLoadingDialog()
                         if (uploaded) {
-                            V2rayCrypt.addAdminGuid(ownerActivity, guid)
-                            V2rayCrypt.saveLicenseId(ownerActivity, guid, licenseId)
-                            V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
+                            // حماية وإعطاء هوية للملف الأصلي إذا كان جديداً
+                            if (V2rayCrypt.getLicenseId(ownerActivity, guid).isEmpty()) {
+                                V2rayCrypt.addAdminGuid(ownerActivity, guid)
+                                V2rayCrypt.saveLicenseId(ownerActivity, guid, "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16))
+                                V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
+                            }
                             
-                            val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, licenseId)
+                            val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, childLicenseId)
                             if (encryptedConf.isNotEmpty()) {
                                 pendingEncryptedConfigToSave = encryptedConf
-                                val fileName = "Config_${NetworkTime.currentTimeMillis(ownerActivity)}.ashor"
-                                saveEncryptedFileLauncher.launch(fileName)
+                                val configName = "ملف_مستخرج_${(1000..9999).random()}"
+                                
+                                // 🌟 السطر السحري: ربط الملف المستخرج بالملف الأصلي لكي يظهر بقائمة التمديد
+                                V2rayCrypt.saveSubscriberLocally(ownerActivity, guid, childLicenseId, configName, expiryTime)
+                                
+                                saveEncryptedFileLauncher.launch("$configName.ashor")
                                 mainViewModel.reloadServerList() 
                             } else ownerActivity.toastError(R.string.toast_failure)
                         } else ownerActivity.toastError("فشل الاتصال بكلاود فلير.")
@@ -402,19 +335,26 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
             if (conf.isNullOrEmpty()) { ownerActivity.toastError(R.string.toast_failure); return }
 
             showCustomExpiryDialog { expiryTime ->
-                val licenseId = "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16)
+                val childLicenseId = "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16)
                 ownerActivity.showLoadingDialog()
                 ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
-                    val uploaded = CloudflareAPI.createOrUpdateSubscriber(licenseId, expiryTime, conf)
+                    val uploaded = CloudflareAPI.createOrUpdateSubscriber(childLicenseId, expiryTime, conf)
                     withContext(Dispatchers.Main) {
                         ownerActivity.hideLoadingDialog()
                         if (uploaded) {
-                            V2rayCrypt.addAdminGuid(ownerActivity, guid)
-                            V2rayCrypt.saveLicenseId(ownerActivity, guid, licenseId)
-                            V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
+                            if (V2rayCrypt.getLicenseId(ownerActivity, guid).isEmpty()) {
+                                V2rayCrypt.addAdminGuid(ownerActivity, guid)
+                                V2rayCrypt.saveLicenseId(ownerActivity, guid, "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16))
+                                V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
+                            }
 
-                            val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, licenseId)
+                            val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, childLicenseId)
                             if (encryptedConf.isNotEmpty()) {
+                                val configName = "نسخة_حافظة_${(1000..9999).random()}"
+                                
+                                // 🌟 السطر السحري
+                                V2rayCrypt.saveSubscriberLocally(ownerActivity, guid, childLicenseId, configName, expiryTime)
+
                                 clipboard.setPrimaryClip(ClipData.newPlainText("Encrypted V2ray Config", encryptedConf))
                                 ownerActivity.toast("تم نسخ التكوين المشفر!")
                                 mainViewModel.reloadServerList()
