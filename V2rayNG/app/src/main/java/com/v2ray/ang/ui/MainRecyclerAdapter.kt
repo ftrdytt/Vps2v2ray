@@ -91,6 +91,7 @@ class MainRecyclerAdapter(
                 holder.itemMainBinding.tvTestResult.setTextColor(Color.parseColor("#00E676"))
             }
 
+            // 🌟 التعديل السحري الأول: صلاحيات الضغط على عداد النشطين
             val tvActiveCount = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_active_count)
             if (isProtected || isAdmin) {
                 val activeCount = V2rayCrypt.getActiveCount(context, guid)
@@ -98,13 +99,14 @@ class MainRecyclerAdapter(
                 tvActiveCount?.text = "🟢 $activeCount"
                 
                 tvActiveCount?.setOnClickListener {
-                    val userRole = com.v2ray.ang.handler.AuthManager.getRole(context)
-                    if (userRole == "admin") {
+                    if (isAdmin) {
+                        // إذا كان الملف لك (أنت الأدمن)، افتح شاشة المتصلين
                         val intent = Intent(context, FileActiveUsersActivity::class.java)
                         intent.putExtra("guid", guid)
                         context.startActivity(intent)
                     } else {
-                        Toast.makeText(context, "هذه الميزة للإدارة فقط", Toast.LENGTH_SHORT).show()
+                        // إذا كان ملف مشفر لدى مستخدم عادي، امنعه من الدخول
+                        Toast.makeText(context, "غير مصرح لك برؤية تفاصيل المتصلين", Toast.LENGTH_SHORT).show()
                     }
                 }
             } else {
@@ -142,7 +144,7 @@ class MainRecyclerAdapter(
                             tvExpiry?.text = "منتهي الصلاحية"
                             tvExpiry?.setTextColor(Color.parseColor("#E53935")) 
                         }
-                        delay(60000L) // التحديث أصبح كل دقيقة بدلاً من كل ثانية لتخفيف الضغط
+                        delay(60000L)
                     }
                 }
             } else {
