@@ -91,19 +91,17 @@ class MainRecyclerAdapter(
                 holder.itemMainBinding.tvTestResult.setTextColor(Color.parseColor("#00E676"))
             }
 
-            // --- عرض عداد النشطين وبرمجة النقر عليه ---
             val tvActiveCount = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_active_count)
             if (isProtected || isAdmin) {
                 val activeCount = V2rayCrypt.getActiveCount(context, guid)
                 tvActiveCount?.visibility = View.VISIBLE
                 tvActiveCount?.text = "🟢 $activeCount"
                 
-                // برمجة حدث النقر لفتح شاشة المتصلين (للأدمن فقط)
                 tvActiveCount?.setOnClickListener {
                     val userRole = com.v2ray.ang.handler.AuthManager.getRole(context)
                     if (userRole == "admin") {
                         val intent = Intent(context, FileActiveUsersActivity::class.java)
-                        intent.putExtra("guid", guid) // تمرير ID الملف
+                        intent.putExtra("guid", guid)
                         context.startActivity(intent)
                     } else {
                         Toast.makeText(context, "هذه الميزة للإدارة فقط", Toast.LENGTH_SHORT).show()
@@ -130,21 +128,21 @@ class MainRecyclerAdapter(
                             val d = diffMs / 86400000L
                             val h = (diffMs % 86400000L) / 3600000L
                             val m = (diffMs % 3600000L) / 60000L
-                            val s = (diffMs % 60000L) / 1000L
                             
                             val timeText = buildString {
                                 if (d > 0) append("$d يوم و ")
                                 if (h > 0 || d > 0) append("$h ساعة و ")
-                                append("$m دقيقة و $s ثانية")
+                                if (m > 0 || (d == 0L && h == 0L)) append("$m دقيقة")
+                                if (this.isEmpty()) append("أقل من دقيقة ⏳")
                             }
                             
-                            tvExpiry?.text = timeText
+                            tvExpiry?.text = timeText.trim().removeSuffix("و").trim()
                             tvExpiry?.setTextColor(Color.parseColor("#FF9800")) 
                         } else {
                             tvExpiry?.text = "منتهي الصلاحية"
                             tvExpiry?.setTextColor(Color.parseColor("#E53935")) 
                         }
-                        delay(1000L) 
+                        delay(60000L) // التحديث أصبح كل دقيقة بدلاً من كل ثانية لتخفيف الضغط
                     }
                 }
             } else {
