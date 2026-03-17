@@ -45,6 +45,7 @@ import com.v2ray.ang.handler.*
 import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -65,6 +66,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var screenWidth = 0
     
     private var pingJob: Job? = null
+    private var activePingJob: Job? = null // تمت إضافة حساس المتصلين
     private var vpnStartTime: Long = 0L
     companion object { var lastReportedState: Boolean? = null }
 
@@ -238,6 +240,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         val isNowRunning = isRunning && !isLoading
+        val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
 
         if (lastReportedState != isNowRunning && guid.isNotEmpty()) {
             lastReportedState = isNowRunning
@@ -270,6 +273,31 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F"))
             lottieEngine?.playAnimation()
             TrafficMonitorHelper.startTrafficMonitor(this)
+
+            // 🌟 السطر السحري لتسجيل بيانات المشترك لكي يظهر في القائمة 🌟
+            activePingJob?.cancel()
+            activePingJob = lifecycleScope.launch(Dispatchers.IO) {
+                while (isActive) {
+                    try {
+                        val userId = AuthManager.getId(this@MainActivity)
+                        val name = if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول الهوية"
+                        val pfp = if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else ""
+                        val conn = URL("https://vpn-license.rauter505.workers.dev/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        val payload = JSONObject()
+                            .put("guid", idToTrack) // يستخدم الـ LicenseId للربط الصحيح
+                            .put("deviceId", deviceId)
+                            .put("userId", userId)
+                            .put("name", name)
+                            .put("pfp", pfp)
+                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                        conn.responseCode
+                    } catch (e: Exception) {}
+                    delay(30000) // يرسل إشارة التواجد كل 30 ثانية
+                }
+            }
 
             pingJob?.cancel()
             var lastCloudflareCheck = 0L
@@ -345,6 +373,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         } else {
             vpnStartTime = 0L 
             pingJob?.cancel()
+            activePingJob?.cancel() // إيقاف إرسال التواجد
             TrafficMonitorHelper.stopTrafficMonitor()
             binding.fab.setImageResource(R.drawable.ic_play_24dp)
             binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
@@ -458,7 +487,18 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     override fun onResume() { super.onResume(); if (mainViewModel.isRunning.value == true) TrafficMonitorHelper.startTrafficMonitor(this) else TrafficMonitorHelper.updateTrafficDisplay(this); VpnEngineHelper.startLiveUpdates(this, mainViewModel); if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) }
     override fun onPause() { super.onPause(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs() }
-    override fun onDestroy() { tabMediator?.detach(); VpnEngineHelper.cancelAllJobs(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs(); pingJob?.cancel(); super.onDestroy() }
+    
+    // 🌟 السطر السحري لتصفير العداد عند إغلاق التطبيق نهائياً 🌟
+    override fun onDestroy() { 
+        val guid = MmkvManager.getSelectServer().orEmpty()
+        val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
+        if (lastReportedState == true && idToTrack.isNotEmpty()) {
+            lastReportedState = false
+            @Suppress("OPT_IN_USAGE")
+            GlobalScope.launch(Dispatchers.IO) { CloudflareAPI.sendActiveState(idToTrack, false) }
+        }
+        tabMediator?.detach(); VpnEngineHelper.cancelAllJobs(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs(); pingJob?.cancel(); activePingJob?.cancel(); super.onDestroy() 
+    }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean { menuInflater.inflate(R.menu.menu_main, menu); (menu.findItem(R.id.search_view)?.actionView as? SearchView)?.apply { setOnQueryTextListener(object : SearchView.OnQueryTextListener { override fun onQueryTextSubmit(q: String?) = false; override fun onQueryTextChange(t: String?) = false.also { mainViewModel.filterConfig(t.orEmpty()) } }) }; return super.onCreateOptionsMenu(menu) }
     override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) { R.id.import_qrcode -> { ImportHelper.showAddBottomSheet(this, mainViewModel, { openLocalFileLauncher.launch(arrayOf("*/*")) }, { openEncryptedFileLauncher.launch(arrayOf("*/*")) }); true } else -> super.onOptionsItemSelected(item) }
