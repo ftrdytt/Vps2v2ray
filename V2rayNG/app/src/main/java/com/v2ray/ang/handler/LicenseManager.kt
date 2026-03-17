@@ -118,7 +118,7 @@ object V2rayCrypt {
                 put("licenseId", subscriberLicenseId)
                 put("name", subscriberName)
                 put("expiry", expiryTimeMs)
-                put("activeCount", activeCount) // تمت الإضافة هنا
+                put("activeCount", activeCount) 
             }
             jsonArray.put(newSub)
             prefs.edit().putString(key, jsonArray.toString()).apply()
@@ -137,7 +137,7 @@ object V2rayCrypt {
                     licenseId = obj.getString("licenseId"),
                     name = obj.getString("name"),
                     expiryTimeMs = obj.getLong("expiry"),
-                    activeCount = obj.optInt("activeCount", 0) // تمت الإضافة هنا
+                    activeCount = obj.optInt("activeCount", 0)
                 ))
             }
         } catch (e: Exception) { }
@@ -153,7 +153,7 @@ object V2rayCrypt {
                 val obj = jsonArray.getJSONObject(i)
                 if (obj.getString("licenseId") == subscriberLicenseId) {
                     obj.put("expiry", newExpiry)
-                    obj.put("activeCount", activeCount) // تمت الإضافة هنا
+                    obj.put("activeCount", activeCount)
                     break
                 }
             }
@@ -212,7 +212,6 @@ object NetworkTime {
 
 object CloudflareAPI {
     private const val BASE_URL = "https://vpn-license.rauter505.workers.dev"
-    private const val ADMIN_KEY = "ashor_vip_admin_999"
 
     suspend fun checkLiveConfig(licenseId: String): Triple<Long, String?, Int> {
         return withContext(Dispatchers.IO) {
@@ -222,6 +221,7 @@ object CloudflareAPI {
                 if (conn.responseCode == 200) {
                     val response = BufferedReader(InputStreamReader(conn.inputStream)).readText()
                     val obj = JSONObject(response)
+                    // التعديل هنا لعدم حذف الوقت إذا لم يكن موجوداً، نتركه كما هو
                     val expiry = if (obj.has("expiryTime")) obj.getLong("expiryTime") else -1L
                     val configData = if (obj.has("configData") && !obj.isNull("configData")) obj.getString("configData") else null
                     val activeCount = if (obj.has("activeCount")) obj.getInt("activeCount") else 0
@@ -242,30 +242,42 @@ object CloudflareAPI {
         }
     }
 
+    // هنا دمجنا المسارات لتتوافق مع التحديث الذي أجريناه للتو على Cloudflare Worker
     suspend fun updateExpiry(licenseId: String, newExpiryMs: Long): Boolean {
-        return createOrUpdateSubscriber(licenseId, newExpiryMs, null)
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("$BASE_URL/admin/update_expiry")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                val payload = JSONObject().apply {
+                    put("licenseId", licenseId)
+                    put("expiryTime", newExpiryMs)
+                }
+                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                return@withContext conn.responseCode == 200
+            } catch (e: Exception) { false }
+        }
     }
 
     suspend fun createOrUpdateSubscriber(licenseId: String, newExpiryMs: Long, configData: String?): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val conn = URL("$BASE_URL/update").openConnection() as HttpURLConnection
+                val url = URL("$BASE_URL/admin/upload_config")
+                val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Admin-Key", ADMIN_KEY)
                 conn.doOutput = true
-
                 val payload = JSONObject().apply {
-                    put("guid", licenseId)
+                    put("licenseId", licenseId)
                     put("expiryTime", newExpiryMs)
-                    if (configData != null) put("configData", Base64.encodeToString(configData.toByteArray(), Base64.NO_WRAP))
+                    if (configData != null) {
+                        put("configData", Base64.encodeToString(configData.toByteArray(), Base64.NO_WRAP))
+                    }
                 }
-
-                conn.outputStream.use { os ->
-                    val input = payload.toString().toByteArray(Charsets.UTF_8)
-                    os.write(input, 0, input.size)
-                }
-                conn.responseCode == 200
+                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                return@withContext conn.responseCode == 200
             } catch (e: Exception) { false }
         }
     }
