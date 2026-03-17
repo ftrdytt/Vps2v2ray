@@ -3,6 +3,7 @@ package com.v2ray.ang.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.text.Editable
@@ -292,6 +293,13 @@ class SubscribersAdapter(
         ) {
             tvName.text = item.name
             tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
+            
+            // 🌟 التعديل السحري الثاني: تفعيل الضغط على عداد النشطين داخل لوحة المشتركين
+            tvActiveCount.setOnClickListener {
+                val intent = Intent(itemView.context, FileActiveUsersActivity::class.java)
+                intent.putExtra("guid", item.licenseId)
+                itemView.context.startActivity(intent)
+            }
             
             btnExtend.setOnClickListener { onExtend(item) }
             btnShare.setOnClickListener { onShare(item) }
