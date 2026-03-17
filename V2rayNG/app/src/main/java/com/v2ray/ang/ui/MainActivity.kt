@@ -66,7 +66,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var screenWidth = 0
     
     private var pingJob: Job? = null
-    private var activePingJob: Job? = null // تمت إضافة حساس المتصلين
+    private var activePingJob: Job? = null // 🌟 حساس إرسال بيانات المتصل
     private var vpnStartTime: Long = 0L
     companion object { var lastReportedState: Boolean? = null }
 
@@ -246,9 +246,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lastReportedState = isNowRunning
             lifecycleScope.launch(Dispatchers.IO) {
                 CloudflareAPI.sendActiveState(idToTrack, isNowRunning)
+                
+                // 🌟 الحل الجذري الثاني: خصم العداد فوراً في الواجهة عند الإطفاء
+                delay(800) // ننتظر قليلاً لكي يسجل كلاود فلير الإشارة
                 val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
-                V2rayCrypt.saveActiveCount(this@MainActivity, guid, updatedData.third)
-                withContext(Dispatchers.Main) { mainViewModel.reloadServerList() }
+                var finalCount = updatedData.third
+                
+                // الخدعة: إذا طفيت الـ VPN، نخصم واحد من العداد المحلي حتى لو لم يُحدث كلاود فلير بياناته بعد
+                if (!isNowRunning && finalCount > 0) {
+                    val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
+                    if (finalCount >= prevCount) {
+                        finalCount = max(0, prevCount - 1)
+                    }
+                }
+                
+                V2rayCrypt.saveActiveCount(this@MainActivity, guid, finalCount)
+                withContext(Dispatchers.Main) { mainViewModel.reloadServerList() } // تحديث الشاشة فوراً!
             }
         }
 
@@ -274,7 +287,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.playAnimation()
             TrafficMonitorHelper.startTrafficMonitor(this)
 
-            // 🌟 السطر السحري لتسجيل بيانات المشترك لكي يظهر في القائمة 🌟
+            // 🌟 إرسال بيانات المتصل (Ping) كل 30 ثانية لكي تظهر القائمة
             activePingJob?.cancel()
             activePingJob = lifecycleScope.launch(Dispatchers.IO) {
                 while (isActive) {
@@ -287,7 +300,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         conn.setRequestProperty("Content-Type", "application/json")
                         conn.doOutput = true
                         val payload = JSONObject()
-                            .put("guid", idToTrack) // يستخدم الـ LicenseId للربط الصحيح
+                            .put("guid", idToTrack) 
                             .put("deviceId", deviceId)
                             .put("userId", userId)
                             .put("name", name)
@@ -295,7 +308,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                         conn.responseCode
                     } catch (e: Exception) {}
-                    delay(30000) // يرسل إشارة التواجد كل 30 ثانية
+                    delay(30000) 
                 }
             }
 
@@ -311,7 +324,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 vpnStartTime = 0L
                                 AlertDialog.Builder(this@MainActivity).setTitle("تحديث إجباري 🛑").setMessage("انتهت مهلة السماح (ساعة واحدة). تم إيقاف التطبيق لوجود تحديث أمني هام.").setPositiveButton("موافق", null).setCancelable(false).show()
                             }
-                            break // تم استبدال cancel بـ break
+                            break 
                         }
                         
                         mainViewModel.testCurrentServerRealPing()
@@ -350,7 +363,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                                     }
                                                 }
                                             }
-                                            break // تم استبدال cancel بـ break
+                                            break 
                                         }
                                     }
                                 }
@@ -364,7 +377,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 AlertDialog.Builder(this@MainActivity).setTitle("انتهى الاشتراك").setMessage("تم إيقاف المحرك لانتهاء مدة الصلاحية.").setPositiveButton("حسناً", null).setCancelable(false).show()
                                 mainViewModel.reloadServerList()
                             }
-                            break // تم استبدال cancel بـ break
+                            break 
                         }
                     } catch (e: Exception) {}
                     delay(3000) 
@@ -488,7 +501,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onResume() { super.onResume(); if (mainViewModel.isRunning.value == true) TrafficMonitorHelper.startTrafficMonitor(this) else TrafficMonitorHelper.updateTrafficDisplay(this); VpnEngineHelper.startLiveUpdates(this, mainViewModel); if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) }
     override fun onPause() { super.onPause(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs() }
     
-    // 🌟 السطر السحري لتصفير العداد عند إغلاق التطبيق نهائياً 🌟
+    // 🌟 السطر السحري لتصفير العداد عند إغلاق التطبيق نهائياً
     override fun onDestroy() { 
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
