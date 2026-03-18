@@ -13,10 +13,9 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.button.MaterialButton
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -29,11 +28,12 @@ class FileActiveUsersActivity : AppCompatActivity() {
     private lateinit var mainContainer: LinearLayout
     private lateinit var tvLoading: TextView
     private lateinit var etSearch: EditText
+    private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private var currentGuid: String = ""
     
-    // لتخزين البيانات محلياً وإجراء البحث عليها بدون الحاجة للاتصال بالسيرفر في كل مرة
     private var allLoadedUsers = JSONArray() 
     private var currentTabType = "ACTIVE"
+    private var liveUpdateJob: Job? = null // 🌟 حساس التحديث كل 5 ثوانٍ
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,12 +74,9 @@ class FileActiveUsersActivity : AppCompatActivity() {
                 setMargins(20, 20, 20, 20)
             }
             
-            // إضافة مستمع للبحث عند كتابة أي حرف
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    filterUsers(s.toString())
-                }
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { filterUsers(s.toString()) }
                 override fun afterTextChanged(s: Editable?) {}
             })
         }
@@ -113,10 +110,20 @@ class FileActiveUsersActivity : AppCompatActivity() {
             setTextColor(Color.parseColor("#FF9800"))
             gravity = Gravity.CENTER
             setPadding(20, 40, 20, 20)
+            visibility = View.GONE // إخفاء مبدئي
+        }
+
+        // 🌟 إضافة ميزة السحب للتحديث (Pull to Refresh) 🌟
+        swipeRefreshLayout = SwipeRefreshLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            setColorSchemeColors(Color.parseColor("#4CAF50"))
+            setOnRefreshListener {
+                loadUsers(currentTabType, isSilent = false)
+            }
         }
 
         val scrollView = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
 
         mainContainer = LinearLayout(this).apply {
@@ -125,65 +132,112 @@ class FileActiveUsersActivity : AppCompatActivity() {
         }
 
         scrollView.addView(mainContainer)
+        swipeRefreshLayout.addView(scrollView) // دمج السكرول مع السحب للتحديث
+
         root.addView(header)
-        root.addView(etSearch) // إضافة حقل البحث تحت العنوان
+        root.addView(etSearch)
         root.addView(tabsLayout)
         root.addView(tvLoading)
-        root.addView(scrollView)
+        root.addView(swipeRefreshLayout)
 
         setContentView(root)
 
         // برمجة الأزرار
         btnActiveTab.setOnClickListener {
             currentTabType = "ACTIVE"
-            etSearch.text.clear() // مسح البحث عند التبديل
+            etSearch.text.clear()
             btnActiveTab.setBackgroundColor(Color.parseColor("#4CAF50"))
             btnActiveTab.setTextColor(Color.WHITE)
             btnBannedTab.setBackgroundColor(Color.parseColor("#252529"))
             btnBannedTab.setTextColor(Color.GRAY)
-            loadUsers("ACTIVE")
+            loadUsers("ACTIVE", isSilent = false)
         }
 
         btnBannedTab.setOnClickListener {
             currentTabType = "BANNED"
-            etSearch.text.clear() // مسح البحث عند التبديل
+            etSearch.text.clear()
             btnBannedTab.setBackgroundColor(Color.parseColor("#F44336"))
             btnBannedTab.setTextColor(Color.WHITE)
             btnActiveTab.setBackgroundColor(Color.parseColor("#252529"))
             btnActiveTab.setTextColor(Color.GRAY)
-            loadUsers("BANNED")
+            loadUsers("BANNED", isSilent = false)
         }
 
-        // تحميل النشطين افتراضياً
-        loadUsers("ACTIVE")
+        // تحميل أولي للنشطين
+        loadUsers("ACTIVE", isSilent = false)
     }
 
-    private fun loadUsers(type: String) {
-        tvLoading.visibility = View.VISIBLE
-        mainContainer.removeAllViews()
-        allLoadedUsers = JSONArray() // تصفير المصفوفة القديمة
+    // 🌟 تشغيل الفحص اللحظي كل 5 ثوانٍ طالما الشاشة مفتوحة فقط 🌟
+    override fun onResume() {
+        super.onResume()
+        startLiveUpdates()
+    }
+
+    // 🌟 إيقاف الفحص تماماً لتوفير البيانات عند الخروج من الشاشة 🌟
+    override fun onPause() {
+        super.onPause()
+        liveUpdateJob?.cancel()
+    }
+
+    private fun startLiveUpdates() {
+        liveUpdateJob?.cancel()
+        liveUpdateJob = lifecycleScope.launch(Dispatchers.Main) {
+            while (isActive) {
+                delay(5000L) // انتظار 5 ثوانٍ
+                loadUsers(currentTabType, isSilent = true) // تحديث صامت بدون إزعاج
+            }
+        }
+    }
+
+    // 🌟 دالة الجلب المعدلة لحل مشكلة التعليق 🌟
+    private fun loadUsers(type: String, isSilent: Boolean) {
+        if (!isSilent && allLoadedUsers.length() == 0) {
+            tvLoading.visibility = View.VISIBLE
+            tvLoading.text = "جاري تحميل البيانات..."
+            mainContainer.removeAllViews()
+        }
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val endpoint = if (type == "ACTIVE") "get_active" else "get_banned"
                 val url = URL("https://vpn-license.rauter505.workers.dev/file/$endpoint?guid=$currentGuid")
                 val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                    allLoadedUsers = JSONArray(resp) // حفظ البيانات للبحث المستقبلي
+                    val newArray = JSONArray(resp)
 
                     withContext(Dispatchers.Main) {
+                        allLoadedUsers = newArray
                         tvLoading.visibility = View.GONE
-                        renderUsersList(allLoadedUsers, type)
+                        swipeRefreshLayout.isRefreshing = false
+                        
+                        // تحديث القائمة فقط إذا كان حقل البحث فارغاً، وإلا نعيد تطبيق البحث
+                        val currentSearch = etSearch.text.toString()
+                        if (currentSearch.isEmpty()) {
+                            mainContainer.removeAllViews()
+                            renderUsersList(allLoadedUsers, type)
+                        } else {
+                            filterUsers(currentSearch)
+                        }
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        if (!isSilent) tvLoading.text = "لا توجد بيانات (خطأ في السيرفر)"
+                        swipeRefreshLayout.isRefreshing = false
                     }
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { tvLoading.text = "خطأ في الاتصال بالإنترنت" }
+                withContext(Dispatchers.Main) { 
+                    if (!isSilent) tvLoading.text = "تأكد من اتصالك بالإنترنت" 
+                    swipeRefreshLayout.isRefreshing = false
+                }
             }
         }
     }
 
-    // دالة جديدة لتصفية النتائج بناءً على البحث
     private fun filterUsers(query: String) {
         val filteredArray = JSONArray()
         val lowerQuery = query.lowercase()
@@ -203,7 +257,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         renderUsersList(filteredArray, currentTabType)
     }
 
-    // دالة جديدة مسؤولة عن رسم بطاقات المستخدمين
     private fun renderUsersList(array: JSONArray, type: String) {
         if (array.length() == 0) {
             mainContainer.addView(TextView(this@FileActiveUsersActivity).apply { 
@@ -265,7 +318,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             infoLayout.addView(TextView(this).apply { text = "غير مسجل (حساب جهاز)"; setTextColor(Color.GRAY); textSize = 12f })
         }
         
-        // عرض جزء من Device ID للتأكد
         infoLayout.addView(TextView(this).apply { text = "Device: ${deviceId.takeLast(6)}"; setTextColor(Color.parseColor("#4CAF50")); textSize = 10f })
 
         val btnAction = MaterialButton(this).apply {
@@ -328,7 +380,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
                         if (conn.responseCode == 200) {
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(this@FileActiveUsersActivity, "تم التنفيذ بنجاح!", Toast.LENGTH_SHORT).show()
-                                loadUsers(currentTab) // إعادة تحميل القائمة
+                                loadUsers(currentTab, isSilent = false) // إعادة تحميل القائمة
                             }
                         }
                     } catch (e: Exception) {}
