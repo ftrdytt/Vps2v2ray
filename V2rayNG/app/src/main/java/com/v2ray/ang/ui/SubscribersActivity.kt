@@ -104,18 +104,28 @@ class SubscribersActivity : AppCompatActivity() {
         filterList(etSearch.text.toString())
     }
 
+    // 🌟 التعديل الجذري: تحديث جميع المشتركين بطلب واحد فقط! (سرعة صاروخية) 🌟
     private fun syncSubscribersFromCloud(isManualRefresh: Boolean) {
         if (isManualRefresh) swipeRefresh.isRefreshing = true
         
         lifecycleScope.launch(Dispatchers.IO) {
+            if (allSubscribers.isEmpty()) {
+                withContext(Dispatchers.Main) { swipeRefresh.isRefreshing = false }
+                return@launch
+            }
+
+            val licenseIds = allSubscribers.map { it.licenseId }
+            val batchResults = CloudflareAPI.checkAllLiveConfigs(licenseIds)
             var isChanged = false
+
             allSubscribers.forEach { sub ->
-                val cloudData = CloudflareAPI.checkLiveConfig(sub.licenseId)
-                if (cloudData.first >= 0L) {
-                    V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, cloudData.first, cloudData.third)
+                val data = batchResults[sub.licenseId]
+                if (data != null && data.first >= 0L) {
+                    V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, data.first, data.second)
                     isChanged = true
                 }
             }
+
             withContext(Dispatchers.Main) { 
                 if (isChanged) loadSubscribers()
                 swipeRefresh.isRefreshing = false
@@ -294,7 +304,6 @@ class SubscribersAdapter(
             tvName.text = item.name
             tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
             
-            // 🌟 التعديل السحري الثاني: تفعيل الضغط على عداد النشطين داخل لوحة المشتركين
             tvActiveCount.setOnClickListener {
                 val intent = Intent(itemView.context, FileActiveUsersActivity::class.java)
                 intent.putExtra("guid", item.licenseId)
