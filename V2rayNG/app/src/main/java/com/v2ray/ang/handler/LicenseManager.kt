@@ -10,6 +10,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 import kotlin.math.max
@@ -216,7 +217,8 @@ object CloudflareAPI {
     suspend fun checkLiveConfig(licenseId: String): Triple<Long, String?, Int> {
         return withContext(Dispatchers.IO) {
             try {
-                val conn = URL("$BASE_URL/check?guid=$licenseId").openConnection() as HttpURLConnection
+                val encodedId = URLEncoder.encode(licenseId, "UTF-8")
+                val conn = URL("$BASE_URL/check?guid=$encodedId").openConnection() as HttpURLConnection
                 conn.connectTimeout = 5000; conn.readTimeout = 5000
                 if (conn.responseCode == 200) {
                     val response = BufferedReader(InputStreamReader(conn.inputStream)).readText()
@@ -230,7 +232,7 @@ object CloudflareAPI {
         }
     }
 
-    // 🌟 الميزة الجديدة: فحص كل الملفات دفعة واحدة لتسريع التطبيق وتخفيف الطلبات 🌟
+    // 🌟 الميزة الجديدة مع حماية من الأخطاء والرموز: فحص كل الملفات دفعة واحدة 🌟
     suspend fun checkAllLiveConfigs(guids: List<String>): Map<String, Pair<Long, Int>> {
         return withContext(Dispatchers.IO) {
             try {
