@@ -279,11 +279,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
         
-        // 🌟 إضافة تعريف المتغير المفقود هنا لحل مشكلة البناء 🌟
         val isNowRunning = isRunning && !isLoading
 
         if (lastReportedState != isNowRunning && guid.isNotEmpty()) {
-            // يتم تنفيذ هذا القسم عند (التشغيل) فقط، لأن الإغلاق تمت معالجته في handleFabAction
             if (isNowRunning && !isLoading) {
                 lastReportedState = true
                 lifecycleScope.launch(Dispatchers.IO) {
@@ -345,7 +343,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
 
-            // 🌟 تم مسح أكواد الطلبات السحابية المزعجة من الخلفية 🌟
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
                 delay(1000)
@@ -417,8 +414,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             for (guid in guids) {
                 val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { l -> l.isNotEmpty() && l != "LEGACY" } ?: guid
                 val data = batchResults[licenseId]
-                if (data != null && data.first >= 0L) {
-                    V2rayCrypt.saveExpiryTime(this@MainActivity, guid, data.first)
+                if (data != null) {
+                    // 🌟 تم الإصلاح: نحفظ العداد دائماً، ونحفظ الوقت فقط إذا كان موجوداً 🌟
+                    if (data.first >= 0L) {
+                        V2rayCrypt.saveExpiryTime(this@MainActivity, guid, data.first)
+                    }
                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, data.second)
                 }
             }
