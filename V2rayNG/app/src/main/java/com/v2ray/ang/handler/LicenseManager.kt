@@ -2,7 +2,6 @@ package com.v2ray.ang.handler
 
 import android.content.Context
 import android.util.Base64
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -254,7 +253,10 @@ object CloudflareAPI {
                     while (keys.hasNext()) {
                         val key = keys.next()
                         val dataObj = obj.getJSONObject(key)
-                        resultMap[key] = Pair(dataObj.getLong("expiryTime"), dataObj.getInt("activeCount"))
+                        // 🌟 التعديل السحري لتخطي خطأ الـ Null الذي كان يوقف العداد 🌟
+                        val expiryTime = if (dataObj.has("expiryTime") && !dataObj.isNull("expiryTime")) dataObj.getLong("expiryTime") else -1L
+                        val activeCount = dataObj.optInt("activeCount", 0)
+                        resultMap[key] = Pair(expiryTime, activeCount)
                     }
                     return@withContext resultMap
                 }
