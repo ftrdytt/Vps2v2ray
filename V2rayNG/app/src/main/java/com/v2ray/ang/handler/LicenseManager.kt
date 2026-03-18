@@ -221,7 +221,6 @@ object CloudflareAPI {
                 if (conn.responseCode == 200) {
                     val response = BufferedReader(InputStreamReader(conn.inputStream)).readText()
                     val obj = JSONObject(response)
-                    // التعديل هنا لعدم حذف الوقت إذا لم يكن موجوداً، نتركه كما هو
                     val expiry = if (obj.has("expiryTime")) obj.getLong("expiryTime") else -1L
                     val configData = if (obj.has("configData") && !obj.isNull("configData")) obj.getString("configData") else null
                     val activeCount = if (obj.has("activeCount")) obj.getInt("activeCount") else 0
@@ -231,18 +230,26 @@ object CloudflareAPI {
         }
     }
 
-    suspend fun sendActiveState(id: String, isConnecting: Boolean) {
+    // 🌟 التحديث الجديد: إرسال حالة الإغلاق مع رقم الجهاز لمسحه فوراً من كلاود فلير
+    suspend fun sendActiveState(id: String, deviceId: String, isDisconnect: Boolean) {
         withContext(Dispatchers.IO) {
             try {
-                val action = if (isConnecting) "up" else "down"
-                val conn = URL("$BASE_URL/active?id=$id&action=$action").openConnection() as HttpURLConnection
-                conn.connectTimeout = 3000; conn.readTimeout = 3000
+                val url = URL("$BASE_URL/file/ping")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                val payload = JSONObject().apply {
+                    put("guid", id)
+                    put("deviceId", deviceId)
+                    put("disconnect", isDisconnect)
+                }
+                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                 conn.responseCode 
             } catch (e: Exception) {}
         }
     }
 
-    // هنا دمجنا المسارات لتتوافق مع التحديث الذي أجريناه للتو على Cloudflare Worker
     suspend fun updateExpiry(licenseId: String, newExpiryMs: Long): Boolean {
         return withContext(Dispatchers.IO) {
             try {
