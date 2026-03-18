@@ -66,7 +66,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var screenWidth = 0
     
     private var pingJob: Job? = null
-    private var activePingJob: Job? = null // 🌟 حساس إرسال بيانات المتصل
+    private var activePingJob: Job? = null // 🌟 حساس التواجد
     private var vpnStartTime: Long = 0L
     companion object { var lastReportedState: Boolean? = null }
 
@@ -245,23 +245,20 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         if (lastReportedState != isNowRunning && guid.isNotEmpty()) {
             lastReportedState = isNowRunning
             lifecycleScope.launch(Dispatchers.IO) {
-                CloudflareAPI.sendActiveState(idToTrack, isNowRunning)
+                // 🌟 إرسال إشارة دقيقة (دخول أو خروج) للسيرفر
+                CloudflareAPI.sendActiveState(idToTrack, deviceId, !isNowRunning)
                 
-                // 🌟 الحل الجذري الثاني: خصم العداد فوراً في الواجهة عند الإطفاء
-                delay(800) // ننتظر قليلاً لكي يسجل كلاود فلير الإشارة
-                val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
-                var finalCount = updatedData.third
-                
-                // الخدعة: إذا طفيت الـ VPN، نخصم واحد من العداد المحلي حتى لو لم يُحدث كلاود فلير بياناته بعد
-                if (!isNowRunning && finalCount > 0) {
+                // 🌟 الحل الجذري للسرعة: تصفير العداد محلياً في نفس اللحظة بدون انتظار
+                if (!isNowRunning) {
                     val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
-                    if (finalCount >= prevCount) {
-                        finalCount = max(0, prevCount - 1)
-                    }
+                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
+                    withContext(Dispatchers.Main) { mainViewModel.reloadServerList() } 
                 }
                 
-                V2rayCrypt.saveActiveCount(this@MainActivity, guid, finalCount)
-                withContext(Dispatchers.Main) { mainViewModel.reloadServerList() } // تحديث الشاشة فوراً!
+                delay(1000) // نعطي كلاود فلير ثانية لتحديث البيانات
+                val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
+                V2rayCrypt.saveActiveCount(this@MainActivity, guid, updatedData.third)
+                withContext(Dispatchers.Main) { mainViewModel.reloadServerList() }
             }
         }
 
@@ -287,7 +284,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.playAnimation()
             TrafficMonitorHelper.startTrafficMonitor(this)
 
-            // 🌟 إرسال بيانات المتصل (Ping) كل 30 ثانية لكي تظهر القائمة
+            // 🌟 إرسال بيانات المتصل (اسم، صورة) لكي تظهر القائمة كل 30 ثانية
             activePingJob?.cancel()
             activePingJob = lifecycleScope.launch(Dispatchers.IO) {
                 while (isActive) {
@@ -300,11 +297,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         conn.setRequestProperty("Content-Type", "application/json")
                         conn.doOutput = true
                         val payload = JSONObject()
-                            .put("guid", idToTrack) 
+                            .put("guid", idToTrack)
                             .put("deviceId", deviceId)
                             .put("userId", userId)
                             .put("name", name)
                             .put("pfp", pfp)
+                            .put("disconnect", false) // نؤكد أنه متصل
                         conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                         conn.responseCode
                     } catch (e: Exception) {}
@@ -324,7 +322,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 vpnStartTime = 0L
                                 AlertDialog.Builder(this@MainActivity).setTitle("تحديث إجباري 🛑").setMessage("انتهت مهلة السماح (ساعة واحدة). تم إيقاف التطبيق لوجود تحديث أمني هام.").setPositiveButton("موافق", null).setCancelable(false).show()
                             }
-                            break 
+                            break
                         }
                         
                         mainViewModel.testCurrentServerRealPing()
@@ -386,7 +384,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         } else {
             vpnStartTime = 0L 
             pingJob?.cancel()
-            activePingJob?.cancel() // إيقاف إرسال التواجد
+            activePingJob?.cancel() 
             TrafficMonitorHelper.stopTrafficMonitor()
             binding.fab.setImageResource(R.drawable.ic_play_24dp)
             binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
@@ -501,14 +499,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onResume() { super.onResume(); if (mainViewModel.isRunning.value == true) TrafficMonitorHelper.startTrafficMonitor(this) else TrafficMonitorHelper.updateTrafficDisplay(this); VpnEngineHelper.startLiveUpdates(this, mainViewModel); if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) }
     override fun onPause() { super.onPause(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs() }
     
-    // 🌟 السطر السحري لتصفير العداد عند إغلاق التطبيق نهائياً
+    // 🌟 تصفير فوري وتأكيد مسح المتصل عند الخروج النهائي 🌟
     override fun onDestroy() { 
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         if (lastReportedState == true && idToTrack.isNotEmpty()) {
             lastReportedState = false
+            val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
             @Suppress("OPT_IN_USAGE")
-            GlobalScope.launch(Dispatchers.IO) { CloudflareAPI.sendActiveState(idToTrack, false) }
+            GlobalScope.launch(Dispatchers.IO) { CloudflareAPI.sendActiveState(idToTrack, deviceId, true) }
         }
         tabMediator?.detach(); VpnEngineHelper.cancelAllJobs(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs(); pingJob?.cancel(); activePingJob?.cancel(); super.onDestroy() 
     }
