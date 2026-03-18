@@ -278,6 +278,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+        
+        // 🌟 إضافة تعريف المتغير المفقود هنا لحل مشكلة البناء 🌟
+        val isNowRunning = isRunning && !isLoading
 
         if (lastReportedState != isNowRunning && guid.isNotEmpty()) {
             // يتم تنفيذ هذا القسم عند (التشغيل) فقط، لأن الإغلاق تمت معالجته في handleFabAction
