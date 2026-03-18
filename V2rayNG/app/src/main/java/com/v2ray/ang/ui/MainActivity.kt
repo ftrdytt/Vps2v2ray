@@ -415,7 +415,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { l -> l.isNotEmpty() && l != "LEGACY" } ?: guid
                 val data = batchResults[licenseId]
                 if (data != null) {
-                    // 🌟 تم الإصلاح: نحفظ العداد دائماً، ونحفظ الوقت فقط إذا كان موجوداً 🌟
+                    // 🌟 تم الإصلاح الجذري: نحفظ العداد دائماً، ونحفظ الوقت فقط إذا كان السيرفر مدفوعاً (الوقت >= 0) 🌟
                     if (data.first >= 0L) {
                         V2rayCrypt.saveExpiryTime(this@MainActivity, guid, data.first)
                     }
