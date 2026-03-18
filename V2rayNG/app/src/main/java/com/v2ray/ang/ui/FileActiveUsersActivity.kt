@@ -22,6 +22,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 class FileActiveUsersActivity : AppCompatActivity() {
 
@@ -33,7 +34,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
     
     private var allLoadedUsers = JSONArray() 
     private var currentTabType = "ACTIVE"
-    private var liveUpdateJob: Job? = null // 🌟 حساس التحديث كل 5 ثوانٍ
+    private var liveUpdateJob: Job? = null 
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,13 +46,11 @@ class FileActiveUsersActivity : AppCompatActivity() {
             return
         }
 
-        // بناء الواجهة برمجياً
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#0A0A0C"))
         }
 
-        // شريط العنوان
         val header = TextView(this).apply {
             text = "إدارة المتصلين بالملف"
             setTextColor(Color.WHITE)
@@ -62,7 +61,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#1A1A1D"))
         }
 
-        // حقل البحث الذكي 🔍
         etSearch = EditText(this).apply {
             hint = "🔍 ابحث بالاسم، ID، أو Device ID..."
             setHintTextColor(Color.parseColor("#80FFFFFF"))
@@ -81,7 +79,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             })
         }
 
-        // تبويبات (النشطين - المحظورين)
         val tabsLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(10, 10, 10, 10) 
@@ -110,10 +107,9 @@ class FileActiveUsersActivity : AppCompatActivity() {
             setTextColor(Color.parseColor("#FF9800"))
             gravity = Gravity.CENTER
             setPadding(20, 40, 20, 20)
-            visibility = View.GONE // إخفاء مبدئي
+            visibility = View.GONE
         }
 
-        // 🌟 إضافة ميزة السحب للتحديث (Pull to Refresh) 🌟
         swipeRefreshLayout = SwipeRefreshLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             setColorSchemeColors(Color.parseColor("#4CAF50"))
@@ -132,7 +128,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
         }
 
         scrollView.addView(mainContainer)
-        swipeRefreshLayout.addView(scrollView) // دمج السكرول مع السحب للتحديث
+        swipeRefreshLayout.addView(scrollView)
 
         root.addView(header)
         root.addView(etSearch)
@@ -142,7 +138,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
         setContentView(root)
 
-        // برمجة الأزرار
         btnActiveTab.setOnClickListener {
             currentTabType = "ACTIVE"
             etSearch.text.clear()
@@ -163,17 +158,14 @@ class FileActiveUsersActivity : AppCompatActivity() {
             loadUsers("BANNED", isSilent = false)
         }
 
-        // تحميل أولي للنشطين
         loadUsers("ACTIVE", isSilent = false)
     }
 
-    // 🌟 تشغيل الفحص اللحظي كل 5 ثوانٍ طالما الشاشة مفتوحة فقط 🌟
     override fun onResume() {
         super.onResume()
         startLiveUpdates()
     }
 
-    // 🌟 إيقاف الفحص تماماً لتوفير البيانات عند الخروج من الشاشة 🌟
     override fun onPause() {
         super.onPause()
         liveUpdateJob?.cancel()
@@ -183,13 +175,12 @@ class FileActiveUsersActivity : AppCompatActivity() {
         liveUpdateJob?.cancel()
         liveUpdateJob = lifecycleScope.launch(Dispatchers.Main) {
             while (isActive) {
-                delay(5000L) // انتظار 5 ثوانٍ
-                loadUsers(currentTabType, isSilent = true) // تحديث صامت بدون إزعاج
+                delay(5000L)
+                loadUsers(currentTabType, isSilent = true)
             }
         }
     }
 
-    // 🌟 دالة الجلب المعدلة لحل مشكلة التعليق 🌟
     private fun loadUsers(type: String, isSilent: Boolean) {
         if (!isSilent && allLoadedUsers.length() == 0) {
             tvLoading.visibility = View.VISIBLE
@@ -200,21 +191,21 @@ class FileActiveUsersActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val endpoint = if (type == "ACTIVE") "get_active" else "get_banned"
-                val url = URL("https://vpn-license.rauter505.workers.dev/file/$endpoint?guid=$currentGuid")
+                val encodedGuid = URLEncoder.encode(currentGuid, "UTF-8")
+                val url = URL("https://vpn-license.rauter505.workers.dev/file/$endpoint?guid=$encodedGuid")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 5000
                 conn.readTimeout = 5000
                 
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                    val newArray = JSONArray(resp)
+                    val newArray = if (resp.isNotBlank()) JSONArray(resp) else JSONArray()
 
                     withContext(Dispatchers.Main) {
                         allLoadedUsers = newArray
                         tvLoading.visibility = View.GONE
                         swipeRefreshLayout.isRefreshing = false
                         
-                        // تحديث القائمة فقط إذا كان حقل البحث فارغاً، وإلا نعيد تطبيق البحث
                         val currentSearch = etSearch.text.toString()
                         if (currentSearch.isEmpty()) {
                             mainContainer.removeAllViews()
@@ -225,7 +216,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
                     }
                 } else {
                     withContext(Dispatchers.Main) {
-                        if (!isSilent) tvLoading.text = "لا توجد بيانات (خطأ في السيرفر)"
+                        if (!isSilent) tvLoading.text = "لا توجد بيانات (خطأ في السيرفر ${conn.responseCode})"
                         swipeRefreshLayout.isRefreshing = false
                     }
                 }
@@ -380,7 +371,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
                         if (conn.responseCode == 200) {
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(this@FileActiveUsersActivity, "تم التنفيذ بنجاح!", Toast.LENGTH_SHORT).show()
-                                loadUsers(currentTab, isSilent = false) // إعادة تحميل القائمة
+                                loadUsers(currentTab, isSilent = false) 
                             }
                         }
                     } catch (e: Exception) {}
