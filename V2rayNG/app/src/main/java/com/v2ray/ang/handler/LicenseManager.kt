@@ -230,7 +230,37 @@ object CloudflareAPI {
         }
     }
 
-    // 🌟 التحديث الجديد: إرسال حالة الإغلاق مع رقم الجهاز لمسحه فوراً من كلاود فلير
+    // 🌟 الميزة الجديدة: فحص كل الملفات دفعة واحدة لتسريع التطبيق وتخفيف الطلبات 🌟
+    suspend fun checkAllLiveConfigs(guids: List<String>): Map<String, Pair<Long, Int>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("$BASE_URL/files/check_all")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                val payload = JSONObject().apply {
+                    put("guids", org.json.JSONArray(guids))
+                }
+                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                
+                if (conn.responseCode == 200) {
+                    val response = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                    val obj = JSONObject(response)
+                    val resultMap = mutableMapOf<String, Pair<Long, Int>>()
+                    val keys = obj.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val dataObj = obj.getJSONObject(key)
+                        resultMap[key] = Pair(dataObj.getLong("expiryTime"), dataObj.getInt("activeCount"))
+                    }
+                    return@withContext resultMap
+                }
+                emptyMap()
+            } catch (e: Exception) { emptyMap() }
+        }
+    }
+
     suspend fun sendActiveState(id: String, deviceId: String, isDisconnect: Boolean) {
         withContext(Dispatchers.IO) {
             try {
