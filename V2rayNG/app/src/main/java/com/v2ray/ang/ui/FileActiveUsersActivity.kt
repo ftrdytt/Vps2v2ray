@@ -34,7 +34,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
     
     private var allLoadedUsers = JSONArray() 
     private var currentTabType = "ACTIVE"
-    private var liveUpdateJob: Job? = null 
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -157,28 +156,12 @@ class FileActiveUsersActivity : AppCompatActivity() {
             btnActiveTab.setTextColor(Color.GRAY)
             loadUsers("BANNED", isSilent = false)
         }
-
-        loadUsers("ACTIVE", isSilent = false)
     }
 
     override fun onResume() {
         super.onResume()
-        startLiveUpdates()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        liveUpdateJob?.cancel()
-    }
-
-    private fun startLiveUpdates() {
-        liveUpdateJob?.cancel()
-        liveUpdateJob = lifecycleScope.launch(Dispatchers.Main) {
-            while (isActive) {
-                delay(5000L)
-                loadUsers(currentTabType, isSilent = true)
-            }
-        }
+        // 🌟 نجلب البيانات مرة واحدة فقط عند فتح الشاشة لتجنب إرهاق السيرفر 🌟
+        loadUsers(currentTabType, isSilent = false)
     }
 
     private fun loadUsers(type: String, isSilent: Boolean) {
@@ -216,13 +199,13 @@ class FileActiveUsersActivity : AppCompatActivity() {
                     }
                 } else {
                     withContext(Dispatchers.Main) {
-                        if (!isSilent) tvLoading.text = "لا توجد بيانات (خطأ في السيرفر ${conn.responseCode})"
+                        if (!isSilent) tvLoading.text = "لا توجد بيانات (أو السيرفر مشغول، اسحب للتحديث)"
                         swipeRefreshLayout.isRefreshing = false
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { 
-                    if (!isSilent) tvLoading.text = "تأكد من اتصالك بالإنترنت" 
+                    if (!isSilent) tvLoading.text = "تأكد من اتصالك بالإنترنت، ثم اسحب للتحديث" 
                     swipeRefreshLayout.isRefreshing = false
                 }
             }
@@ -373,8 +356,18 @@ class FileActiveUsersActivity : AppCompatActivity() {
                                 Toast.makeText(this@FileActiveUsersActivity, "تم التنفيذ بنجاح!", Toast.LENGTH_SHORT).show()
                                 loadUsers(currentTab, isSilent = false) 
                             }
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(this@FileActiveUsersActivity, "فشل التنفيذ، حاول مرة أخرى", Toast.LENGTH_SHORT).show()
+                                tvLoading.visibility = View.GONE
+                            }
                         }
-                    } catch (e: Exception) {}
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@FileActiveUsersActivity, "خطأ في الاتصال", Toast.LENGTH_SHORT).show()
+                            tvLoading.visibility = View.GONE
+                        }
+                    }
                 }
             }
             .setNegativeButton("إلغاء", null)
