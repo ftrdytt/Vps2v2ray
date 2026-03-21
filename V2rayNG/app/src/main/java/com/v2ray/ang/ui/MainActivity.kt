@@ -66,7 +66,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var screenWidth = 0
     
     private var pingJob: Job? = null
-    private var activePingJob: Job? = null // 🌟 حساس التواجد (نبض النشطين)
+    private var activePingJob: Job? = null
     private var vpnStartTime: Long = 0L
     companion object { var lastReportedState: Boolean? = null }
 
@@ -230,12 +230,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
         
         if (mainViewModel.isRunning.value == true) {
-            // 🌟 الخدعة السحرية: إرسال النبض قبل إطفاء الـ VPN لضمان وجود الإنترنت 🌟
             val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
             val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
             
             binding.fab.setImageResource(R.drawable.ic_fab_check)
-            btnGreenConnect?.text = "جاري قطع الاتصال..." // إشعار المستخدم
+            btnGreenConnect?.text = "جاري قطع الاتصال..."
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
             lottieEngine?.playAnimation()
 
@@ -245,20 +244,18 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
                 
                 if (idToTrack.isNotEmpty()) {
-                    // إرسال إشارة الإغلاق (Disconnect) والسيرفر لا يزال يعمل!
                     CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
                     lastReportedState = false
                     
-                    // تصفير العداد محلياً للسرعة
                     val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
                 }
                 
-                delay(1200) // انتظار بسيط جداً لضمان وصول الطلب للسيرفر
+                delay(1200) 
                 
                 withContext(Dispatchers.Main) {
                     mainViewModel.reloadServerList()
-                    V2RayServiceManager.stopVService(this@MainActivity) // الآن نطفئ المحرك بأمان تام
+                    V2RayServiceManager.stopVService(this@MainActivity) 
                 }
             }
         } else {
@@ -316,7 +313,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.playAnimation()
             TrafficMonitorHelper.startTrafficMonitor(this)
 
-            // 🌟 إرسال النبض كل 3 ساعات فقط!
             activePingJob?.cancel()
             activePingJob = lifecycleScope.launch(Dispatchers.IO) {
                 while (isActive) {
@@ -339,7 +335,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         conn.responseCode
                     } catch (e: Exception) {}
                     
-                    delay(10800000L) // 🌟 3 ساعات (10,800,000 ملي ثانية) 🌟
+                    delay(10800000L) 
                 }
             }
 
@@ -359,18 +355,30 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         
                         mainViewModel.testCurrentServerRealPing()
 
-                        // فحص وقت الانتهاء المحفوظ محلياً فقط لقطع الاتصال إذا لزم الأمر
+                        // 🌟 التعديل السحري: اكتشاف انتهاء الوقت وإرسال طلب القطع للسيرفر 🌟
                         val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
                         if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
+                            withContext(Dispatchers.IO) {
+                                // 1. إرسال إشارة الإغلاق والسيرفر متصل!
+                                if (idToTrack.isNotEmpty()) {
+                                    CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
+                                    val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
+                                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
+                                    lastReportedState = false
+                                }
+                                delay(1000) // انتظار ثانية لضمان الوصول
+                            }
+                            
+                            // 2. إطفاء التطبيق بأمان
                             withContext(Dispatchers.Main) {
                                 V2RayServiceManager.stopVService(this@MainActivity)
-                                AlertDialog.Builder(this@MainActivity).setTitle("انتهى الاشتراك").setMessage("تم إيقاف المحرك لانتهاء مدة الصلاحية.").setPositiveButton("حسناً", null).setCancelable(false).show()
+                                AlertDialog.Builder(this@MainActivity).setTitle("انتهى الاشتراك").setMessage("تم إيقاف المحرك لانتهاء مدة الصلاحية أو إيقافه من قبل الإدارة.").setPositiveButton("حسناً", null).setCancelable(false).show()
                                 mainViewModel.reloadServerList()
                             }
                             break 
                         }
                     } catch (e: Exception) {}
-                    delay(5000) // هذا تأخير بسيط لفحص البنق الداخلي فقط، ولا يستهلك أي بيانات إنترنت إطلاقاً
+                    delay(5000) 
                 }
             }
         } else {
@@ -401,21 +409,18 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     
     fun restartV2Ray() { if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this); lifecycleScope.launch { delay(500); startV2Ray() } }
 
-    // 🌟 الميزة الجديدة: التحديث السريع لكل الملفات مرة واحدة عند فتح الشاشة
     fun forceManualSync() {
         showLoadingDialog()
         lifecycleScope.launch(Dispatchers.IO) {
             val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
             val licenseIds = guids.map { V2rayCrypt.getLicenseId(this@MainActivity, it).takeIf { l -> l.isNotEmpty() && l != "LEGACY" } ?: it }
             
-            // نرسل طلب واحد فقط لجلب بيانات (كل الملفات)
             val batchResults = CloudflareAPI.checkAllLiveConfigs(licenseIds)
             
             for (guid in guids) {
                 val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { l -> l.isNotEmpty() && l != "LEGACY" } ?: guid
                 val data = batchResults[licenseId]
                 if (data != null) {
-                    // 🌟 تم الإصلاح الجذري: نحفظ العداد دائماً، ونحفظ الوقت فقط إذا كان السيرفر مدفوعاً (الوقت >= 0) 🌟
                     if (data.first >= 0L) {
                         V2rayCrypt.saveExpiryTime(this@MainActivity, guid, data.first)
                     }
@@ -506,7 +511,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     override fun onPause() { super.onPause(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs() }
     
-    // 🌟 تأكيد الإغلاق عند الإيقاف الإجباري للشاشة 🌟
     override fun onDestroy() { 
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
