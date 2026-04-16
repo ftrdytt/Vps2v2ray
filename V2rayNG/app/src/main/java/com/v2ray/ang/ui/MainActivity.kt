@@ -282,7 +282,26 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             if (isNowRunning && !isLoading) {
                 lastReportedState = true
                 lifecycleScope.launch(Dispatchers.IO) {
-                    CloudflareAPI.sendActiveState(idToTrack, deviceId, false)
+                    // 🌟 التعديل السحري: إرسال كل بياناتك (اسم، صورة، ID) لكلاود فلير بمجرد الاتصال 🌟
+                    try {
+                        val userId = AuthManager.getId(this@MainActivity)
+                        val name = if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول الهوية"
+                        val pfp = if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else ""
+                        val conn = URL("https://vpn-license.rauter505.workers.dev/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        val payload = JSONObject()
+                            .put("guid", idToTrack)
+                            .put("deviceId", deviceId)
+                            .put("userId", userId)
+                            .put("name", name)
+                            .put("pfp", pfp)
+                            .put("disconnect", false)
+                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                        conn.responseCode
+                    } catch (e: Exception) {}
+                    
                     delay(1000) 
                     val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, updatedData.third)
@@ -531,7 +550,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun showExtendLicenseDialog(guid: String) { AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
     fun replaceAndSyncConfigFromClipboard(guid: String) { AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
 
-    // 🌟 التعديل السحري الجذري: إرسال الـ Ping أولاً، ثم التبديل 🌟
     override fun onSelectServer(guid: String) { 
         val oldGuid = MmkvManager.getSelectServer().orEmpty()
         if (oldGuid == guid) return
@@ -543,7 +561,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             toast("جاري التبديل...")
             lifecycleScope.launch(Dispatchers.IO) {
                 
-                // 1. إرسال إشارة الإغلاق للسيرفر القديم (بينما الإنترنت لا يزال متصلاً)
                 if (idToTrack.isNotEmpty()) {
                     CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
                     val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, oldGuid)
@@ -551,18 +568,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     lastReportedState = false
                 }
                 
-                delay(1000) // انتظار ثانية لضمان وصول رسالة القطع للسيرفر
+                delay(1000) 
                 
-                // 2. إيقاف المحرك، والتبديل للملف الجديد
                 withContext(Dispatchers.Main) {
                     V2RayServiceManager.stopVService(this@MainActivity)
                     MmkvManager.setSelectServer(guid)
                     groupPagerAdapter.notifyDataSetChanged()
                 }
                 
-                delay(500) // انتظار نصف ثانية للراحة
+                delay(500) 
                 
-                // 3. إعادة تشغيل الـ VPN على الملف الجديد
                 withContext(Dispatchers.Main) {
                     if (SettingsManager.isVpnMode()) { 
                         val intent = VpnService.prepare(this@MainActivity)
