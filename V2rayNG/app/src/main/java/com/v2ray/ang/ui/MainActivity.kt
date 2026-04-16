@@ -531,7 +531,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun showExtendLicenseDialog(guid: String) { AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
     fun replaceAndSyncConfigFromClipboard(guid: String) { AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
 
-    // 🌟 التعديل السحري: إطفاء السيرفر القديم وإبلاغ كلاود فلير قبل تشغيل الجديد 🌟
+    // 🌟 التعديل السحري للتبديل بين الملفات السريع بدون "مستخدم شبح" 🌟
     override fun onSelectServer(guid: String) { 
         val oldGuid = MmkvManager.getSelectServer().orEmpty()
         if (oldGuid == guid) return
@@ -540,32 +540,34 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val idToTrack = V2rayCrypt.getLicenseId(this, oldGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: oldGuid
             val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
             
-            toast("جاري التبديل للملف الجديد...")
-            lifecycleScope.launch(Dispatchers.IO) {
-                // إرسال إغلاق للملف القديم لكلاود فلير
-                if (idToTrack.isNotEmpty()) {
-                    CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
-                    val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, oldGuid)
-                    V2rayCrypt.saveActiveCount(this@MainActivity, oldGuid, max(0, prevCount - 1))
-                    lastReportedState = false
-                }
+            toast("جاري التبديل...")
+            lifecycleScope.launch(Dispatchers.Main) {
                 
-                withContext(Dispatchers.Main) {
-                    V2RayServiceManager.stopVService(this@MainActivity)
-                    MmkvManager.setSelectServer(guid)
-                    groupPagerAdapter.notifyDataSetChanged()
-                }
+                // 1. إيقاف الـ VPN فوراً
+                V2RayServiceManager.stopVService(this@MainActivity)
+                MmkvManager.setSelectServer(guid)
+                groupPagerAdapter.notifyDataSetChanged()
                 
-                delay(1000) // انتظار 1 ثانية لضمان إطفاء المحرك القديم بالكامل
-                
-                withContext(Dispatchers.Main) {
-                    if (SettingsManager.isVpnMode()) { 
-                        val intent = VpnService.prepare(this@MainActivity)
-                        if (intent == null) V2RayServiceManager.startVService(this@MainActivity) 
-                        else requestVpnPermission.launch(intent) 
-                    } else {
-                        V2RayServiceManager.startVService(this@MainActivity)
+                // 2. إرسال طلب الخروج للسيرفر القديم في الخلفية
+                GlobalScope.launch(Dispatchers.IO) {
+                    if (idToTrack.isNotEmpty()) {
+                        CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
+                        val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, oldGuid)
+                        V2rayCrypt.saveActiveCount(this@MainActivity, oldGuid, max(0, prevCount - 1))
+                        lastReportedState = false
                     }
+                }
+                
+                // 3. انتظار قصير جداً للسماح للـ VPN بالانطفاء فعلياً
+                delay(800)
+                
+                // 4. تشغيل الملف الجديد
+                if (SettingsManager.isVpnMode()) { 
+                    val intent = VpnService.prepare(this@MainActivity)
+                    if (intent == null) V2RayServiceManager.startVService(this@MainActivity) 
+                    else requestVpnPermission.launch(intent) 
+                } else {
+                    V2RayServiceManager.startVService(this@MainActivity)
                 }
             }
         } else {
