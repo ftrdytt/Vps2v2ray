@@ -355,21 +355,18 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         
                         mainViewModel.testCurrentServerRealPing()
 
-                        // 🌟 التعديل السحري: اكتشاف انتهاء الوقت وإرسال طلب القطع للسيرفر 🌟
                         val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
                         if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
                             withContext(Dispatchers.IO) {
-                                // 1. إرسال إشارة الإغلاق والسيرفر متصل!
                                 if (idToTrack.isNotEmpty()) {
                                     CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
                                     val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
                                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
                                     lastReportedState = false
                                 }
-                                delay(1000) // انتظار ثانية لضمان الوصول
+                                delay(1000) 
                             }
                             
-                            // 2. إطفاء التطبيق بأمان
                             withContext(Dispatchers.Main) {
                                 V2RayServiceManager.stopVService(this@MainActivity)
                                 AlertDialog.Builder(this@MainActivity).setTitle("انتهى الاشتراك").setMessage("تم إيقاف المحرك لانتهاء مدة الصلاحية أو إيقافه من قبل الإدارة.").setPositiveButton("حسناً", null).setCancelable(false).show()
@@ -534,7 +531,50 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun showExtendLicenseDialog(guid: String) { AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
     fun replaceAndSyncConfigFromClipboard(guid: String) { AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
 
-    override fun onSelectServer(guid: String) { MmkvManager.setSelectServer(guid); toast(R.string.toast_success); groupPagerAdapter.notifyDataSetChanged() }
+    // 🌟 التعديل السحري: إطفاء السيرفر القديم وإبلاغ كلاود فلير قبل تشغيل الجديد 🌟
+    override fun onSelectServer(guid: String) { 
+        val oldGuid = MmkvManager.getSelectServer().orEmpty()
+        if (oldGuid == guid) return
+
+        if (mainViewModel.isRunning.value == true) {
+            val idToTrack = V2rayCrypt.getLicenseId(this, oldGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: oldGuid
+            val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+            
+            toast("جاري التبديل للملف الجديد...")
+            lifecycleScope.launch(Dispatchers.IO) {
+                // إرسال إغلاق للملف القديم لكلاود فلير
+                if (idToTrack.isNotEmpty()) {
+                    CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
+                    val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, oldGuid)
+                    V2rayCrypt.saveActiveCount(this@MainActivity, oldGuid, max(0, prevCount - 1))
+                    lastReportedState = false
+                }
+                
+                withContext(Dispatchers.Main) {
+                    V2RayServiceManager.stopVService(this@MainActivity)
+                    MmkvManager.setSelectServer(guid)
+                    groupPagerAdapter.notifyDataSetChanged()
+                }
+                
+                delay(1000) // انتظار 1 ثانية لضمان إطفاء المحرك القديم بالكامل
+                
+                withContext(Dispatchers.Main) {
+                    if (SettingsManager.isVpnMode()) { 
+                        val intent = VpnService.prepare(this@MainActivity)
+                        if (intent == null) V2RayServiceManager.startVService(this@MainActivity) 
+                        else requestVpnPermission.launch(intent) 
+                    } else {
+                        V2RayServiceManager.startVService(this@MainActivity)
+                    }
+                }
+            }
+        } else {
+            MmkvManager.setSelectServer(guid)
+            toast(R.string.toast_success)
+            groupPagerAdapter.notifyDataSetChanged()
+        }
+    }
+    
     override fun onEdit(guid: String, pos: Int, p: ProfileItem) { if (!V2rayCrypt.isProtected(this, guid) || V2rayCrypt.isAdmin(this, guid)) startActivity(Intent(this, ServerActivity::class.java).putExtra("guid", guid)) else toast("هذا السيرفر محمي") }
     override fun onRemove(guid: String, pos: Int) { AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm).setPositiveButton(android.R.string.ok) { _, _ -> mainViewModel.removeServer(guid) }.setNegativeButton(android.R.string.cancel, null).show() }
     override fun onShare(guid: String, p: ProfileItem, pos: Int, isMore: Boolean) {} override fun onEdit(guid: String, pos: Int) {} override fun onShare(url: String) {} override fun onRefreshData() {}
