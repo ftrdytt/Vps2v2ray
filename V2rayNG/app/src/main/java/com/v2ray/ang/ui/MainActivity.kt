@@ -282,26 +282,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             if (isNowRunning && !isLoading) {
                 lastReportedState = true
                 lifecycleScope.launch(Dispatchers.IO) {
-                    // 🌟 التعديل السحري: إرسال كل بياناتك (اسم، صورة، ID) لكلاود فلير بمجرد الاتصال 🌟
-                    try {
-                        val userId = AuthManager.getId(this@MainActivity)
-                        val name = if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول الهوية"
-                        val pfp = if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else ""
-                        val conn = URL("https://vpn-license.rauter505.workers.dev/file/ping").openConnection() as HttpURLConnection
-                        conn.requestMethod = "POST"
-                        conn.setRequestProperty("Content-Type", "application/json")
-                        conn.doOutput = true
-                        val payload = JSONObject()
-                            .put("guid", idToTrack)
-                            .put("deviceId", deviceId)
-                            .put("userId", userId)
-                            .put("name", name)
-                            .put("pfp", pfp)
-                            .put("disconnect", false)
-                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
-                        conn.responseCode
-                    } catch (e: Exception) {}
-                    
+                    CloudflareAPI.sendActiveState(idToTrack, deviceId, false)
                     delay(1000) 
                     val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, updatedData.third)
@@ -374,18 +355,21 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         
                         mainViewModel.testCurrentServerRealPing()
 
+                        // 🌟 التعديل السحري: اكتشاف انتهاء الوقت وإرسال طلب القطع للسيرفر 🌟
                         val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
                         if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
                             withContext(Dispatchers.IO) {
+                                // 1. إرسال إشارة الإغلاق والسيرفر متصل!
                                 if (idToTrack.isNotEmpty()) {
                                     CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
                                     val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
                                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
                                     lastReportedState = false
                                 }
-                                delay(1000) 
+                                delay(1000) // انتظار ثانية لضمان الوصول
                             }
                             
+                            // 2. إطفاء التطبيق بأمان
                             withContext(Dispatchers.Main) {
                                 V2RayServiceManager.stopVService(this@MainActivity)
                                 AlertDialog.Builder(this@MainActivity).setTitle("انتهى الاشتراك").setMessage("تم إيقاف المحرك لانتهاء مدة الصلاحية أو إيقافه من قبل الإدارة.").setPositiveButton("حسناً", null).setCancelable(false).show()
@@ -550,51 +534,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun showExtendLicenseDialog(guid: String) { AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
     fun replaceAndSyncConfigFromClipboard(guid: String) { AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
 
-    override fun onSelectServer(guid: String) { 
-        val oldGuid = MmkvManager.getSelectServer().orEmpty()
-        if (oldGuid == guid) return
-
-        if (mainViewModel.isRunning.value == true) {
-            val idToTrack = V2rayCrypt.getLicenseId(this, oldGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: oldGuid
-            val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
-            
-            toast("جاري التبديل...")
-            lifecycleScope.launch(Dispatchers.IO) {
-                
-                if (idToTrack.isNotEmpty()) {
-                    CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
-                    val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, oldGuid)
-                    V2rayCrypt.saveActiveCount(this@MainActivity, oldGuid, max(0, prevCount - 1))
-                    lastReportedState = false
-                }
-                
-                delay(1000) 
-                
-                withContext(Dispatchers.Main) {
-                    V2RayServiceManager.stopVService(this@MainActivity)
-                    MmkvManager.setSelectServer(guid)
-                    groupPagerAdapter.notifyDataSetChanged()
-                }
-                
-                delay(500) 
-                
-                withContext(Dispatchers.Main) {
-                    if (SettingsManager.isVpnMode()) { 
-                        val intent = VpnService.prepare(this@MainActivity)
-                        if (intent == null) V2RayServiceManager.startVService(this@MainActivity) 
-                        else requestVpnPermission.launch(intent) 
-                    } else {
-                        V2RayServiceManager.startVService(this@MainActivity)
-                    }
-                }
-            }
-        } else {
-            MmkvManager.setSelectServer(guid)
-            toast(R.string.toast_success)
-            groupPagerAdapter.notifyDataSetChanged()
-        }
-    }
-    
+    override fun onSelectServer(guid: String) { MmkvManager.setSelectServer(guid); toast(R.string.toast_success); groupPagerAdapter.notifyDataSetChanged() }
     override fun onEdit(guid: String, pos: Int, p: ProfileItem) { if (!V2rayCrypt.isProtected(this, guid) || V2rayCrypt.isAdmin(this, guid)) startActivity(Intent(this, ServerActivity::class.java).putExtra("guid", guid)) else toast("هذا السيرفر محمي") }
     override fun onRemove(guid: String, pos: Int) { AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm).setPositiveButton(android.R.string.ok) { _, _ -> mainViewModel.removeServer(guid) }.setNegativeButton(android.R.string.cancel, null).show() }
     override fun onShare(guid: String, p: ProfileItem, pos: Int, isMore: Boolean) {} override fun onEdit(guid: String, pos: Int) {} override fun onShare(url: String) {} override fun onRefreshData() {}
