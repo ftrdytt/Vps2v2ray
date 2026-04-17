@@ -342,6 +342,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
                 delay(1000)
+                var updateCheckedAfterConnect = false // 🌟 السويتش اللي ضفناه لفحص التحديث بعد 30 ثانية
+                
                 while (isActive) {
                     try {
                         if (UpdateManager.isUpdatePending && (System.currentTimeMillis() - vpnStartTime) > 3600000L) {
@@ -353,23 +355,26 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             break 
                         }
                         
+                        // 🌟 الكود الجديد: فحص التحديث لمرة واحدة فقط بعد 30 ثانية من الاتصال 🌟
+                        if (!updateCheckedAfterConnect && (System.currentTimeMillis() - vpnStartTime) > 30000L) {
+                            updateCheckedAfterConnect = true // قفل السويتش حتى لا يفحص مرة ثانية
+                            UpdateManager.startBackgroundUpdateCheck(this@MainActivity)
+                        }
+
                         mainViewModel.testCurrentServerRealPing()
 
-                        // 🌟 التعديل السحري: اكتشاف انتهاء الوقت وإرسال طلب القطع للسيرفر 🌟
                         val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
                         if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
                             withContext(Dispatchers.IO) {
-                                // 1. إرسال إشارة الإغلاق والسيرفر متصل!
                                 if (idToTrack.isNotEmpty()) {
                                     CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
                                     val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
                                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
                                     lastReportedState = false
                                 }
-                                delay(1000) // انتظار ثانية لضمان الوصول
+                                delay(1000) 
                             }
                             
-                            // 2. إطفاء التطبيق بأمان
                             withContext(Dispatchers.Main) {
                                 V2RayServiceManager.stopVService(this@MainActivity)
                                 AlertDialog.Builder(this@MainActivity).setTitle("انتهى الاشتراك").setMessage("تم إيقاف المحرك لانتهاء مدة الصلاحية أو إيقافه من قبل الإدارة.").setPositiveButton("حسناً", null).setCancelable(false).show()
@@ -378,7 +383,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             break 
                         }
                     } catch (e: Exception) {}
-                    delay(20000) // تم تعديل هذا السطر إلى 20 ثانية لتخفيف الضغط
+                    delay(20000) 
                 }
             }
         } else {
@@ -514,7 +519,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         super.onPause()
         TrafficMonitorHelper.stopTrafficMonitor()
         SpeedTestHelper.cancelJobs()
-        VpnEngineHelper.cancelAllJobs() // تم إضافة هذا السطر لإيقاف مهام التحديث المستمرة
+        VpnEngineHelper.cancelAllJobs() 
     }
     
     override fun onDestroy() { 
