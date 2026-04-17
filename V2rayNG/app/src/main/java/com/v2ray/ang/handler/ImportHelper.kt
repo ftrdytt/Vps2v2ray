@@ -54,6 +54,11 @@ object ImportHelper {
         createOption("إضافة VLESS", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.VLESS.value) }
         createOption("إضافة VMess", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.VMESS.value) }
         createOption("إضافة Trojan", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.TROJAN.value) }
+        // الأسطر المضافة للبروتوكولات الجديدة
+        createOption("إضافة Shadowsocks", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.SHADOWSOCKS.value) }
+        createOption("إضافة Socks", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.SOCKS.value) }
+        createOption("إضافة WireGuard", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.WIREGUARD.value) }
+        createOption("إضافة تكوين مخصص (Custom)", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.CUSTOM.value) }
 
         bottomSheetDialog.setContentView(scrollView)
         bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
