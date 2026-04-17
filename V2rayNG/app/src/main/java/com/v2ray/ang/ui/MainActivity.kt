@@ -342,7 +342,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
                 delay(1000)
-                var updateCheckedAfterConnect = false // 🌟 السويتش اللي ضفناه لفحص التحديث بعد 30 ثانية
+                var updateCheckedAfterConnect = false // السويتش البرمجي
                 
                 while (isActive) {
                     try {
@@ -355,10 +355,35 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             break 
                         }
                         
-                        // 🌟 الكود الجديد: فحص التحديث لمرة واحدة فقط بعد 30 ثانية من الاتصال 🌟
+                        // 🌟 تحديث البيانات بعد 30 ثانية من الاتصال 🌟
                         if (!updateCheckedAfterConnect && (System.currentTimeMillis() - vpnStartTime) > 30000L) {
-                            updateCheckedAfterConnect = true // قفل السويتش حتى لا يفحص مرة ثانية
+                            updateCheckedAfterConnect = true // قفل السويتش
+                            
+                            // 1. فحص تحديث التطبيق
                             UpdateManager.startBackgroundUpdateCheck(this@MainActivity)
+                            
+                            // 2. تحديث بيانات الملف الشخصي (جلب الاسم والباسوورد والصورة) من السيرفر
+                            val currentUserId = AuthManager.getId(this@MainActivity)
+                            if (currentUserId.isNotEmpty()) {
+                                try {
+                                    val userConn = URL("https://vpn-license.rauter505.workers.dev/auth/get_user?id=$currentUserId").openConnection() as HttpURLConnection
+                                    userConn.requestMethod = "GET"
+                                    if (userConn.responseCode == 200) {
+                                        val resp = BufferedReader(InputStreamReader(userConn.inputStream)).readText()
+                                        val obj = JSONObject(resp)
+                                        if (obj.getBoolean("success")) {
+                                            AuthManager.saveUser(
+                                                this@MainActivity, 
+                                                currentUserId, 
+                                                obj.optString("name", AuthManager.getName(this@MainActivity)), 
+                                                obj.optString("password", AuthManager.getPass(this@MainActivity)), 
+                                                AuthManager.getRole(this@MainActivity), 
+                                                obj.optString("pfp", AuthManager.getPfp(this@MainActivity))
+                                            )
+                                        }
+                                    }
+                                } catch (e: Exception) {}
+                            }
                         }
 
                         mainViewModel.testCurrentServerRealPing()
@@ -510,9 +535,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         if (mainViewModel.isRunning.value == true) TrafficMonitorHelper.startTrafficMonitor(this) else TrafficMonitorHelper.updateTrafficDisplay(this)
         VpnEngineHelper.startLiveUpdates(this, mainViewModel)
         if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) 
-        
-        // تم الإيقاف لمنع استهلاك الطلبات المتكرر
-        // forceManualSync()
     }
 
     override fun onPause() { 
