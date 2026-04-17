@@ -94,7 +94,9 @@ object VpnEngineHelper {
                     }
                 }
                 if (needsRefresh) withContext(Dispatchers.Main) { mainViewModel.reloadServerList() }
-                delay(4000)
+                
+                // تم تغيير هذا الرقم من 4000 (4 ثواني) إلى 30000 (30 ثانية) لحل مشكلة اللود والطلبات الزائدة
+                delay(30000)
             }
         }
     }
