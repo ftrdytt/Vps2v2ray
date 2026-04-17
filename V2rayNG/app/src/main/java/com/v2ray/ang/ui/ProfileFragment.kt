@@ -33,7 +33,10 @@ class ProfileFragment : Fragment() {
 
     private lateinit var ivPfp: ImageView
     private lateinit var btnAdminDashboard: ImageView
-    private lateinit var btnUpdateLogs: ImageView // الزر الجديد لسجل التحديثات
+    private lateinit var btnUpdateLogs: ImageView 
+    private lateinit var etId: EditText
+    private lateinit var etName: EditText
+    private lateinit var etPass: EditText
     private var currentBase64Pfp: String = ""
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -69,11 +72,11 @@ class ProfileFragment : Fragment() {
 
         ivPfp = view.findViewById(R.id.iv_profile_pic)
         btnAdminDashboard = view.findViewById(R.id.btn_admin_dashboard)
-        btnUpdateLogs = view.findViewById(R.id.btn_update_logs) // ربط الزر الجديد
+        btnUpdateLogs = view.findViewById(R.id.btn_update_logs) 
         
-        val etId = view.findViewById<EditText>(R.id.et_profile_id)
-        val etName = view.findViewById<EditText>(R.id.et_profile_name)
-        val etPass = view.findViewById<EditText>(R.id.et_profile_pass)
+        etId = view.findViewById(R.id.et_profile_id)
+        etName = view.findViewById(R.id.et_profile_name)
+        etPass = view.findViewById(R.id.et_profile_pass)
         val btnSave = view.findViewById<Button>(R.id.btn_save_profile)
         val btnLogout = view.findViewById<Button>(R.id.btn_logout)
 
@@ -85,7 +88,9 @@ class ProfileFragment : Fragment() {
         etPass.setText(AuthManager.getPass(requireContext()))
         currentBase64Pfp = AuthManager.getPfp(requireContext())
         
-        // إظهار أزرار لوحة التحكم للأدمن فقط
+        // 🌟 استدعاء دالة جلب البيانات الجديدة من السيرفر 🌟
+        fetchUserDataFromServer(userId)
+
         if (userRole == "admin") {
             btnAdminDashboard.visibility = View.VISIBLE
             btnAdminDashboard.setOnClickListener {
@@ -94,25 +99,12 @@ class ProfileFragment : Fragment() {
             
             btnUpdateLogs.visibility = View.VISIBLE
             btnUpdateLogs.setOnClickListener {
-                // فتح شاشة سجل التحديثات الجديدة
                 startActivity(Intent(requireContext(), UpdateLogsActivity::class.java))
             }
         }
 
-        // التحقق مما إذا كان هناك صورة محفوظة
-        if (currentBase64Pfp.isNotEmpty()) {
-            try {
-                val decodedBytes = Base64.decode(currentBase64Pfp, Base64.NO_WRAP)
-                val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
-                ivPfp.setImageBitmap(bitmap)
-                ivPfp.imageTintList = null 
-            } catch (e: Exception) {}
-        } else {
-            // إذا لم يكن هناك صورة، نقوم بتحميل صورة افتراضية (أنمي/أفاتار) بناءً على ID المستخدم
-            loadDefaultAvatar(userId)
-        }
+        updateProfilePicture(currentBase64Pfp, userId)
 
-        // زر تغيير الصورة مدمج مع زر الكاميرا الصغير
         view.findViewById<View>(R.id.btn_change_avatar)?.setOnClickListener {
             val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
             pickImage.launch(intent)
@@ -191,7 +183,6 @@ class ProfileFragment : Fragment() {
                 .setTitle("تسجيل خروج")
                 .setMessage("هل أنت متأكد من تسجيل الخروج؟")
                 .setPositiveButton("نعم") { _, _ ->
-                    // تسجيل الخروج السحابي للإحصائيات
                     lifecycleScope.launch(Dispatchers.IO) {
                         try {
                             val conn = URL("https://vpn-license.rauter505.workers.dev/admin/log_logout").openConnection() as HttpURLConnection
@@ -214,11 +205,58 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    // دالة مساعدة لتحميل الأفاتار الافتراضي من الإنترنت
+    // 🌟 دالة جلب البيانات من السيرفر 🌟
+    private fun fetchUserDataFromServer(userId: String) {
+        if (userId.isEmpty()) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // ملاحظة: تأكد أن هذا الرابط يعمل ويرجع بيانات المستخدم كـ JSON (name, password, pfp)
+                // إذا لم يكن الرابط متوفراً في الـ Worker، فستحتاج لبرمجته هناك (رابط مشابه لـ /auth/get_user)
+                val conn = URL("https://vpn-license.rauter505.workers.dev/auth/get_user?id=$userId").openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                if (conn.responseCode == 200) {
+                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                    val obj = JSONObject(resp)
+                    
+                    if (obj.getBoolean("success")) {
+                        val serverName = obj.optString("name", AuthManager.getName(requireContext()))
+                        val serverPass = obj.optString("password", AuthManager.getPass(requireContext()))
+                        val serverPfp = obj.optString("pfp", currentBase64Pfp)
+                        
+                        // تحديث البيانات محلياً
+                        AuthManager.saveUser(requireContext(), userId, serverName, serverPass, AuthManager.getRole(requireContext()), serverPfp)
+                        currentBase64Pfp = serverPfp
+
+                        // تحديث الواجهة (UI)
+                        withContext(Dispatchers.Main) {
+                            etName.setText(serverName)
+                            etPass.setText(serverPass)
+                            updateProfilePicture(currentBase64Pfp, userId)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // إذا لم يتصل، تبقى البيانات القديمة كما هي
+            }
+        }
+    }
+
+    private fun updateProfilePicture(base64Str: String, seed: String) {
+        if (base64Str.isNotEmpty()) {
+            try {
+                val decodedBytes = Base64.decode(base64Str, Base64.NO_WRAP)
+                val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+                ivPfp.setImageBitmap(bitmap)
+                ivPfp.imageTintList = null 
+            } catch (e: Exception) {}
+        } else {
+            loadDefaultAvatar(seed)
+        }
+    }
+
     private fun loadDefaultAvatar(seed: String) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // نستخدم خدمة DiceBear للحصول على أفاتار شخصية أنمي (adventurer)
                 val avatarUrl = URL("https://api.dicebear.com/7.x/adventurer/png?seed=$seed&backgroundColor=b6e3f4,c0aede,d1d4f9")
                 val connection = avatarUrl.openConnection() as HttpURLConnection
                 connection.doInput = true
@@ -229,12 +267,10 @@ class ProfileFragment : Fragment() {
                 withContext(Dispatchers.Main) {
                     if (bitmap != null) {
                         ivPfp.setImageBitmap(bitmap)
-                        ivPfp.imageTintList = null // إزالة الفلتر الرمادي
+                        ivPfp.imageTintList = null 
                     }
                 }
-            } catch (e: Exception) {
-                // في حال فشل التحميل، نترك الصورة الافتراضية
-            }
+            } catch (e: Exception) {}
         }
     }
 }
