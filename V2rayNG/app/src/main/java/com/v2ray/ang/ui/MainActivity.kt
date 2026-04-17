@@ -378,7 +378,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             break 
                         }
                     } catch (e: Exception) {}
-                    delay(5000) 
+                    delay(20000) // تم تعديل هذا السطر إلى 20 ثانية لتخفيف الضغط
                 }
             }
         } else {
@@ -506,10 +506,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         VpnEngineHelper.startLiveUpdates(this, mainViewModel)
         if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) 
         
-        forceManualSync()
+        // تم الإيقاف لمنع استهلاك الطلبات المتكرر
+        // forceManualSync()
     }
 
-    override fun onPause() { super.onPause(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs() }
+    override fun onPause() { 
+        super.onPause()
+        TrafficMonitorHelper.stopTrafficMonitor()
+        SpeedTestHelper.cancelJobs()
+        VpnEngineHelper.cancelAllJobs() // تم إضافة هذا السطر لإيقاف مهام التحديث المستمرة
+    }
     
     override fun onDestroy() { 
         val guid = MmkvManager.getSelectServer().orEmpty()
