@@ -104,17 +104,28 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
+    // 🌟 الإصلاح الجذري 1: منع تعليق إنشاء الحساب 🌟
     private fun checkInitialAuth() {
         if (!AuthManager.isLoggedIn(this)) {
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val conn = URL("https://vpn-license.rauter505.workers.dev/auth/init").openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    // إرسال Body فارغ لإجبار الأندرويد على إرسال الطلب بدلاً من الفشل الصامت
+                    conn.outputStream.use { it.write("{}".toByteArray()) }
+
                     if (conn.responseCode == 200) {
                         val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                        if (obj.getBoolean("success")) AuthManager.saveUser(this@MainActivity, obj.getString("id"), obj.getString("name"), obj.getString("password"), "user", "")
+                        if (obj.getBoolean("success")) {
+                            AuthManager.saveUser(this@MainActivity, obj.getString("id"), obj.getString("name"), obj.getString("password"), "user", "")
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(this@MainActivity, "تم إنشاء الحساب التلقائي بنجاح!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
-                } catch (e: Exception) {}
+                } catch (e: Exception) { e.printStackTrace() }
             }
         }
     }
@@ -282,7 +293,26 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             if (isNowRunning && !isLoading) {
                 lastReportedState = true
                 lifecycleScope.launch(Dispatchers.IO) {
-                    CloudflareAPI.sendActiveState(idToTrack, deviceId, false)
+                    // 🌟 الإصلاح الجذري 2: إرسال بيانات المستخدم عند أول اتصال ليظهر في النشطين 🌟
+                    try {
+                        val userId = AuthManager.getId(this@MainActivity)
+                        val name = if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول الهوية"
+                        val pfp = if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else ""
+                        val conn = URL("https://vpn-license.rauter505.workers.dev/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        val payload = JSONObject()
+                            .put("guid", idToTrack)
+                            .put("deviceId", deviceId)
+                            .put("userId", userId)
+                            .put("name", name)
+                            .put("pfp", pfp)
+                            .put("disconnect", false)
+                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                        conn.responseCode
+                    } catch (e: Exception) {}
+
                     delay(1000) 
                     val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, updatedData.third)
@@ -335,15 +365,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         conn.responseCode
                     } catch (e: Exception) {}
                     
-                    delay(10800000L) 
+                    delay(10800000L) // إرسال النبضة كل 3 ساعات فقط
                 }
             }
 
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
                 delay(1000)
-                var updateCheckedAfterConnect = false // السويتش البرمجي
-                
                 while (isActive) {
                     try {
                         if (UpdateManager.isUpdatePending && (System.currentTimeMillis() - vpnStartTime) > 3600000L) {
@@ -355,37 +383,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             break 
                         }
                         
-                        // 🌟 تحديث البيانات بعد 30 ثانية من الاتصال 🌟
-                        if (!updateCheckedAfterConnect && (System.currentTimeMillis() - vpnStartTime) > 30000L) {
-                            updateCheckedAfterConnect = true // قفل السويتش
-                            
-                            // 1. فحص تحديث التطبيق
-                            UpdateManager.startBackgroundUpdateCheck(this@MainActivity)
-                            
-                            // 2. تحديث بيانات الملف الشخصي (جلب الاسم والباسوورد والصورة) من السيرفر
-                            val currentUserId = AuthManager.getId(this@MainActivity)
-                            if (currentUserId.isNotEmpty()) {
-                                try {
-                                    val userConn = URL("https://vpn-license.rauter505.workers.dev/auth/get_user?id=$currentUserId").openConnection() as HttpURLConnection
-                                    userConn.requestMethod = "GET"
-                                    if (userConn.responseCode == 200) {
-                                        val resp = BufferedReader(InputStreamReader(userConn.inputStream)).readText()
-                                        val obj = JSONObject(resp)
-                                        if (obj.getBoolean("success")) {
-                                            AuthManager.saveUser(
-                                                this@MainActivity, 
-                                                currentUserId, 
-                                                obj.optString("name", AuthManager.getName(this@MainActivity)), 
-                                                obj.optString("password", AuthManager.getPass(this@MainActivity)), 
-                                                AuthManager.getRole(this@MainActivity), 
-                                                obj.optString("pfp", AuthManager.getPfp(this@MainActivity))
-                                            )
-                                        }
-                                    }
-                                } catch (e: Exception) {}
-                            }
-                        }
-
                         mainViewModel.testCurrentServerRealPing()
 
                         val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
@@ -408,7 +405,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             break 
                         }
                     } catch (e: Exception) {}
-                    delay(20000) 
+                    delay(5000) 
                 }
             }
         } else {
@@ -460,7 +457,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             withContext(Dispatchers.Main) { 
                 mainViewModel.reloadServerList()
                 hideLoadingDialog()
-                toastSuccess("تم التحديث بنجاح!")
             }
         }
     }
@@ -535,14 +531,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         if (mainViewModel.isRunning.value == true) TrafficMonitorHelper.startTrafficMonitor(this) else TrafficMonitorHelper.updateTrafficDisplay(this)
         VpnEngineHelper.startLiveUpdates(this, mainViewModel)
         if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) 
+        
+        // 🌟 استدعاء المزامنة عند فتح التطبيق ليتحدث العداد 🌟
+        forceManualSync()
     }
 
-    override fun onPause() { 
-        super.onPause()
-        TrafficMonitorHelper.stopTrafficMonitor()
-        SpeedTestHelper.cancelJobs()
-        VpnEngineHelper.cancelAllJobs() 
-    }
+    override fun onPause() { super.onPause(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs() }
     
     override fun onDestroy() { 
         val guid = MmkvManager.getSelectServer().orEmpty()
@@ -567,7 +561,55 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun showExtendLicenseDialog(guid: String) { AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
     fun replaceAndSyncConfigFromClipboard(guid: String) { AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
 
-    override fun onSelectServer(guid: String) { MmkvManager.setSelectServer(guid); toast(R.string.toast_success); groupPagerAdapter.notifyDataSetChanged() }
+    // 🌟 الإصلاح الجذري 3: التبديل الآمن بدون تعليق المتصلين القدامى 🌟
+    override fun onSelectServer(guid: String) { 
+        val oldGuid = MmkvManager.getSelectServer().orEmpty()
+        if (oldGuid == guid) return
+
+        if (mainViewModel.isRunning.value == true) {
+            val idToTrack = V2rayCrypt.getLicenseId(this, oldGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: oldGuid
+            val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+            
+            toast("جاري التبديل للملف الجديد...")
+            lifecycleScope.launch(Dispatchers.IO) {
+                
+                // 1. إرسال أمر القطع للسيرفر القديم فوراً
+                if (idToTrack.isNotEmpty()) {
+                    CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
+                    val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, oldGuid)
+                    V2rayCrypt.saveActiveCount(this@MainActivity, oldGuid, max(0, prevCount - 1))
+                    lastReportedState = false
+                }
+                
+                delay(1000) // السماح للطلب بالوصول قبل قطع الإنترنت
+                
+                // 2. إطفاء المحرك وتحديث الواجهة
+                withContext(Dispatchers.Main) {
+                    V2RayServiceManager.stopVService(this@MainActivity)
+                    MmkvManager.setSelectServer(guid)
+                    groupPagerAdapter.notifyDataSetChanged()
+                }
+                
+                delay(800) // انتظار هدوء النظام
+                
+                // 3. التشغيل على الملف الجديد
+                withContext(Dispatchers.Main) {
+                    if (SettingsManager.isVpnMode()) { 
+                        val intent = VpnService.prepare(this@MainActivity)
+                        if (intent == null) V2RayServiceManager.startVService(this@MainActivity) 
+                        else requestVpnPermission.launch(intent) 
+                    } else {
+                        V2RayServiceManager.startVService(this@MainActivity)
+                    }
+                }
+            }
+        } else {
+            MmkvManager.setSelectServer(guid)
+            toast(R.string.toast_success)
+            groupPagerAdapter.notifyDataSetChanged()
+        }
+    }
+    
     override fun onEdit(guid: String, pos: Int, p: ProfileItem) { if (!V2rayCrypt.isProtected(this, guid) || V2rayCrypt.isAdmin(this, guid)) startActivity(Intent(this, ServerActivity::class.java).putExtra("guid", guid)) else toast("هذا السيرفر محمي") }
     override fun onRemove(guid: String, pos: Int) { AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm).setPositiveButton(android.R.string.ok) { _, _ -> mainViewModel.removeServer(guid) }.setNegativeButton(android.R.string.cancel, null).show() }
     override fun onShare(guid: String, p: ProfileItem, pos: Int, isMore: Boolean) {} override fun onEdit(guid: String, pos: Int) {} override fun onShare(url: String) {} override fun onRefreshData() {}
