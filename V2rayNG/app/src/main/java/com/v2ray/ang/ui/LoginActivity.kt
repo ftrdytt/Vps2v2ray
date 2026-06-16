@@ -22,6 +22,9 @@ import java.net.URL
 
 class LoginActivity : AppCompatActivity() {
 
+    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
+    private val BASE_API_URL = "https://education.ashor.shop"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
@@ -53,9 +56,16 @@ class LoginActivity : AppCompatActivity() {
             btnCreateRandom.text = "جاري إنشاء الحساب..."
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    val url = URL("https://vpn-license.rauter505.workers.dev/auth/init")
+                    // 🌟 استخدام الرابط الجديد 🌟
+                    val url = URL("$BASE_API_URL/auth/init")
                     val conn = url.openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
+                    
+                    // 🌟 التعديل المهم جداً: إرسال كائن فارغ لكي لا يرفضه سيرفر Node.js 🌟
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    conn.outputStream.use { it.write("{}".toByteArray(Charsets.UTF_8)) }
+
                     if (conn.responseCode == 200) {
                         val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
                         val obj = JSONObject(resp)
@@ -66,6 +76,12 @@ class LoginActivity : AppCompatActivity() {
                                 startActivity(Intent(this@LoginActivity, MainActivity::class.java))
                                 finish()
                             }
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@LoginActivity, "خطأ في السيرفر: ${conn.responseCode}", Toast.LENGTH_SHORT).show()
+                            btnCreateRandom.isEnabled = true
+                            btnCreateRandom.text = "إنشاء حساب عشوائي جديد بضغطة"
                         }
                     }
                 } catch (e: Exception) {
@@ -96,13 +112,14 @@ class LoginActivity : AppCompatActivity() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val url = URL("https://vpn-license.rauter505.workers.dev/auth/login")
+                // 🌟 استخدام الرابط الجديد 🌟
+                val url = URL("$BASE_API_URL/auth/login")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
                 val payload = JSONObject().apply { put("id", id); put("password", pass) }
-                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
