@@ -70,6 +70,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var vpnStartTime: Long = 0L
     companion object { var lastReportedState: Boolean? = null }
 
+    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
+    private val BASE_API_URL = "https://education.ashor.shop"
+
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { if (it.resultCode == RESULT_OK) startV2Ray() }
     private val requestActivityLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { if (SettingsChangeManager.consumeRestartService() && mainViewModel.isRunning.value == true) restartV2Ray() }
     
@@ -104,12 +107,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
-    // 🌟 الإصلاح الجذري 1: منع تعليق إنشاء الحساب 🌟
+    // 🌟 الإصلاح الجذري 1: منع تعليق إنشاء الحساب وتوجيهه للرابط الجديد 🌟
     private fun checkInitialAuth() {
         if (!AuthManager.isLoggedIn(this)) {
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    val conn = URL("https://vpn-license.rauter505.workers.dev/auth/init").openConnection() as HttpURLConnection
+                    val conn = URL("$BASE_API_URL/auth/init").openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
                     conn.setRequestProperty("Content-Type", "application/json")
                     conn.doOutput = true
@@ -293,26 +296,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             if (isNowRunning && !isLoading) {
                 lastReportedState = true
                 lifecycleScope.launch(Dispatchers.IO) {
-                    // 🌟 الإصلاح الجذري 2: إرسال بيانات المستخدم عند أول اتصال ليظهر في النشطين 🌟
-                    try {
-                        val userId = AuthManager.getId(this@MainActivity)
-                        val name = if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول الهوية"
-                        val pfp = if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else ""
-                        val conn = URL("https://vpn-license.rauter505.workers.dev/file/ping").openConnection() as HttpURLConnection
-                        conn.requestMethod = "POST"
-                        conn.setRequestProperty("Content-Type", "application/json")
-                        conn.doOutput = true
-                        val payload = JSONObject()
-                            .put("guid", idToTrack)
-                            .put("deviceId", deviceId)
-                            .put("userId", userId)
-                            .put("name", name)
-                            .put("pfp", pfp)
-                            .put("disconnect", false)
-                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
-                        conn.responseCode
-                    } catch (e: Exception) {}
-
+                    CloudflareAPI.sendActiveState(idToTrack, deviceId, false)
                     delay(1000) 
                     val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, updatedData.third)
@@ -350,7 +334,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val userId = AuthManager.getId(this@MainActivity)
                         val name = if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول الهوية"
                         val pfp = if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else ""
-                        val conn = URL("https://vpn-license.rauter505.workers.dev/file/ping").openConnection() as HttpURLConnection
+                        // 🌟 استخدام الرابط الجديد 🌟
+                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
                         conn.requestMethod = "POST"
                         conn.setRequestProperty("Content-Type", "application/json")
                         conn.doOutput = true
@@ -361,11 +346,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             .put("name", name)
                             .put("pfp", pfp)
                             .put("disconnect", false)
-                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                         conn.responseCode
                     } catch (e: Exception) {}
                     
-                    delay(10800000L) // إرسال النبضة كل 3 ساعات فقط
+                    delay(10800000L) 
                 }
             }
 
@@ -561,7 +546,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun showExtendLicenseDialog(guid: String) { AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
     fun replaceAndSyncConfigFromClipboard(guid: String) { AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
 
-    // 🌟 الإصلاح الجذري 3: التبديل الآمن بدون تعليق المتصلين القدامى 🌟
+    // 🌟 التعديل السحري: التبديل الآمن 🌟
     override fun onSelectServer(guid: String) { 
         val oldGuid = MmkvManager.getSelectServer().orEmpty()
         if (oldGuid == guid) return
@@ -573,7 +558,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             toast("جاري التبديل للملف الجديد...")
             lifecycleScope.launch(Dispatchers.IO) {
                 
-                // 1. إرسال أمر القطع للسيرفر القديم فوراً
+                // إرسال إشارة إيقاف للسيرفر القديم
                 if (idToTrack.isNotEmpty()) {
                     CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
                     val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, oldGuid)
@@ -581,18 +566,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     lastReportedState = false
                 }
                 
-                delay(1000) // السماح للطلب بالوصول قبل قطع الإنترنت
+                // السماح للطلب بالوصول قبل قطع الإنترنت
+                delay(1000) 
                 
-                // 2. إطفاء المحرك وتحديث الواجهة
                 withContext(Dispatchers.Main) {
                     V2RayServiceManager.stopVService(this@MainActivity)
                     MmkvManager.setSelectServer(guid)
                     groupPagerAdapter.notifyDataSetChanged()
                 }
                 
-                delay(800) // انتظار هدوء النظام
+                delay(800) 
                 
-                // 3. التشغيل على الملف الجديد
                 withContext(Dispatchers.Main) {
                     if (SettingsManager.isVpnMode()) { 
                         val intent = VpnService.prepare(this@MainActivity)
