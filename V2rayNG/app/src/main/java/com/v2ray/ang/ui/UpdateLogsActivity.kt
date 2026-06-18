@@ -24,6 +24,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 class UpdateLogsActivity : AppCompatActivity() {
+
+    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
+    private val BASE_API_URL = "https://education.ashor.shop"
+
     private lateinit var mainContainer: LinearLayout
     private lateinit var tvLoading: TextView
     private val allUsersCache = mutableMapOf<String, JSONObject>()
@@ -77,7 +81,8 @@ class UpdateLogsActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 // 1. جلب جميع المستخدمين وحفظهم في الكاش لكي نعرض صورهم وأسماءهم لاحقاً
-                val usersUrl = URL("https://vpn-license.rauter505.workers.dev/admin/get_all_users")
+                // 🌟 تم التعديل للرابط الجديد 🌟
+                val usersUrl = URL("$BASE_API_URL/admin/get_all_users")
                 val usersConn = usersUrl.openConnection() as HttpURLConnection
                 if (usersConn.responseCode == 200) {
                     val usersResp = BufferedReader(InputStreamReader(usersConn.inputStream)).readText()
@@ -89,7 +94,8 @@ class UpdateLogsActivity : AppCompatActivity() {
                 }
 
                 // 2. جلب سجل التحديثات حسب الأيام
-                val logsUrl = URL("https://vpn-license.rauter505.workers.dev/admin/get_update_logs")
+                // 🌟 تم التعديل للرابط الجديد 🌟
+                val logsUrl = URL("$BASE_API_URL/admin/get_update_logs")
                 val logsConn = logsUrl.openConnection() as HttpURLConnection
                 if (logsConn.responseCode == 200) {
                     val logsResp = BufferedReader(InputStreamReader(logsConn.inputStream)).readText()
