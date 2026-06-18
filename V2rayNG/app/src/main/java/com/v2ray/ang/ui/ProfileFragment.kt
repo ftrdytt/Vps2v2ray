@@ -31,6 +31,9 @@ import kotlin.math.roundToInt
 
 class ProfileFragment : Fragment() {
 
+    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
+    private val BASE_API_URL = "https://education.ashor.shop"
+
     private lateinit var ivPfp: ImageView
     private lateinit var btnAdminDashboard: ImageView
     private lateinit var btnUpdateLogs: ImageView 
@@ -129,7 +132,8 @@ class ProfileFragment : Fragment() {
 
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    val url = URL("https://vpn-license.rauter505.workers.dev/auth/update")
+                    // 🌟 استخدام الرابط الجديد 🌟
+                    val url = URL("$BASE_API_URL/auth/update")
                     val conn = url.openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
                     conn.setRequestProperty("Content-Type", "application/json")
@@ -142,7 +146,8 @@ class ProfileFragment : Fragment() {
                         put("password", newPass)
                         put("newPfp", currentBase64Pfp)
                     }
-                    conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                    // 🌟 إضافة ترميز UTF-8 🌟
+                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
                     if (conn.responseCode == 200) {
                         val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
@@ -185,11 +190,12 @@ class ProfileFragment : Fragment() {
                 .setPositiveButton("نعم") { _, _ ->
                     lifecycleScope.launch(Dispatchers.IO) {
                         try {
-                            val conn = URL("https://vpn-license.rauter505.workers.dev/admin/log_logout").openConnection() as HttpURLConnection
+                            // 🌟 استخدام الرابط الجديد 🌟
+                            val conn = URL("$BASE_API_URL/admin/log_logout").openConnection() as HttpURLConnection
                             conn.requestMethod = "POST"
                             conn.setRequestProperty("Content-Type", "application/json")
                             conn.doOutput = true
-                            conn.outputStream.use { it.write(JSONObject().put("id", userId).toString().toByteArray()) }
+                            conn.outputStream.use { it.write(JSONObject().put("id", userId).toString().toByteArray(Charsets.UTF_8)) }
                             conn.responseCode 
                         } catch (e: Exception) {}
                     }
@@ -210,9 +216,8 @@ class ProfileFragment : Fragment() {
         if (userId.isEmpty()) return
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // ملاحظة: تأكد أن هذا الرابط يعمل ويرجع بيانات المستخدم كـ JSON (name, password, pfp)
-                // إذا لم يكن الرابط متوفراً في الـ Worker، فستحتاج لبرمجته هناك (رابط مشابه لـ /auth/get_user)
-                val conn = URL("https://vpn-license.rauter505.workers.dev/auth/get_user?id=$userId").openConnection() as HttpURLConnection
+                // 🌟 استخدام الرابط الجديد 🌟
+                val conn = URL("$BASE_API_URL/auth/get_user?id=$userId").openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
