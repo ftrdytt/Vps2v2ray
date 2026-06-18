@@ -25,6 +25,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 object UpdateManagerHelper {
+    
+    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
+    private const val BASE_API_URL = "https://education.ashor.shop"
+
     var isUpdatePending = false
     var isUpdateReady = false
     var readyApkFile: File? = null
@@ -43,11 +47,13 @@ object UpdateManagerHelper {
     fun startBackgroundUpdateCheck(activity: Activity) {
         if (AuthManager.getRole(activity) == "admin") return
 
+        @Suppress("OPT_IN_USAGE")
         kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
             try {
                 delay(2000)
                 val arch = getDeviceArchitecture()
-                val url = URL("https://vpn-license.rauter505.workers.dev/app/update/check?arch=$arch")
+                // 🌟 استخدام الرابط الجديد لفحص التحديثات 🌟
+                val url = URL("$BASE_API_URL/app/update/check?arch=$arch")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 10000
                 if (conn.responseCode == 200) {
@@ -96,7 +102,8 @@ object UpdateManagerHelper {
         try {
             val fos = FileOutputStream(updateFile)
             for (i in 0 until totalChunks) {
-                val chunkUrl = URL("https://vpn-license.rauter505.workers.dev/app/update/download_chunk?v=$serverVersion&arch=$arch&i=$i")
+                // 🌟 استخدام الرابط الجديد لتنزيل أجزاء التحديث 🌟
+                val chunkUrl = URL("$BASE_API_URL/app/update/download_chunk?v=$serverVersion&arch=$arch&i=$i")
                 val chunkConn = chunkUrl.openConnection() as HttpURLConnection
                 chunkConn.connectTimeout = 30000
                 chunkConn.readTimeout = 60000
@@ -142,6 +149,7 @@ object UpdateManagerHelper {
                 .setCancelable(false)
                 .setPositiveButton("تثبيت التحديث الآن") { _, _ ->
                     forceInstallApk(activity, apkFile)
+                    @Suppress("OPT_IN_USAGE")
                     kotlinx.coroutines.GlobalScope.launch(Dispatchers.Main) {
                         delay(1000)
                         showMandatoryUpdateDialog(activity, apkFile)
