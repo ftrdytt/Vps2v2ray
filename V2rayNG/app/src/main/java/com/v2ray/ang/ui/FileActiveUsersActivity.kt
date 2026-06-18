@@ -26,6 +26,9 @@ import java.net.URLEncoder
 
 class FileActiveUsersActivity : AppCompatActivity() {
 
+    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
+    private val BASE_API_URL = "https://education.ashor.shop"
+
     private lateinit var mainContainer: LinearLayout
     private lateinit var tvLoading: TextView
     private lateinit var etSearch: EditText
@@ -175,7 +178,8 @@ class FileActiveUsersActivity : AppCompatActivity() {
             try {
                 val endpoint = if (type == "ACTIVE") "get_active" else "get_banned"
                 val encodedGuid = URLEncoder.encode(currentGuid, "UTF-8")
-                val url = URL("https://vpn-license.rauter505.workers.dev/file/$endpoint?guid=$encodedGuid")
+                // 🌟 استخدام الرابط الجديد 🌟
+                val url = URL("$BASE_API_URL/file/$endpoint?guid=$encodedGuid")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 5000
                 conn.readTimeout = 5000
@@ -336,7 +340,8 @@ class FileActiveUsersActivity : AppCompatActivity() {
                 
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
-                        val conn = URL("https://vpn-license.rauter505.workers.dev/file/toggle_ban").openConnection() as HttpURLConnection
+                        // 🌟 استخدام الرابط الجديد 🌟
+                        val conn = URL("$BASE_API_URL/file/toggle_ban").openConnection() as HttpURLConnection
                         conn.requestMethod = "POST"
                         conn.setRequestProperty("Content-Type", "application/json")
                         conn.doOutput = true
@@ -349,7 +354,8 @@ class FileActiveUsersActivity : AppCompatActivity() {
                             .put("userId", userId)
                             .put("pfp", pfp)
 
-                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                        // 🌟 إضافة ترميز UTF-8 لتجنب مشاكل الأسماء العربية 🌟
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
                         if (conn.responseCode == 200) {
                             withContext(Dispatchers.Main) {
