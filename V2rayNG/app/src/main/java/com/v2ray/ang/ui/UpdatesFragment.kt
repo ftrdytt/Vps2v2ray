@@ -39,6 +39,9 @@ import kotlin.math.ceil
 
 class UpdatesFragment : Fragment() {
 
+    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
+    private val BASE_API_URL = "https://education.ashor.shop"
+
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var layoutAdmin: LinearLayout
     private lateinit var layoutAdminHistory: LinearLayout
@@ -143,7 +146,8 @@ class UpdatesFragment : Fragment() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val arch = getDeviceArchitecture()
-                val url = URL("https://vpn-license.rauter505.workers.dev/app/update/check?arch=$arch")
+                // 🌟 استخدام الرابط الجديد 🌟
+                val url = URL("$BASE_API_URL/app/update/check?arch=$arch")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 10000
                 if (conn.responseCode == 200) {
@@ -193,7 +197,8 @@ class UpdatesFragment : Fragment() {
         try {
             val fos = FileOutputStream(updateFile)
             for (i in 0 until totalChunks) {
-                val chunkUrl = URL("https://vpn-license.rauter505.workers.dev/app/update/download_chunk?v=$serverVersion&arch=$arch&i=$i")
+                // 🌟 استخدام الرابط الجديد 🌟
+                val chunkUrl = URL("$BASE_API_URL/app/update/download_chunk?v=$serverVersion&arch=$arch&i=$i")
                 val chunkConn = chunkUrl.openConnection() as HttpURLConnection
                 chunkConn.connectTimeout = 30000; chunkConn.readTimeout = 60000
                 
@@ -223,7 +228,8 @@ class UpdatesFragment : Fragment() {
     private fun loadAdminUpdateHistory() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val url = URL("https://vpn-license.rauter505.workers.dev/app/update/list")
+                // 🌟 استخدام الرابط الجديد 🌟
+                val url = URL("$BASE_API_URL/app/update/list")
                 val conn = url.openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
@@ -293,10 +299,11 @@ class UpdatesFragment : Fragment() {
     private fun toggleUpdateStatus(version: Int) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val conn = URL("https://vpn-license.rauter505.workers.dev/app/update/toggle").openConnection() as HttpURLConnection
+                // 🌟 استخدام الرابط الجديد 🌟
+                val conn = URL("$BASE_API_URL/app/update/toggle").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                conn.outputStream.use { it.write(JSONObject().put("version", version).toString().toByteArray()) }
+                conn.outputStream.use { it.write(JSONObject().put("version", version).toString().toByteArray(Charsets.UTF_8)) }
                 if (conn.responseCode == 200) loadAdminUpdateHistory()
             } catch (e: Exception) {}
         }
@@ -306,10 +313,11 @@ class UpdatesFragment : Fragment() {
         AlertDialog.Builder(requireContext()).setTitle("تأكيد الحذف").setMessage("هل أنت متأكد من حذف تحديث $version نهائياً؟").setPositiveButton("حذف") { _, _ ->
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    val conn = URL("https://vpn-license.rauter505.workers.dev/app/update/delete").openConnection() as HttpURLConnection
+                    // 🌟 استخدام الرابط الجديد 🌟
+                    val conn = URL("$BASE_API_URL/app/update/delete").openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
                     conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                    conn.outputStream.use { it.write(JSONObject().put("version", version).toString().toByteArray()) }
+                    conn.outputStream.use { it.write(JSONObject().put("version", version).toString().toByteArray(Charsets.UTF_8)) }
                     if (conn.responseCode == 200) loadAdminUpdateHistory()
                 } catch (e: Exception) {}
             }
@@ -327,7 +335,8 @@ class UpdatesFragment : Fragment() {
                 val fileBytes = inputStream.readBytes(); inputStream.close()
                 val chunkSize = 3 * 1024 * 1024; val totalChunks = ceil(fileBytes.size.toDouble() / chunkSize).toInt()
 
-                val initConn = URL("https://vpn-license.rauter505.workers.dev/app/update/upload_init").openConnection() as HttpURLConnection
+                // 🌟 استخدام الرابط الجديد 🌟
+                val initConn = URL("$BASE_API_URL/app/update/upload_init").openConnection() as HttpURLConnection
                 initConn.requestMethod = "POST"; initConn.setRequestProperty("Content-Type", "application/json"); initConn.doOutput = true
                 
                 // إرسال نوع المعالج مع رقم الإصدار
@@ -336,7 +345,7 @@ class UpdatesFragment : Fragment() {
                     .put("arch", pendingArch)
                     .put("totalChunks", totalChunks)
                 
-                initConn.outputStream.use { it.write(initPayload.toString().toByteArray()) }
+                initConn.outputStream.use { it.write(initPayload.toString().toByteArray(Charsets.UTF_8)) }
                 if (initConn.responseCode != 200) throw Exception("Failed init")
 
                 for (i in 0 until totalChunks) {
@@ -347,7 +356,8 @@ class UpdatesFragment : Fragment() {
                     
                     while (!success && retries > 0) {
                         try {
-                            val chunkConn = URL("https://vpn-license.rauter505.workers.dev/app/update/upload_chunk").openConnection() as HttpURLConnection
+                            // 🌟 استخدام الرابط الجديد 🌟
+                            val chunkConn = URL("$BASE_API_URL/app/update/upload_chunk").openConnection() as HttpURLConnection
                             chunkConn.requestMethod = "POST"; chunkConn.setRequestProperty("Content-Type", "application/json"); chunkConn.doOutput = true
                             
                             val chunkPayload = JSONObject()
@@ -356,7 +366,7 @@ class UpdatesFragment : Fragment() {
                                 .put("chunkIndex", i)
                                 .put("chunkData", base64Chunk)
                                 
-                            chunkConn.outputStream.use { it.write(chunkPayload.toString().toByteArray()) }
+                            chunkConn.outputStream.use { it.write(chunkPayload.toString().toByteArray(Charsets.UTF_8)) }
                             if (chunkConn.responseCode == 200) success = true
                         } catch (e: Exception) { retries--; delay(2000) }
                     }
