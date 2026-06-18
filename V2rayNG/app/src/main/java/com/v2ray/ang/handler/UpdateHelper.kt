@@ -22,6 +22,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 object UpdateManager {
+    
+    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
+    private const val BASE_API_URL = "https://education.ashor.shop"
+
     var isUpdatePending = false
     var isUpdateReady = false
     var readyApkFile: File? = null
@@ -29,11 +33,13 @@ object UpdateManager {
 
     fun startBackgroundUpdateCheck(activity: Activity) {
         if (AuthManager.getRole(activity) == "admin") return
+        @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {
             try {
                 delay(2000)
                 val arch = if (Build.SUPPORTED_ABIS[0].contains("arm64")) "arm64-v8a" else "armeabi-v7a"
-                val url = URL("https://vpn-license.rauter505.workers.dev/app/update/check?arch=$arch")
+                // 🌟 استخدام الرابط الجديد 🌟
+                val url = URL("$BASE_API_URL/app/update/check?arch=$arch")
                 val conn = url.openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
                     val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
@@ -64,7 +70,8 @@ object UpdateManager {
         try {
             val fos = FileOutputStream(updateFile)
             for (i in 0 until totalChunks) {
-                val conn = URL("https://vpn-license.rauter505.workers.dev/app/update/download_chunk?v=$serverVersion&arch=$arch&i=$i").openConnection() as HttpURLConnection
+                // 🌟 استخدام الرابط الجديد لتنزيل حزم التحديث 🌟
+                val conn = URL("$BASE_API_URL/app/update/download_chunk?v=$serverVersion&arch=$arch&i=$i").openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
                     val base64Data = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText()).getString("chunkData")
                     fos.write(Base64.decode(base64Data, Base64.NO_WRAP))
@@ -83,7 +90,7 @@ object UpdateManager {
             updateDialog?.dismiss()
             updateDialog = AlertDialog.Builder(activity).setTitle("تحديث إجباري 🚀")
                 .setMessage("لا يمكنك الاستمرار حتى تقوم بتثبيت التحديث الجديد.").setCancelable(false)
-                .setPositiveButton("تثبيت الآن") { _, _ -> forceInstallApk(activity, apkFile); GlobalScope.launch(Dispatchers.Main) { delay(1000); showMandatoryUpdateDialog(activity, apkFile) } }
+                .setPositiveButton("تثبيت الآن") { _, _ -> forceInstallApk(activity, apkFile); @Suppress("OPT_IN_USAGE") GlobalScope.launch(Dispatchers.Main) { delay(1000); showMandatoryUpdateDialog(activity, apkFile) } }
                 .setNegativeButton("إعادة التنزيل") { _, _ -> if (apkFile.exists()) apkFile.delete(); startBackgroundUpdateCheck(activity) }.create()
             updateDialog?.show()
         }
