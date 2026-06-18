@@ -27,6 +27,9 @@ import java.util.concurrent.TimeUnit
 
 class AdminDashboardActivity : AppCompatActivity() {
 
+    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
+    private val BASE_API_URL = "https://education.ashor.shop"
+
     private lateinit var listAllUsers: LinearLayout
     private lateinit var listActiveUsers: LinearLayout
     private lateinit var tvTotalUsers: TextView
@@ -49,7 +52,7 @@ class AdminDashboardActivity : AppCompatActivity() {
             text = "النشطين الآن: جاري التحميل..."
             setTextColor(Color.parseColor("#4CAF50"))
             textSize = 16f
-            setTypeface(null, android.graphics.Typeface.BOLD) // تم الإصلاح هنا
+            setTypeface(null, android.graphics.Typeface.BOLD) 
             gravity = Gravity.CENTER
             setPadding(10, 10, 10, 10) 
         }
@@ -103,7 +106,7 @@ class AdminDashboardActivity : AppCompatActivity() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val url = URL("https://vpn-license.rauter505.workers.dev/admin/get_all_users")
+                val url = URL("$BASE_API_URL/admin/get_all_users")
                 val conn = url.openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
@@ -138,7 +141,7 @@ class AdminDashboardActivity : AppCompatActivity() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val url = URL("https://vpn-license.rauter505.workers.dev/admin/get_active_users")
+                val url = URL("$BASE_API_URL/admin/get_active_users")
                 val conn = url.openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
@@ -172,11 +175,11 @@ class AdminDashboardActivity : AppCompatActivity() {
     private fun addActiveUserCard(id: String, name: String, pfp: String, timeStr: String) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
         val ivAvatar = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(100, 100).apply { setMargins(0, 0, 30, 0) }
-            if (pfp.isNotEmpty()) try { val b = Base64.decode(pfp, Base64.DEFAULT); setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size)) } catch (e: Exception) { setImageResource(R.mipmap.ic_launcher) } // تم الإصلاح هنا (استخدام mipmap بدلا من drawable)
-            else setImageResource(R.mipmap.ic_launcher) // تم الإصلاح هنا
+            if (pfp.isNotEmpty()) try { val b = Base64.decode(pfp, Base64.DEFAULT); setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size)) } catch (e: Exception) { setImageResource(R.mipmap.ic_launcher) } 
+            else setImageResource(R.mipmap.ic_launcher) 
         }
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        infoLayout.addView(TextView(this).apply { text = name; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) // تم الإصلاح هنا
+        infoLayout.addView(TextView(this).apply { text = name; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
         infoLayout.addView(TextView(this).apply { text = "ID: $id"; setTextColor(Color.parseColor("#FF9800")); textSize = 12f })
         infoLayout.addView(TextView(this).apply { text = "مدة النشاط: $timeStr"; setTextColor(Color.parseColor("#4CAF50")); textSize = 12f })
         card.addView(ivAvatar); card.addView(infoLayout); listActiveUsers.addView(card)
@@ -197,14 +200,14 @@ class AdminDashboardActivity : AppCompatActivity() {
         createStatButton("🟢 النشطين (حسب الأيام)", "#4CAF50", "ACTIVE")
         createStatButton("🔑 عمليات الدخول", "#9C27B0", "LOGIN")
         createStatButton("🚪 عمليات الخروج", "#FF5722", "LOGOUT")
-        createStatButton("🚫 الحسابات المحظورة", "#F44336", "BANNED") // لها مسار خاص
+        createStatButton("🚫 الحسابات المحظورة", "#F44336", "BANNED") 
         
         container.addView(ScrollView(this).apply { addView(btnLayout) })
     }
 
     private fun loadCalendarStats(title: String, type: String) {
         val dialogView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(40, 40, 40, 40); setBackgroundColor(Color.parseColor("#141417")) }
-        val tvTitle = TextView(this).apply { text = title; setTextColor(Color.parseColor("#FF9800")); textSize = 20f; setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,0,30) } } // تم الإصلاح هنا
+        val tvTitle = TextView(this).apply { text = title; setTextColor(Color.parseColor("#FF9800")); textSize = 20f; setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,0,30) } } 
         val scrollContent = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         dialogView.addView(tvTitle); dialogView.addView(ScrollView(this).apply { addView(scrollContent) })
 
@@ -219,7 +222,7 @@ class AdminDashboardActivity : AppCompatActivity() {
                         bannedList.forEach { u -> addUserCard(scrollContent, u.getString("id"), u.getString("name"), u.getString("password"), u.optString("pfp", ""), true) }
                     }
                 } else {
-                    val url = URL("https://vpn-license.rauter505.workers.dev/admin/get_stats?type=$type")
+                    val url = URL("$BASE_API_URL/admin/get_stats?type=$type")
                     val conn = url.openConnection() as HttpURLConnection
                     if (conn.responseCode == 200) {
                         val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
@@ -247,7 +250,7 @@ class AdminDashboardActivity : AppCompatActivity() {
 
     private fun showUsersForDate(date: String, idsArray: JSONArray) {
         val dialogView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(40, 40, 40, 40); setBackgroundColor(Color.parseColor("#141417")) }
-        val tvTitle = TextView(this).apply { text = "المستخدمين في $date"; setTextColor(Color.parseColor("#4CAF50")); textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,0,30) } } // تم الإصلاح هنا
+        val tvTitle = TextView(this).apply { text = "المستخدمين في $date"; setTextColor(Color.parseColor("#4CAF50")); textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,0,30) } } 
         val scrollContent = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         dialogView.addView(tvTitle); dialogView.addView(ScrollView(this).apply { addView(scrollContent) })
 
@@ -278,17 +281,17 @@ class AdminDashboardActivity : AppCompatActivity() {
                 try {
                     val bytes = Base64.decode(pfp, Base64.DEFAULT)
                     setImageBitmap(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
-                } catch (e: Exception) { setImageResource(R.mipmap.ic_launcher) } // تم الإصلاح هنا
-            } else { setImageResource(R.mipmap.ic_launcher) } // تم الإصلاح هنا
+                } catch (e: Exception) { setImageResource(R.mipmap.ic_launcher) } 
+            } else { setImageResource(R.mipmap.ic_launcher) } 
         }
         
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        infoLayout.addView(TextView(this).apply { text = "الاسم: $name"; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) // تم الإصلاح هنا
+        infoLayout.addView(TextView(this).apply { text = "الاسم: $name"; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
         infoLayout.addView(TextView(this).apply { text = "ID: $id"; setTextColor(Color.parseColor("#FF9800")); textSize = 14f })
         infoLayout.addView(TextView(this).apply { text = "الرمز: $pass"; setTextColor(Color.parseColor("#80FFFFFF")); textSize = 14f })
         
         if (isBanned) {
-            infoLayout.addView(TextView(this).apply { text = "🚫 محظور"; setTextColor(Color.RED); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD) }) // تم الإصلاح هنا
+            infoLayout.addView(TextView(this).apply { text = "🚫 محظور"; setTextColor(Color.RED); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
         }
 
         topLayout.addView(ivAvatar)
@@ -326,8 +329,10 @@ class AdminDashboardActivity : AppCompatActivity() {
             .setPositiveButton("حفظ") { _, _ ->
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
-                        val conn = URL("https://vpn-license.rauter505.workers.dev/admin/force_update").openConnection() as HttpURLConnection
-                        conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                        val conn = URL("$BASE_API_URL/admin/force_update").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
                         conn.outputStream.use { it.write(JSONObject().put("id", id).put("name", etName.text.toString()).put("password", etPass.text.toString()).toString().toByteArray()) }
                         if (conn.responseCode == 200) fetchAllUsers()
                     } catch (e: Exception) {}
@@ -338,8 +343,10 @@ class AdminDashboardActivity : AppCompatActivity() {
     private fun toggleBanUser(id: String, banStatus: Boolean) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val conn = URL("https://vpn-license.rauter505.workers.dev/admin/toggle_ban").openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                val conn = URL("$BASE_API_URL/admin/toggle_ban").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
                 conn.outputStream.use { it.write(JSONObject().put("id", id).put("banned", banStatus).toString().toByteArray()) }
                 if (conn.responseCode == 200) fetchAllUsers()
             } catch (e: Exception) {}
@@ -350,11 +357,13 @@ class AdminDashboardActivity : AppCompatActivity() {
         val input = EditText(this).apply { hint = "أدخل رمز الأدمن للتاكيد"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD; setTextColor(Color.BLACK) }
         AlertDialog.Builder(this).setTitle("تحذير: حذف نهائي!").setMessage("لإثبات أنك أدمن، اكتب الرمز السري الأساسي للحذف:")
             .setView(input).setPositiveButton("حذف") { _, _ ->
-                if (input.text.toString() == "mdMD@#$2002") { // التحقق من رمز الأدمن
+                if (input.text.toString() == "mdMD@#$2002") { 
                     lifecycleScope.launch(Dispatchers.IO) {
                         try {
-                            val conn = URL("https://vpn-license.rauter505.workers.dev/admin/delete_user").openConnection() as HttpURLConnection
-                            conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                            val conn = URL("$BASE_API_URL/admin/delete_user").openConnection() as HttpURLConnection
+                            conn.requestMethod = "POST"
+                            conn.setRequestProperty("Content-Type", "application/json")
+                            conn.doOutput = true
                             conn.outputStream.use { it.write(JSONObject().put("id", id).toString().toByteArray()) }
                             if (conn.responseCode == 200) fetchAllUsers()
                         } catch (e: Exception) {}
