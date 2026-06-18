@@ -211,7 +211,8 @@ object NetworkTime {
 }
 
 object CloudflareAPI {
-    private const val BASE_URL = "https://vpn-license.rauter505.workers.dev"
+    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
+    private const val BASE_URL = "https://education.ashor.shop"
 
     suspend fun checkLiveConfig(licenseId: String): Triple<Long, String?, Int> {
         return withContext(Dispatchers.IO) {
