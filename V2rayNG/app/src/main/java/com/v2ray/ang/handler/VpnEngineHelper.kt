@@ -27,6 +27,9 @@ object VpnEngineHelper {
     var activePingJob: Job? = null
     var liveUpdateJob: Job? = null
 
+    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
+    private const val BASE_API_URL = "https://education.ashor.shop"
+
     fun applyRunningState(activity: MainActivity, mainViewModel: MainViewModel, isLoading: Boolean, isRunning: Boolean) {
         val lottie = activity.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnConnect = activity.findViewById<MaterialButton>(R.id.btn_green_connect)
@@ -45,9 +48,11 @@ object VpnEngineHelper {
             TrafficMonitorHelper.startTrafficMonitor(activity)
 
             // فحص الحظر
+            @Suppress("OPT_IN_USAGE")
             GlobalScope.launch(Dispatchers.IO) {
                 try {
-                    val conn = URL("https://vpn-license.rauter505.workers.dev/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
+                    // 🌟 استخدام الرابط الجديد 🌟
+                    val conn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
                     if (conn.responseCode == 200 && JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText()).optBoolean("banned", false)) {
                         delay(1000); withContext(Dispatchers.Main) { V2RayServiceManager.stopVService(activity); Toast.makeText(activity, "تم حظرك من هذا الملف", Toast.LENGTH_LONG).show() }; return@launch
                     }
@@ -55,17 +60,22 @@ object VpnEngineHelper {
             }
 
             activePingJob?.cancel()
+            @Suppress("OPT_IN_USAGE")
             activePingJob = GlobalScope.launch(Dispatchers.IO) {
                 while (isActive) {
                     try {
                         val userId = AuthManager.getId(activity)
                         val payload = JSONObject().put("guid", guid).put("deviceId", deviceId).put("userId", userId).put("name", if (userId.isNotEmpty()) AuthManager.getName(activity) else "مجهول").put("pfp", if (userId.isNotEmpty()) AuthManager.getPfp(activity) else "")
-                        val conn = URL("https://vpn-license.rauter505.workers.dev/file/ping").openConnection() as HttpURLConnection
-                        conn.requestMethod = "POST"; conn.doOutput = true; conn.outputStream.use { it.write(payload.toString().toByteArray()) }; conn.responseCode
+                        // 🌟 استخدام الرابط الجديد وإضافة ترميز UTF-8 🌟
+                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }; conn.responseCode
                         
                         if (userId.isNotEmpty()) {
-                            val conn2 = URL("https://vpn-license.rauter505.workers.dev/admin/ping_active").openConnection() as HttpURLConnection
-                            conn2.requestMethod = "POST"; conn2.doOutput = true; conn2.outputStream.use { it.write(JSONObject().put("id", userId).toString().toByteArray()) }; conn2.responseCode
+                            // 🌟 استخدام الرابط الجديد وإضافة ترميز UTF-8 🌟
+                            val conn2 = URL("$BASE_API_URL/admin/ping_active").openConnection() as HttpURLConnection
+                            conn2.requestMethod = "POST"; conn2.setRequestProperty("Content-Type", "application/json"); conn2.doOutput = true
+                            conn2.outputStream.use { it.write(JSONObject().put("id", userId).toString().toByteArray(Charsets.UTF_8)) }; conn2.responseCode
                         }
                     } catch (e: Exception) {}
                     delay(30000)
@@ -80,6 +90,7 @@ object VpnEngineHelper {
 
     fun startLiveUpdates(activity: MainActivity, mainViewModel: MainViewModel) {
         liveUpdateJob?.cancel()
+        @Suppress("OPT_IN_USAGE")
         liveUpdateJob = GlobalScope.launch(Dispatchers.IO) {
             while (isActive) {
                 val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
