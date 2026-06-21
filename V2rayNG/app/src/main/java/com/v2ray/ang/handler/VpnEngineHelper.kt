@@ -39,46 +39,70 @@ object VpnEngineHelper {
         val deviceId = Settings.Secure.getString(activity.contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
 
         if (isLoading) {
-            fab?.setImageResource(R.drawable.ic_fab_check); btnConnect?.text = "جاري التشغيل..."; btnConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00")); activity.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f); activity.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f); lottie?.playAnimation(); return
+            fab?.setImageResource(R.drawable.ic_fab_check)
+            btnConnect?.text = "جاري التشغيل..."
+            btnConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
+            activity.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f)
+            activity.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f)
+            lottie?.playAnimation()
+            return
         }
 
         if (isRunning) {
             vpnStartTime = System.currentTimeMillis()
-            fab?.setImageResource(R.drawable.ic_stop_24dp); btnConnect?.text = "إيقاف المحرك"; btnConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F")); lottie?.playAnimation()
+            fab?.setImageResource(R.drawable.ic_stop_24dp)
+            btnConnect?.text = "إيقاف المحرك"
+            btnConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F"))
+            lottie?.playAnimation()
             TrafficMonitorHelper.startTrafficMonitor(activity)
-
-            // فحص الحظر
-            @Suppress("OPT_IN_USAGE")
-            GlobalScope.launch(Dispatchers.IO) {
-                try {
-                    // 🌟 استخدام الرابط الجديد 🌟
-                    val conn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
-                    if (conn.responseCode == 200 && JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText()).optBoolean("banned", false)) {
-                        delay(1000); withContext(Dispatchers.Main) { V2RayServiceManager.stopVService(activity); Toast.makeText(activity, "تم حظرك من هذا الملف", Toast.LENGTH_LONG).show() }; return@launch
-                    }
-                } catch (e: Exception) {}
-            }
 
             activePingJob?.cancel()
             @Suppress("OPT_IN_USAGE")
             activePingJob = GlobalScope.launch(Dispatchers.IO) {
                 while (isActive) {
                     try {
+                        // 🌟 1. فحص الحظر بشكل مستمر (كل 15 ثانية) لإيقاف الملف فوراً إذا تم حظره 🌟
+                        val banConn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
+                        if (banConn.responseCode == 200) {
+                            val resp = BufferedReader(InputStreamReader(banConn.inputStream)).readText()
+                            if (JSONObject(resp).optBoolean("banned", false)) {
+                                withContext(Dispatchers.Main) { 
+                                    V2RayServiceManager.stopVService(activity)
+                                    Toast.makeText(activity, "تم حظرك من هذا الملف من قبل الإدارة", Toast.LENGTH_LONG).show() 
+                                }
+                                return@launch // إيقاف اللوب وقطع الاتصال فوراً
+                            }
+                        }
+
+                        // 🌟 2. إرسال نبضة الاتصال للملف (لكي يظهر في المتصلين داخل الملف) 🌟
                         val userId = AuthManager.getId(activity)
-                        val payload = JSONObject().put("guid", guid).put("deviceId", deviceId).put("userId", userId).put("name", if (userId.isNotEmpty()) AuthManager.getName(activity) else "مجهول").put("pfp", if (userId.isNotEmpty()) AuthManager.getPfp(activity) else "")
-                        // 🌟 استخدام الرابط الجديد وإضافة ترميز UTF-8 🌟
-                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
-                        conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }; conn.responseCode
+                        val payload = JSONObject()
+                            .put("guid", guid)
+                            .put("deviceId", deviceId)
+                            .put("userId", userId)
+                            .put("name", if (userId.isNotEmpty()) AuthManager.getName(activity) else "مجهول")
+                            .put("pfp", if (userId.isNotEmpty()) AuthManager.getPfp(activity) else "")
                         
+                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.responseCode
+                        
+                        // 🌟 3. إرسال نبضة للوحة تحكم الإدارة (النشطين الكلي) 🌟
                         if (userId.isNotEmpty()) {
-                            // 🌟 استخدام الرابط الجديد وإضافة ترميز UTF-8 🌟
                             val conn2 = URL("$BASE_API_URL/admin/ping_active").openConnection() as HttpURLConnection
-                            conn2.requestMethod = "POST"; conn2.setRequestProperty("Content-Type", "application/json"); conn2.doOutput = true
-                            conn2.outputStream.use { it.write(JSONObject().put("id", userId).toString().toByteArray(Charsets.UTF_8)) }; conn2.responseCode
+                            conn2.requestMethod = "POST"
+                            conn2.setRequestProperty("Content-Type", "application/json")
+                            conn2.doOutput = true
+                            conn2.outputStream.use { it.write(JSONObject().put("id", userId).toString().toByteArray(Charsets.UTF_8)) }
+                            conn2.responseCode
                         }
                     } catch (e: Exception) {}
-                    delay(30000)
+                    
+                    // الانتظار 15 ثانية ثم إعادة الفحص والإرسال
+                    delay(15000) 
                 }
             }
 
@@ -106,7 +130,7 @@ object VpnEngineHelper {
                 }
                 if (needsRefresh) withContext(Dispatchers.Main) { mainViewModel.reloadServerList() }
                 
-                // تم تغيير هذا الرقم من 4000 (4 ثواني) إلى 30000 (30 ثانية) لحل مشكلة اللود والطلبات الزائدة
+                // تم تخفيف الضغط ليفحص كل 30 ثانية
                 delay(30000)
             }
         }
