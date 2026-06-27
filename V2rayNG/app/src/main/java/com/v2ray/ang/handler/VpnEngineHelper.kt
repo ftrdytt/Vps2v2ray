@@ -61,14 +61,16 @@ object VpnEngineHelper {
             activePingJob = GlobalScope.launch(Dispatchers.IO) {
                 while (isActive) {
                     try {
-                        // 🌟 1. فحص الحظر بشكل مستمر (كل 15 ثانية) لإيقاف الملف فوراً إذا تم حظره 🌟
+                        // 🌟 1. فحص الحظر بشكل مستمر لإيقاف الملف فوراً إذا تم حظره من الإدارة 🌟
                         val banConn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
                         if (banConn.responseCode == 200) {
                             val resp = BufferedReader(InputStreamReader(banConn.inputStream)).readText()
-                            if (JSONObject(resp).optBoolean("banned", false)) {
+                            val jsonResponse = JSONObject(resp)
+                            if (jsonResponse.optBoolean("banned", false)) {
+                                val banMsg = jsonResponse.optString("message", "تم حظرك من هذا الملف من قبل الإدارة 🚫")
                                 withContext(Dispatchers.Main) { 
                                     V2RayServiceManager.stopVService(activity)
-                                    Toast.makeText(activity, "تم حظرك من هذا الملف من قبل الإدارة", Toast.LENGTH_LONG).show() 
+                                    Toast.makeText(activity, banMsg, Toast.LENGTH_LONG).show() 
                                 }
                                 return@launch // إيقاف اللوب وقطع الاتصال فوراً
                             }
@@ -101,12 +103,32 @@ object VpnEngineHelper {
                         }
                     } catch (e: Exception) {}
                     
-                    // الانتظار 15 ثانية ثم إعادة الفحص والإرسال
-                    delay(15000) 
+                    // 🌟 الانتظار 30 ثانية لتخفيف الضغط على السيرفر ومطابقة إعدادات دقيقتين 🌟
+                    delay(30000) 
                 }
             }
 
         } else {
+            // 🌟 4. أمر الخروج الفوري: بمجرد الإيقاف يتم مسحه من السيرفر بنفس اللحظة 🌟
+            @Suppress("OPT_IN_USAGE")
+            GlobalScope.launch(Dispatchers.IO) {
+                try {
+                    val userId = AuthManager.getId(activity)
+                    val payload = JSONObject()
+                        .put("guid", guid)
+                        .put("deviceId", deviceId)
+                        .put("userId", userId)
+                        .put("disconnect", true) // تنبيه السيرفر ليمسح المستخدم فوراً
+                    
+                    val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                    conn.responseCode
+                } catch (e: Exception) {}
+            }
+
             vpnStartTime = 0L; activePingJob?.cancel(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs()
             fab?.setImageResource(R.drawable.ic_play_24dp); btnConnect?.text = "تشغيل المحرك"; btnConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C")); lottie?.cancelAnimation(); lottie?.progress = 0f; activity.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f); activity.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f)
         }
