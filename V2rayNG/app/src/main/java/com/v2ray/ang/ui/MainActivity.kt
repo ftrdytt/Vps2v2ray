@@ -122,9 +122,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
                         if (obj.getBoolean("success")) {
                             AuthManager.saveUser(this@MainActivity, obj.getString("id"), obj.getString("name"), obj.getString("password"), "user", "")
-                            withContext(Dispatchers.Main) {
-                                Toast.makeText(this@MainActivity, "تم إنشاء الحساب التلقائي بنجاح!", Toast.LENGTH_SHORT).show()
-                            }
+                            withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "تم إنشاء الحساب التلقائي بنجاح!", Toast.LENGTH_SHORT).show() }
                         }
                     }
                 } catch (e: Exception) { e.printStackTrace() }
@@ -166,9 +164,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val greenScreen = binding.root.findViewById<View>(R.id.green_screen_container)
             greenScreen?.layoutParams?.width = screenWidth
             
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
     private fun setupUIInteractionsSafe() {
@@ -216,9 +212,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 if (mainViewModel.isRunning.value == true) { 
                     setTestState(getString(R.string.connection_test_testing))
                     mainViewModel.testCurrentServerRealPing() 
-                } else {
-                    toast(R.string.connection_not_connected)
-                }
+                } else { toast(R.string.connection_not_connected) }
             }
             
             onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -230,9 +224,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     }
                 }
             })
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) { e.printStackTrace() }
     }
 
     private fun handleFabAction() {
@@ -279,7 +271,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
                 }
                 
-                // إعطاء مهلة للإنترنت لكي لا يفصل قبل أن تصل الرسالة
                 delay(1200) 
                 
                 withContext(Dispatchers.Main) {
@@ -363,9 +354,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 while (isActive) {
                     try {
                         val userId = AuthManager.getId(this@MainActivity)
-                        val name = if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول الهوية"
-                        val pfp = if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else ""
-                        // 🌟 استخدام الرابط الجديد للنبضة 🌟
                         val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
                         conn.requestMethod = "POST"
                         conn.setRequestProperty("Content-Type", "application/json")
@@ -374,14 +362,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             .put("guid", idToTrack)
                             .put("deviceId", deviceId)
                             .put("userId", userId)
-                            .put("name", name)
-                            .put("pfp", pfp)
+                            .put("name", if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول الهوية")
+                            .put("pfp", if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else "")
                             .put("disconnect", false)
                         conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                         conn.responseCode
                     } catch (e: Exception) {}
                     
-                    delay(30000L) // إرسال النبضة كل 30 ثانية لتوفير البطارية
+                    delay(30000L) 
                 }
             }
 
@@ -462,7 +450,38 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    private fun startV2Ray() { if (MmkvManager.getSelectServer().isNullOrEmpty()) toast(R.string.title_file_chooser) else V2RayServiceManager.startVService(this) }
+    // 🌟 التعديل السحري: فحص الحظر الاستباقي قبل أن يعمل الـ VPN 🌟
+    private fun startV2Ray() { 
+        val guid = MmkvManager.getSelectServer().orEmpty()
+        if (guid.isNullOrEmpty()) { toast(R.string.title_file_chooser); return }
+        
+        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+        
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // الفحص اللحظي مع السيرفر باستخدام الإنترنت الحقيقي للمستخدم
+                val conn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                if (conn.responseCode == 200) {
+                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                    if (resp.startsWith("{")) {
+                        val jsonResponse = JSONObject(resp)
+                        if (jsonResponse.optBoolean("banned", false)) {
+                            val banMsg = jsonResponse.optString("message", "تم حظرك من هذا الملف من قبل الإدارة 🚫")
+                            withContext(Dispatchers.Main) {
+                                applyRunningState(isLoading = false, isRunning = false)
+                                Toast.makeText(this@MainActivity, banMsg, Toast.LENGTH_LONG).show()
+                            }
+                            return@launch
+                        }
+                    }
+                }
+            } catch (e: Exception) {} // نتجاهل الأخطاء ونسمح بالاتصال إذا كان السيرفر متوقف لتسهيل الاستخدام
+            
+            withContext(Dispatchers.Main) { V2RayServiceManager.startVService(this@MainActivity) }
+        }
+    }
     
     fun restartV2Ray() { if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this); lifecycleScope.launch { delay(500); startV2Ray() } }
 
@@ -562,7 +581,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         VpnEngineHelper.startLiveUpdates(this, mainViewModel)
         if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) 
         
-        // 🌟 استدعاء المزامنة عند فتح التطبيق ليتحدث العداد 🌟
         forceManualSync()
     }
 
@@ -606,7 +624,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun showExtendLicenseDialog(guid: String) { AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
     fun replaceAndSyncConfigFromClipboard(guid: String) { AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
 
-    // 🌟 التبديل الآمن والمباشر 🌟
     override fun onSelectServer(guid: String) { 
         val oldGuid = MmkvManager.getSelectServer().orEmpty()
         if (oldGuid == guid) return
@@ -618,7 +635,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             toast("جاري التبديل للملف الجديد...")
             lifecycleScope.launch(Dispatchers.IO) {
                 
-                // إرسال إشارة إيقاف للسيرفر القديم
                 if (idToTrack.isNotEmpty()) {
                     try {
                         val userId = AuthManager.getId(this@MainActivity)
@@ -640,7 +656,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     lastReportedState = false
                 }
                 
-                // السماح للطلب بالوصول قبل قطع الإنترنت
                 delay(1000) 
                 
                 withContext(Dispatchers.Main) {
@@ -654,10 +669,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 withContext(Dispatchers.Main) {
                     if (SettingsManager.isVpnMode()) { 
                         val intent = VpnService.prepare(this@MainActivity)
-                        if (intent == null) V2RayServiceManager.startVService(this@MainActivity) 
+                        if (intent == null) startV2Ray() 
                         else requestVpnPermission.launch(intent) 
                     } else {
-                        V2RayServiceManager.startVService(this@MainActivity)
+                        startV2Ray()
                     }
                 }
             }
