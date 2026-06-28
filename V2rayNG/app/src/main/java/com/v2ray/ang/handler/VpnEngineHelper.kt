@@ -61,22 +61,24 @@ object VpnEngineHelper {
             activePingJob = GlobalScope.launch(Dispatchers.IO) {
                 while (isActive) {
                     try {
-                        // 🌟 1. فحص الحظر بشكل مستمر لإيقاف الملف فوراً إذا تم حظره من الإدارة 🌟
+                        // 🌟 1. الفحص المزدوج قبل إرسال النبضة 🌟
                         val banConn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
                         if (banConn.responseCode == 200) {
                             val resp = BufferedReader(InputStreamReader(banConn.inputStream)).readText()
-                            val jsonResponse = JSONObject(resp)
-                            if (jsonResponse.optBoolean("banned", false)) {
-                                val banMsg = jsonResponse.optString("message", "تم حظرك من هذا الملف من قبل الإدارة 🚫")
-                                withContext(Dispatchers.Main) { 
-                                    V2RayServiceManager.stopVService(activity)
-                                    Toast.makeText(activity, banMsg, Toast.LENGTH_LONG).show() 
+                            if (resp.startsWith("{")) {
+                                val jsonResponse = JSONObject(resp)
+                                if (jsonResponse.optBoolean("banned", false)) {
+                                    val banMsg = jsonResponse.optString("message", "تم حظرك من هذا الملف من قبل الإدارة 🚫")
+                                    withContext(Dispatchers.Main) { 
+                                        V2RayServiceManager.stopVService(activity)
+                                        Toast.makeText(activity, banMsg, Toast.LENGTH_LONG).show() 
+                                    }
+                                    return@launch // إيقاف اللوب والطرد الفوري
                                 }
-                                return@launch // إيقاف اللوب وقطع الاتصال فوراً
                             }
                         }
 
-                        // 🌟 2. إرسال نبضة الاتصال للملف (لكي يظهر في المتصلين داخل الملف) 🌟
+                        // 🌟 2. إرسال النبضة المستمرة للسيرفر للبقاء نشطاً 🌟
                         val userId = AuthManager.getId(activity)
                         val payload = JSONObject()
                             .put("guid", guid)
@@ -90,9 +92,24 @@ object VpnEngineHelper {
                         conn.setRequestProperty("Content-Type", "application/json")
                         conn.doOutput = true
                         conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-                        conn.responseCode
                         
-                        // 🌟 3. إرسال نبضة للوحة تحكم الإدارة (النشطين الكلي) 🌟
+                        // قراءة الاستجابة السريعة للطرد المباشر
+                        if (conn.responseCode == 200) {
+                            val pingResp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                            if (pingResp.startsWith("{")) {
+                                val pingJson = JSONObject(pingResp)
+                                if (pingJson.optBoolean("banned", false)) {
+                                    val banMsg2 = pingJson.optString("message", "تم حظرك من هذا الملف من قبل الإدارة 🚫")
+                                    withContext(Dispatchers.Main) { 
+                                        V2RayServiceManager.stopVService(activity)
+                                        Toast.makeText(activity, banMsg2, Toast.LENGTH_LONG).show() 
+                                    }
+                                    return@launch
+                                }
+                            }
+                        }
+                        
+                        // 🌟 3. إرسال نبضة للوحة تحكم الإدارة 🌟
                         if (userId.isNotEmpty()) {
                             val conn2 = URL("$BASE_API_URL/admin/ping_active").openConnection() as HttpURLConnection
                             conn2.requestMethod = "POST"
@@ -103,7 +120,7 @@ object VpnEngineHelper {
                         }
                     } catch (e: Exception) {}
                     
-                    // 🌟 الانتظار 30 ثانية لتخفيف الضغط على السيرفر ومطابقة إعدادات دقيقتين 🌟
+                    // 🌟 الانتظار 30 ثانية لتخفيف الضغط ومزامنة دقيقة 🌟
                     delay(30000) 
                 }
             }
@@ -118,7 +135,7 @@ object VpnEngineHelper {
                         .put("guid", guid)
                         .put("deviceId", deviceId)
                         .put("userId", userId)
-                        .put("disconnect", true) // تنبيه السيرفر ليمسح المستخدم فوراً
+                        .put("disconnect", true) // أمر السيرفر للمسح فوراً
                     
                     val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
