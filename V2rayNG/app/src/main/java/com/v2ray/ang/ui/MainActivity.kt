@@ -207,7 +207,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             setupToolbar(binding.toolbar, false, "اشور لود")
             
             val toggle = ActionBarDrawerToggle(this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
-            binding.drawerLayout.addDrawerListener(toggle); toggle.syncState(); binding.navView.setNavigationItemSelectedListener(this)
+            
+            // 🌟 إخفاء القائمة الجانبية بالكامل ومنع السحب 🌟
+            toggle.isDrawerIndicatorEnabled = false // إخفاء أيقونة الخطوط الثلاثة
+            binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED) // إغلاق القائمة ومنع سحبها من الجانب
+            
+            binding.drawerLayout.addDrawerListener(toggle)
+            toggle.syncState()
+            binding.navView.setNavigationItemSelectedListener(this)
             
             binding.layoutTest.setOnClickListener { 
                 if (mainViewModel.isRunning.value == true) { 
@@ -249,6 +256,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
                 val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
                 
+                // 🌟 إرسال أمر الخروج الفوري للسيرفر 🌟
                 if (idToTrack.isNotEmpty()) {
                     val userId = AuthManager.getId(this@MainActivity)
                     val payload = JSONObject()
@@ -494,7 +502,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // 🌟 التشغيل الفعلي للمحرك بعد نجاح الفحص 🌟
+    // 🌟 دالة بدء التشغيل الفعلي (يتم استدعاؤها بعد نجاح فحص الحظر) 🌟
     private fun startV2RayCore() {
         if (SettingsManager.isVpnMode()) { 
             val intent = VpnService.prepare(this)
