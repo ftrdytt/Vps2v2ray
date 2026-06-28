@@ -107,7 +107,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
-    // 🌟 الإصلاح الجذري 1: منع تعليق إنشاء الحساب وتوجيهه للرابط الجديد 🌟
     private fun checkInitialAuth() {
         if (!AuthManager.isLoggedIn(this)) {
             lifecycleScope.launch(Dispatchers.IO) {
@@ -116,7 +115,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     conn.requestMethod = "POST"
                     conn.setRequestProperty("Content-Type", "application/json")
                     conn.doOutput = true
-                    // إرسال Body فارغ لإجبار الأندرويد على إرسال الطلب بدلاً من الفشل الصامت
+                    // إرسال Body فارغ لإجبار الأندرويد على إرسال الطلب بشكل صحيح
                     conn.outputStream.use { it.write("{}".toByteArray()) }
 
                     if (conn.responseCode == 200) {
@@ -257,14 +256,30 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
                 val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
                 
+                // 🌟 إرسال أمر الخروج الفوري للسيرفر 🌟
                 if (idToTrack.isNotEmpty()) {
-                    CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
-                    lastReportedState = false
+                    val userId = AuthManager.getId(this@MainActivity)
+                    val payload = JSONObject()
+                        .put("guid", idToTrack)
+                        .put("deviceId", deviceId)
+                        .put("userId", userId)
+                        .put("disconnect", true)
                     
+                    try {
+                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.responseCode
+                    } catch (e: Exception) {}
+
+                    lastReportedState = false
                     val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
                 }
                 
+                // إعطاء مهلة للإنترنت لكي لا يفصل قبل أن تصل الرسالة
                 delay(1200) 
                 
                 withContext(Dispatchers.Main) {
@@ -296,7 +311,23 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             if (isNowRunning && !isLoading) {
                 lastReportedState = true
                 lifecycleScope.launch(Dispatchers.IO) {
-                    CloudflareAPI.sendActiveState(idToTrack, deviceId, false)
+                    try {
+                        val userId = AuthManager.getId(this@MainActivity)
+                        val payload = JSONObject()
+                            .put("guid", idToTrack)
+                            .put("deviceId", deviceId)
+                            .put("userId", userId)
+                            .put("name", if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول")
+                            .put("pfp", if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else "")
+                        
+                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.responseCode
+                    } catch (e: Exception) {}
+
                     delay(1000) 
                     val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, updatedData.third)
@@ -334,7 +365,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val userId = AuthManager.getId(this@MainActivity)
                         val name = if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول الهوية"
                         val pfp = if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else ""
-                        // 🌟 استخدام الرابط الجديد 🌟
+                        // 🌟 استخدام الرابط الجديد للنبضة 🌟
                         val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
                         conn.requestMethod = "POST"
                         conn.setRequestProperty("Content-Type", "application/json")
@@ -350,7 +381,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         conn.responseCode
                     } catch (e: Exception) {}
                     
-                    delay(10800000L) 
+                    delay(30000L) // إرسال النبضة كل 30 ثانية لتوفير البطارية
                 }
             }
 
@@ -374,7 +405,21 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
                             withContext(Dispatchers.IO) {
                                 if (idToTrack.isNotEmpty()) {
-                                    CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
+                                    val userId = AuthManager.getId(this@MainActivity)
+                                    val payload = JSONObject()
+                                        .put("guid", idToTrack)
+                                        .put("deviceId", deviceId)
+                                        .put("userId", userId)
+                                        .put("disconnect", true)
+                                    try {
+                                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                                        conn.requestMethod = "POST"
+                                        conn.setRequestProperty("Content-Type", "application/json")
+                                        conn.doOutput = true
+                                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                                        conn.responseCode
+                                    } catch (e: Exception) {}
+                                    
                                     val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
                                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
                                     lastReportedState = false
@@ -530,7 +575,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lastReportedState = false
             val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
             @Suppress("OPT_IN_USAGE")
-            GlobalScope.launch(Dispatchers.IO) { CloudflareAPI.sendActiveState(idToTrack, deviceId, true) }
+            GlobalScope.launch(Dispatchers.IO) {
+                try {
+                    val userId = AuthManager.getId(this@MainActivity)
+                    val payload = JSONObject()
+                        .put("guid", idToTrack)
+                        .put("deviceId", deviceId)
+                        .put("userId", userId)
+                        .put("disconnect", true)
+                    val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                    conn.responseCode
+                } catch (e: Exception) {}
+            }
         }
         tabMediator?.detach(); VpnEngineHelper.cancelAllJobs(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs(); pingJob?.cancel(); activePingJob?.cancel(); super.onDestroy() 
     }
@@ -546,7 +606,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun showExtendLicenseDialog(guid: String) { AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
     fun replaceAndSyncConfigFromClipboard(guid: String) { AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
 
-    // 🌟 التعديل السحري: التبديل الآمن 🌟
+    // 🌟 التبديل الآمن والمباشر 🌟
     override fun onSelectServer(guid: String) { 
         val oldGuid = MmkvManager.getSelectServer().orEmpty()
         if (oldGuid == guid) return
@@ -560,7 +620,21 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 
                 // إرسال إشارة إيقاف للسيرفر القديم
                 if (idToTrack.isNotEmpty()) {
-                    CloudflareAPI.sendActiveState(idToTrack, deviceId, true)
+                    try {
+                        val userId = AuthManager.getId(this@MainActivity)
+                        val payload = JSONObject()
+                            .put("guid", idToTrack)
+                            .put("deviceId", deviceId)
+                            .put("userId", userId)
+                            .put("disconnect", true)
+                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.responseCode
+                    } catch (e: Exception) {}
+
                     val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, oldGuid)
                     V2rayCrypt.saveActiveCount(this@MainActivity, oldGuid, max(0, prevCount - 1))
                     lastReportedState = false
