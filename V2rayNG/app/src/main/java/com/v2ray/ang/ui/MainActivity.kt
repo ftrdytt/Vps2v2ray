@@ -3,6 +3,7 @@ package com.v2ray.ang.ui
 import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Base64
 import android.view.Menu
 import android.view.MenuItem
@@ -73,7 +74,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
     private val BASE_API_URL = "https://education.ashor.shop"
 
-    private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { if (it.resultCode == RESULT_OK) startV2Ray() }
+    private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { if (it.resultCode == RESULT_OK) startV2RayCore() }
     private val requestActivityLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { if (SettingsChangeManager.consumeRestartService() && mainViewModel.isRunning.value == true) restartV2Ray() }
     
     private val openEncryptedFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) ImportHelper.importEncryptedContentFromUri(this, mainViewModel, uri) }
@@ -246,9 +247,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lifecycleScope.launch(Dispatchers.IO) {
                 val guid = MmkvManager.getSelectServer().orEmpty()
                 val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
-                val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+                val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
                 
-                // 🌟 إرسال أمر الخروج الفوري للسيرفر 🌟
                 if (idToTrack.isNotEmpty()) {
                     val userId = AuthManager.getId(this@MainActivity)
                     val payload = JSONObject()
@@ -279,13 +279,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
         } else {
-            applyRunningState(isLoading = true, isRunning = false)
-            if (SettingsManager.isVpnMode()) { 
-                val intent = VpnService.prepare(this)
-                if (intent == null) startV2Ray() else requestVpnPermission.launch(intent) 
-            } else {
-                startV2Ray()
-            }
+            startV2Ray()
         }
     }
 
@@ -294,7 +288,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
-        val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
         
         val isNowRunning = isRunning && !isLoading
 
@@ -450,14 +444,23 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // 🌟 التعديل السحري: فحص الحظر الاستباقي قبل أن يعمل الـ VPN 🌟
+    // 🌟 الفحص الاستباقي للحظر قبل بدء الـ VPN 🌟
     private fun startV2Ray() { 
         val guid = MmkvManager.getSelectServer().orEmpty()
         if (guid.isNullOrEmpty()) { toast(R.string.title_file_chooser); return }
         
         val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+        val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
+        val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
         
+        // إظهار حالة التحميل أثناء الفحص
+        binding.fab.setImageResource(R.drawable.ic_fab_check)
+        btnGreenConnect?.text = "جاري الفحص والتشغيل..."
+        btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
+        lottieEngine?.playAnimation()
+
         lifecycleScope.launch(Dispatchers.IO) {
+            var isBanned = false
             try {
                 // الفحص اللحظي مع السيرفر باستخدام الإنترنت الحقيقي للمستخدم
                 val conn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
@@ -468,22 +471,40 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     if (resp.startsWith("{")) {
                         val jsonResponse = JSONObject(resp)
                         if (jsonResponse.optBoolean("banned", false)) {
+                            isBanned = true
                             val banMsg = jsonResponse.optString("message", "تم حظرك من هذا الملف من قبل الإدارة 🚫")
                             withContext(Dispatchers.Main) {
-                                applyRunningState(isLoading = false, isRunning = false)
+                                // إعادة الأزرار للحالة الطبيعية وإظهار رسالة الطرد
+                                binding.fab.setImageResource(R.drawable.ic_play_24dp)
+                                binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this@MainActivity, R.color.color_fab_inactive))
+                                btnGreenConnect?.text = "تشغيل المحرك"
+                                btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
+                                lottieEngine?.cancelAnimation()
+                                lottieEngine?.progress = 0f
                                 Toast.makeText(this@MainActivity, banMsg, Toast.LENGTH_LONG).show()
                             }
-                            return@launch
                         }
                     }
                 }
             } catch (e: Exception) {} // نتجاهل الأخطاء ونسمح بالاتصال إذا كان السيرفر متوقف لتسهيل الاستخدام
             
-            withContext(Dispatchers.Main) { V2RayServiceManager.startVService(this@MainActivity) }
+            if (!isBanned) {
+                withContext(Dispatchers.Main) { startV2RayCore() }
+            }
+        }
+    }
+
+    // 🌟 التشغيل الفعلي للمحرك بعد نجاح الفحص 🌟
+    private fun startV2RayCore() {
+        if (SettingsManager.isVpnMode()) { 
+            val intent = VpnService.prepare(this)
+            if (intent == null) V2RayServiceManager.startVService(this) else requestVpnPermission.launch(intent) 
+        } else {
+            V2RayServiceManager.startVService(this)
         }
     }
     
-    fun restartV2Ray() { if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this); lifecycleScope.launch { delay(500); startV2Ray() } }
+    fun restartV2Ray() { if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this); lifecycleScope.launch { delay(500); startV2RayCore() } }
 
     fun forceManualSync() {
         showLoadingDialog()
@@ -591,7 +612,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         if (lastReportedState == true && idToTrack.isNotEmpty()) {
             lastReportedState = false
-            val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+            val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
             @Suppress("OPT_IN_USAGE")
             GlobalScope.launch(Dispatchers.IO) {
                 try {
@@ -630,7 +651,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         if (mainViewModel.isRunning.value == true) {
             val idToTrack = V2rayCrypt.getLicenseId(this, oldGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: oldGuid
-            val deviceId = android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+            val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
             
             toast("جاري التبديل للملف الجديد...")
             lifecycleScope.launch(Dispatchers.IO) {
@@ -667,13 +688,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 delay(800) 
                 
                 withContext(Dispatchers.Main) {
-                    if (SettingsManager.isVpnMode()) { 
-                        val intent = VpnService.prepare(this@MainActivity)
-                        if (intent == null) startV2Ray() 
-                        else requestVpnPermission.launch(intent) 
-                    } else {
-                        startV2Ray()
-                    }
+                    startV2RayCore()
                 }
             }
         } else {
