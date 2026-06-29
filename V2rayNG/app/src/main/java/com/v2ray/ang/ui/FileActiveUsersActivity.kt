@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.button.MaterialButton
+import com.v2ray.ang.util.AvatarGenerator // 🌟 استدعاء نظام الصور الذكي 🌟
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -269,6 +270,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
         }
 
+        // 🌟 استبدال صور الانمي القديمة بالدوائر الذكية 🌟
         val ivAvatar = ImageView(this).apply {
             layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 30, 0) }
             background = resources.getDrawable(android.R.drawable.dialog_holo_dark_frame, null)
@@ -279,9 +281,11 @@ class FileActiveUsersActivity : AppCompatActivity() {
             try {
                 val bytes = Base64.decode(pfp, Base64.DEFAULT)
                 ivAvatar.setImageBitmap(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
-            } catch (e: Exception) { loadAnimeAvatar(ivAvatar, deviceId) }
+            } catch (e: Exception) { 
+                ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(name, deviceId)) 
+            }
         } else {
-            loadAnimeAvatar(ivAvatar, deviceId)
+            ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(name, deviceId))
         }
 
         val infoLayout = LinearLayout(this).apply {
@@ -318,17 +322,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         mainContainer.addView(card)
     }
 
-    private fun loadAnimeAvatar(imageView: ImageView, seed: String) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val url = URL("https://api.dicebear.com/7.x/adventurer/png?seed=$seed&backgroundColor=b6e3f4,c0aede,d1d4f9")
-                val conn = url.openConnection() as HttpURLConnection
-                val bitmap = BitmapFactory.decodeStream(conn.inputStream)
-                withContext(Dispatchers.Main) { imageView.setImageBitmap(bitmap) }
-            } catch (e: Exception) {}
-        }
-    }
-
     private fun toggleBanStatus(deviceId: String, name: String, userId: String, pfp: String, banStatus: Boolean, currentTab: String) {
         val actionName = if (banStatus) "حظر" else "إلغاء حظر"
         AlertDialog.Builder(this)
@@ -340,7 +333,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
                 
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
-                        // 🌟 استخدام الرابط الجديد 🌟
                         val conn = URL("$BASE_API_URL/file/toggle_ban").openConnection() as HttpURLConnection
                         conn.requestMethod = "POST"
                         conn.setRequestProperty("Content-Type", "application/json")
@@ -354,7 +346,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
                             .put("userId", userId)
                             .put("pfp", pfp)
 
-                        // 🌟 إضافة ترميز UTF-8 لتجنب مشاكل الأسماء العربية 🌟
                         conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
                         if (conn.responseCode == 200) {
