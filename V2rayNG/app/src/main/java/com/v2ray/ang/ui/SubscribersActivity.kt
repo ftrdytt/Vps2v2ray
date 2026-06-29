@@ -23,14 +23,21 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AngConfigManager
-import com.v2ray.ang.handler.CloudflareAPI
 import com.v2ray.ang.handler.NetworkTime
 import com.v2ray.ang.handler.V2rayCrypt
+import com.v2ray.ang.util.AvatarGenerator // 🌟 استدعاء نظام الصور الذكي 🌟
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 
 class SubscribersActivity : AppCompatActivity() {
+
+    // 🌟 الرابط الجديد الأساسي للـ VPS 🌟
+    private val BASE_API_URL = "https://education.ashor.shop"
 
     private lateinit var recycler: RecyclerView
     private lateinit var etSearch: EditText
@@ -104,7 +111,7 @@ class SubscribersActivity : AppCompatActivity() {
         filterList(etSearch.text.toString())
     }
 
-    // 🌟 التعديل الجذري: تحديث جميع المشتركين بطلب واحد فقط! (سرعة صاروخية) 🌟
+    // 🌟 تم التحديث: جلب بيانات كل المشتركين من سيرفر الـ VPS الجديد 🌟
     private fun syncSubscribersFromCloud(isManualRefresh: Boolean) {
         if (isManualRefresh) swipeRefresh.isRefreshing = true
         
@@ -115,16 +122,33 @@ class SubscribersActivity : AppCompatActivity() {
             }
 
             val licenseIds = allSubscribers.map { it.licenseId }
-            val batchResults = CloudflareAPI.checkAllLiveConfigs(licenseIds)
             var isChanged = false
 
-            allSubscribers.forEach { sub ->
-                val data = batchResults[sub.licenseId]
-                if (data != null && data.first >= 0L) {
-                    V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, data.first, data.second)
-                    isChanged = true
+            try {
+                val conn = URL("$BASE_API_URL/files/check_all").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                val payload = JSONObject().put("guids", JSONArray(licenseIds))
+                conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                
+                if (conn.responseCode == 200) {
+                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                    val results = JSONObject(resp)
+                    
+                    allSubscribers.forEach { sub ->
+                        if (results.has(sub.licenseId)) {
+                            val data = results.getJSONObject(sub.licenseId)
+                            val exp = data.optLong("expiryTime", -1L)
+                            val actCount = data.optInt("activeCount", 0)
+                            if (exp >= 0L) {
+                                V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, exp, actCount)
+                                isChanged = true
+                            }
+                        }
+                    }
                 }
-            }
+            } catch (e: Exception) {}
 
             withContext(Dispatchers.Main) { 
                 if (isChanged) loadSubscribers()
@@ -168,6 +192,7 @@ class SubscribersActivity : AppCompatActivity() {
             }.setNegativeButton("إلغاء", null).show()
     }
 
+    // 🌟 تم التحديث: رفع التعديل للـ VPS 🌟
     private fun replaceSubscriberConfig(sub: V2rayCrypt.SubscriberData) {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val newConf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
@@ -175,7 +200,20 @@ class SubscribersActivity : AppCompatActivity() {
 
         Toast.makeText(this, "جاري رفع الكود...", Toast.LENGTH_SHORT).show()
         lifecycleScope.launch(Dispatchers.IO) {
-            val success = CloudflareAPI.createOrUpdateSubscriber(sub.licenseId, sub.expiryTimeMs, newConf)
+            var success = false
+            try {
+                val conn = URL("$BASE_API_URL/admin/upload_config").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                val payload = JSONObject()
+                    .put("licenseId", sub.licenseId)
+                    .put("expiryTime", sub.expiryTimeMs)
+                    .put("configData", newConf)
+                conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                if (conn.responseCode == 200) success = true
+            } catch (e: Exception) {}
+            
             withContext(Dispatchers.Main) { Toast.makeText(this@SubscribersActivity, if (success) "تم استبدال السيرفر!" else "فشل الاتصال.", Toast.LENGTH_LONG).show() }
         }
     }
@@ -191,13 +229,25 @@ class SubscribersActivity : AppCompatActivity() {
 
         val builder = AlertDialog.Builder(this)
         builder.setView(layout)
+        
+        // 🌟 تم التحديث: تمديد الوقت عبر الـ VPS 🌟
         builder.setPositiveButton("تمديد") { dialog, _ ->
             val totalMs = ((monthsInput.text.toString().toLongOrNull() ?: 0L) * 30L * 24L * 60L * 60L * 1000L) + ((daysInput.text.toString().toLongOrNull() ?: 0L) * 24L * 60L * 60L * 1000L) + ((hoursInput.text.toString().toLongOrNull() ?: 0L) * 60L * 60L * 1000L)
             if (totalMs > 0L) {
                 val newExpiry = NetworkTime.currentTimeMillis(this) + totalMs
                 Toast.makeText(this, "جاري التحديث...", Toast.LENGTH_SHORT).show()
                 lifecycleScope.launch(Dispatchers.IO) {
-                    val success = CloudflareAPI.updateExpiry(sub.licenseId, newExpiry)
+                    var success = false
+                    try {
+                        val conn = URL("$BASE_API_URL/admin/update_expiry").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        val payload = JSONObject().put("licenseId", sub.licenseId).put("expiryTime", newExpiry)
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        if (conn.responseCode == 200) success = true
+                    } catch (e: Exception) {}
+
                     withContext(Dispatchers.Main) {
                         if (success) {
                             V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, newExpiry, sub.activeCount)
@@ -210,11 +260,22 @@ class SubscribersActivity : AppCompatActivity() {
             dialog.dismiss()
         }
         
+        // 🌟 تم التحديث: إيقاف الكود عبر الـ VPS 🌟
         builder.setNeutralButton("إيقاف الكود") { dialog, _ ->
             Toast.makeText(this, "جاري الإيقاف...", Toast.LENGTH_SHORT).show()
             lifecycleScope.launch(Dispatchers.IO) {
                 val expiredTime = NetworkTime.currentTimeMillis(this@SubscribersActivity) - 10000L
-                val success = CloudflareAPI.updateExpiry(sub.licenseId, expiredTime)
+                var success = false
+                try {
+                    val conn = URL("$BASE_API_URL/admin/update_expiry").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    val payload = JSONObject().put("licenseId", sub.licenseId).put("expiryTime", expiredTime)
+                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                    if (conn.responseCode == 200) success = true
+                } catch (e: Exception) {}
+
                 withContext(Dispatchers.Main) {
                     if (success) {
                         V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, expiredTime, 0)
@@ -245,13 +306,23 @@ class SubscribersActivity : AppCompatActivity() {
         }
     }
 
+    // 🌟 تم التحديث: حذف المشترك من الـ VPS 🌟
     private fun deleteSubscriber(sub: V2rayCrypt.SubscriberData) {
         AlertDialog.Builder(this).setTitle("حذف المشترك").setMessage("هل أنت متأكد؟ سيتم قطع الاتصال فوراً.")
             .setPositiveButton("نعم، احذف") { _, _ ->
                 Toast.makeText(this, "جاري الحذف...", Toast.LENGTH_SHORT).show()
                 lifecycleScope.launch(Dispatchers.IO) {
                     val expiredTime = NetworkTime.currentTimeMillis(this@SubscribersActivity) - 10000L
-                    CloudflareAPI.updateExpiry(sub.licenseId, expiredTime)
+                    try {
+                        val conn = URL("$BASE_API_URL/admin/update_expiry").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        val payload = JSONObject().put("licenseId", sub.licenseId).put("expiryTime", expiredTime)
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.responseCode
+                    } catch (e: Exception) {}
+                    
                     withContext(Dispatchers.Main) {
                         V2rayCrypt.removeSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId)
                         loadSubscribers(); Toast.makeText(this@SubscribersActivity, "تم حذف المشترك!", Toast.LENGTH_SHORT).show()
@@ -302,6 +373,14 @@ class SubscribersAdapter(
             onEdit: (V2rayCrypt.SubscriberData) -> Unit
         ) {
             tvName.text = item.name
+            
+            // 🌟 السحر هنا: إضافة الدائرة الملونة (الصورة الذكية) بجانب اسم المشترك تلقائياً! 🌟
+            val avatarBitmap = AvatarGenerator.generateAvatar(item.name, item.licenseId, 120)
+            val avatarDrawable = android.graphics.drawable.BitmapDrawable(itemView.resources, avatarBitmap)
+            tvName.setCompoundDrawablesWithIntrinsicBounds(avatarDrawable, null, null, null)
+            tvName.compoundDrawablePadding = 30
+            // ==============================================================
+
             tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
             
             tvActiveCount.setOnClickListener {
