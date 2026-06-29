@@ -17,6 +17,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AuthManager
+import com.v2ray.ang.util.AvatarGenerator // 🌟 استدعاء نظام الصور الذكي 🌟
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -85,9 +86,10 @@ class ProfileFragment : Fragment() {
 
         val userId = AuthManager.getId(requireContext())
         val userRole = AuthManager.getRole(requireContext())
+        val userName = AuthManager.getName(requireContext())
         
         etId.setText(userId)
-        etName.setText(AuthManager.getName(requireContext()))
+        etName.setText(userName)
         etPass.setText(AuthManager.getPass(requireContext()))
         currentBase64Pfp = AuthManager.getPfp(requireContext())
         
@@ -106,7 +108,7 @@ class ProfileFragment : Fragment() {
             }
         }
 
-        updateProfilePicture(currentBase64Pfp, userId)
+        updateProfilePicture(currentBase64Pfp, userName, userId)
 
         view.findViewById<View>(R.id.btn_change_avatar)?.setOnClickListener {
             val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
@@ -156,6 +158,7 @@ class ProfileFragment : Fragment() {
                             AuthManager.saveUser(requireContext(), AuthManager.getId(requireContext()), newName, newPass, AuthManager.getRole(requireContext()), currentBase64Pfp)
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(requireContext(), "تم حفظ التعديلات بنجاح!", Toast.LENGTH_SHORT).show()
+                                updateProfilePicture(currentBase64Pfp, newName, AuthManager.getId(requireContext()))
                                 btnSave.isEnabled = true
                                 btnSave.text = "حفظ التعديلات السحابية"
                             }
@@ -236,7 +239,7 @@ class ProfileFragment : Fragment() {
                         withContext(Dispatchers.Main) {
                             etName.setText(serverName)
                             etPass.setText(serverPass)
-                            updateProfilePicture(currentBase64Pfp, userId)
+                            updateProfilePicture(currentBase64Pfp, serverName, userId)
                         }
                     }
                 }
@@ -246,36 +249,21 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    private fun updateProfilePicture(base64Str: String, seed: String) {
+    // 🌟 التعديل السحري: الاعتماد على الـ AvatarGenerator 🌟
+    private fun updateProfilePicture(base64Str: String, name: String, userId: String) {
         if (base64Str.isNotEmpty()) {
             try {
                 val decodedBytes = Base64.decode(base64Str, Base64.NO_WRAP)
                 val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
                 ivPfp.setImageBitmap(bitmap)
                 ivPfp.imageTintList = null 
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                ivPfp.setImageBitmap(AvatarGenerator.generateAvatar(name, userId))
+                ivPfp.imageTintList = null 
+            }
         } else {
-            loadDefaultAvatar(seed)
-        }
-    }
-
-    private fun loadDefaultAvatar(seed: String) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val avatarUrl = URL("https://api.dicebear.com/7.x/adventurer/png?seed=$seed&backgroundColor=b6e3f4,c0aede,d1d4f9")
-                val connection = avatarUrl.openConnection() as HttpURLConnection
-                connection.doInput = true
-                connection.connect()
-                val inputStream = connection.inputStream
-                val bitmap = BitmapFactory.decodeStream(inputStream)
-
-                withContext(Dispatchers.Main) {
-                    if (bitmap != null) {
-                        ivPfp.setImageBitmap(bitmap)
-                        ivPfp.imageTintList = null 
-                    }
-                }
-            } catch (e: Exception) {}
+            ivPfp.setImageBitmap(AvatarGenerator.generateAvatar(name, userId))
+            ivPfp.imageTintList = null 
         }
     }
 }
