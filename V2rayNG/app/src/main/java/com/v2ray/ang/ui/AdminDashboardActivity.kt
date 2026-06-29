@@ -14,6 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.R
+import com.v2ray.ang.util.AvatarGenerator // 🌟 استدعاء نظام الصور الذكي 🌟
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -174,10 +175,22 @@ class AdminDashboardActivity : AppCompatActivity() {
 
     private fun addActiveUserCard(id: String, name: String, pfp: String, timeStr: String) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
-        val ivAvatar = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(100, 100).apply { setMargins(0, 0, 30, 0) }
-            if (pfp.isNotEmpty()) try { val b = Base64.decode(pfp, Base64.DEFAULT); setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size)) } catch (e: Exception) { setImageResource(R.mipmap.ic_launcher) } 
-            else setImageResource(R.mipmap.ic_launcher) 
+        
+        // 🌟 تعديل صورة النشطين الآن (صورة ذكية) 🌟
+        val ivAvatar = ImageView(this).apply { 
+            layoutParams = LinearLayout.LayoutParams(100, 100).apply { setMargins(0, 0, 30, 0) }
+            if (pfp.isNotEmpty()) {
+                try { 
+                    val b = Base64.decode(pfp, Base64.DEFAULT)
+                    setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size)) 
+                } catch (e: Exception) { 
+                    setImageBitmap(AvatarGenerator.generateAvatar(name, id))
+                } 
+            } else {
+                setImageBitmap(AvatarGenerator.generateAvatar(name, id))
+            } 
         }
+        
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         infoLayout.addView(TextView(this).apply { text = name; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
         infoLayout.addView(TextView(this).apply { text = "ID: $id"; setTextColor(Color.parseColor("#FF9800")); textSize = 12f })
@@ -275,14 +288,19 @@ class AdminDashboardActivity : AppCompatActivity() {
         // الجزء العلوي: الصورة + الاسم + الايدي
         val topLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         
+        // 🌟 تعديل صورة قائمة المستخدمين الشاملة (صورة ذكية) 🌟
         val ivAvatar = ImageView(this).apply {
             layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 30, 0) }
             if (pfp.isNotEmpty()) {
                 try {
                     val bytes = Base64.decode(pfp, Base64.DEFAULT)
                     setImageBitmap(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
-                } catch (e: Exception) { setImageResource(R.mipmap.ic_launcher) } 
-            } else { setImageResource(R.mipmap.ic_launcher) } 
+                } catch (e: Exception) { 
+                    setImageBitmap(AvatarGenerator.generateAvatar(name, id))
+                } 
+            } else { 
+                setImageBitmap(AvatarGenerator.generateAvatar(name, id))
+            } 
         }
         
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
