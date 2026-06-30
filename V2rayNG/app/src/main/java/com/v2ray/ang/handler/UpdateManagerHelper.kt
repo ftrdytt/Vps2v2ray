@@ -24,7 +24,7 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
-object UpdateManagerHelper {
+object UpdateManager { // غيرت الاسم إلى UpdateManager ليتوافق مع الاستدعاءات في باقي الملفات
     
     // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
     private const val BASE_API_URL = "https://education.ashor.shop"
@@ -33,6 +33,7 @@ object UpdateManagerHelper {
     var isUpdateReady = false
     var readyApkFile: File? = null
     private var updateDialog: AlertDialog? = null
+    private var isChecking = false
 
     private fun getDeviceArchitecture(): String {
         val abi = Build.SUPPORTED_ABIS[0]
@@ -45,7 +46,8 @@ object UpdateManagerHelper {
     }
 
     fun startBackgroundUpdateCheck(activity: Activity) {
-        if (AuthManager.getRole(activity) == "admin") return
+        if (AuthManager.getRole(activity) == "admin" || isChecking || isUpdateReady) return
+        isChecking = true
 
         @Suppress("OPT_IN_USAGE")
         kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
@@ -69,13 +71,18 @@ object UpdateManagerHelper {
                         if (updateFile.exists() && updateFile.length() > 0) {
                             isUpdateReady = true
                             readyApkFile = updateFile
-                            showMandatoryUpdateDialog(activity, updateFile)
+                            withContext(Dispatchers.Main) { showMandatoryUpdateDialog(activity, updateFile) }
                         } else {
                             downloadUpdateWithNotification(activity, serverVersion, arch, totalChunks, updateFile)
                         }
+                    } else {
+                        isUpdatePending = false
                     }
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+            } finally {
+                isChecking = false
+            }
         }
     }
 
@@ -128,7 +135,8 @@ object UpdateManagerHelper {
             notificationManager.cancel(999)
             isUpdateReady = true
             readyApkFile = updateFile
-            showMandatoryUpdateDialog(activity, updateFile)
+            
+            withContext(Dispatchers.Main) { showMandatoryUpdateDialog(activity, updateFile) }
 
         } catch (e: Exception) {
             builder.setContentText("فشل تنزيل التحديث، يرجى المحاولة لاحقاً.")
