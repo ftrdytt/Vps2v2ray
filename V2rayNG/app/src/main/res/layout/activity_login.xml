@@ -13,22 +13,6 @@
         android:gravity="center_horizontal"
         android:padding="24dp">
 
-        <androidx.cardview.widget.CardView
-            android:layout_width="100dp"
-            android:layout_height="100dp"
-            android:layout_marginTop="40dp"
-            android:layout_marginBottom="24dp"
-            app:cardCornerRadius="30dp"
-            app:cardBackgroundColor="#1A1A1D"
-            app:cardElevation="10dp">
-            <ImageView
-                android:layout_width="60dp"
-                android:layout_height="60dp"
-                android:layout_gravity="center"
-                android:src="@drawable/ic_stat_name"
-                app:tint="#FF9800" />
-        </androidx.cardview.widget.CardView>
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -36,6 +20,7 @@
             android:textColor="#FFFFFF"
             android:textSize="26sp"
             android:textStyle="bold"
+            android:layout_marginTop="40dp"
             android:layout_marginBottom="8dp"/>
             
         <TextView
