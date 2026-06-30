@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.v2ray.ang.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -24,7 +25,7 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
-// هذا هو الملف الوحيد المسؤول عن التحديثات 
+// 🌟 المحرك الخارق للتحديثات الإجبارية 🌟
 object UpdateManager { 
     
     // 🌟 الرابط الجديد الأساسي للـ VPS 🌟
@@ -36,7 +37,7 @@ object UpdateManager {
     private var updateDialog: AlertDialog? = null
     private var isChecking = false
 
-    private fun getDeviceArchitecture(): String {
+    fun getDeviceArchitecture(): String {
         val abi = Build.SUPPORTED_ABIS[0]
         return when {
             abi.contains("arm64") -> "arm64-v8a"
@@ -46,29 +47,35 @@ object UpdateManager {
         }
     }
 
+    // يتم استدعاء هذا الفحص في الخلفية عند تشغيل التطبيق أو فتح صفحة التحديثات
     fun startBackgroundUpdateCheck(activity: Activity) {
         if (AuthManager.getRole(activity) == "admin" || isChecking || isUpdateReady) return
         isChecking = true
 
         @Suppress("OPT_IN_USAGE")
-        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+        GlobalScope.launch(Dispatchers.IO) {
             try {
-                delay(2000)
+                // إعطاء مهلة صغيرة لكي لا يثقل التطبيق عند الفتح مباشرة
+                delay(3000)
                 val arch = getDeviceArchitecture()
-                // 🌟 استخدام الرابط الجديد لفحص التحديثات 🌟
+                // 🌟 الاتصال بسيرفر VPS للتحقق من وجود تحديث 🌟
                 val url = URL("$BASE_API_URL/app/update/check?arch=$arch")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
                     val obj = JSONObject(resp)
-                    val serverVersion = obj.getInt("version")
+                    val serverVersion = obj.optInt("version", 0)
                     val totalChunks = obj.optInt("totalChunks", 0)
 
+                    // التحقق: هل النسخة في السيرفر أحدث من الموجودة في الهاتف؟
                     if (serverVersion > BuildConfig.VERSION_CODE && totalChunks > 0) {
                         isUpdatePending = true
                         val updateFile = File(activity.cacheDir, "Ashor_Update_v$serverVersion.apk")
 
+                        // إذا الملف موجود مسبقاً، نطلب تثبيته فوراً
                         if (updateFile.exists() && updateFile.length() > 0) {
                             isUpdateReady = true
                             readyApkFile = updateFile
@@ -81,6 +88,7 @@ object UpdateManager {
                     }
                 }
             } catch (e: Exception) {
+                // فشل الاتصال، صمت تام لتجنب إزعاج المستخدم
             } finally {
                 isChecking = false
             }
@@ -89,23 +97,23 @@ object UpdateManager {
 
     private suspend fun downloadUpdateWithNotification(activity: Activity, serverVersion: Int, arch: String, totalChunks: Int, updateFile: File) {
         val notificationManager = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channelId = "update_channel"
+        val channelId = "ashor_update_channel"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "تحديثات التطبيق", NotificationManager.IMPORTANCE_HIGH)
+            val channel = NotificationChannel(channelId, "تحديثات النظام", NotificationManager.IMPORTANCE_HIGH)
             channel.setSound(null, null)
             notificationManager.createNotificationChannel(channel)
         }
 
         val builder = NotificationCompat.Builder(activity, channelId)
-            .setContentTitle("تحديث جديد إجباري 🚀")
+            .setContentTitle("تحديث أمني إجباري 🚀")
             .setContentText("جاري تنزيل التحديث... 0%")
             .setSmallIcon(android.R.drawable.ic_popup_sync)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setProgress(100, 0, false)
 
-        notificationManager.notify(999, builder.build())
+        notificationManager.notify(888, builder.build())
 
         try {
             val fos = FileOutputStream(updateFile)
@@ -125,25 +133,25 @@ object UpdateManager {
 
                     val progress = ((i + 1f) / totalChunks * 100).toInt()
                     builder.setProgress(100, progress, false)
-                    builder.setContentText("جاري تنزيل التحديث... $progress%")
-                    notificationManager.notify(999, builder.build())
+                    builder.setContentText("جاري التنزيل... $progress%")
+                    notificationManager.notify(888, builder.build())
                 } else {
                     fos.close()
-                    throw Exception("Download failed")
+                    throw Exception("فشل تنزيل الجزء $i")
                 }
             }
             fos.flush(); fos.close()
-            notificationManager.cancel(999)
+            notificationManager.cancel(888)
             isUpdateReady = true
             readyApkFile = updateFile
             
             withContext(Dispatchers.Main) { showMandatoryUpdateDialog(activity, updateFile) }
 
         } catch (e: Exception) {
-            builder.setContentText("فشل تنزيل التحديث، يرجى المحاولة لاحقاً.")
+            builder.setContentText("فشل تنزيل التحديث، تأكد من الإنترنت.")
             builder.setProgress(0, 0, false)
             builder.setOngoing(false)
-            notificationManager.notify(999, builder.build())
+            notificationManager.notify(888, builder.build())
         }
     }
 
@@ -153,18 +161,18 @@ object UpdateManager {
             updateDialog?.dismiss()
 
             updateDialog = AlertDialog.Builder(activity)
-                .setTitle("تحديث إجباري 🚀")
-                .setMessage("تم تنزيل الإصدار الجديد بنجاح.\nلا يمكنك الاستمرار في استخدام التطبيق حتى تقوم بتثبيت هذا التحديث.")
-                .setCancelable(false)
+                .setTitle("تحديث إجباري جاهز 🚀")
+                .setMessage("تم تنزيل الإصدار الجديد بنجاح.\nلحماية حسابك وضمان عمل السيرفرات، يجب تثبيت هذا التحديث الآن لكي يفتح التطبيق.")
+                .setCancelable(false) // 🌟 يمنع الإغلاق نهائياً 🌟
                 .setPositiveButton("تثبيت التحديث الآن") { _, _ ->
                     forceInstallApk(activity, apkFile)
                     @Suppress("OPT_IN_USAGE")
-                    kotlinx.coroutines.GlobalScope.launch(Dispatchers.Main) {
-                        delay(1000)
-                        showMandatoryUpdateDialog(activity, apkFile)
+                    GlobalScope.launch(Dispatchers.Main) {
+                        delay(1500)
+                        showMandatoryUpdateDialog(activity, apkFile) // إذا رجع للتطبيق تظهر النافذة فوراً
                     }
                 }
-                .setNegativeButton("إعادة التنزيل (في حال الخطأ)") { _, _ ->
+                .setNegativeButton("حذف التنزيل والمحاولة مجدداً") { _, _ ->
                     if (apkFile.exists()) apkFile.delete()
                     isUpdateReady = false
                     readyApkFile = null
@@ -186,6 +194,8 @@ object UpdateManager {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             activity.startActivity(intent)
-        } catch (e: Exception) { Toast.makeText(activity, "خطأ التثبيت: ${e.message}", Toast.LENGTH_LONG).show() }
+        } catch (e: Exception) { 
+            Toast.makeText(activity, "خطأ التثبيت: ${e.message}", Toast.LENGTH_LONG).show() 
+        }
     }
 }
