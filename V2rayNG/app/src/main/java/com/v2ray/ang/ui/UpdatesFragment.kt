@@ -22,7 +22,7 @@ import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.BuildConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AuthManager
-import com.v2ray.ang.handler.UpdateManager // الاستدعاء الصحيح للملف الخارجي
+import com.v2ray.ang.handler.UpdateManager 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -39,7 +39,6 @@ import kotlin.math.ceil
 
 class UpdatesFragment : Fragment() {
 
-    // 🌟 الرابط الجديد الأساسي للـ VPS 🌟
     private val BASE_API_URL = "https://education.ashor.shop"
 
     private lateinit var swipeRefresh: SwipeRefreshLayout
@@ -96,6 +95,11 @@ class UpdatesFragment : Fragment() {
                 return@setOnClickListener
             }
             
+            // 🌟 تحذير للأدمن إذا أدخل رقم إصدار أصغر أو مساوي 🌟
+            if (pendingVersion.toIntOrNull() ?: 0 <= BuildConfig.VERSION_CODE) {
+                Toast.makeText(requireContext(), "تحذير: رقم الإصدار يجب أن يكون أكبر من ${BuildConfig.VERSION_CODE} لكي يتم التحديث!", Toast.LENGTH_LONG).show()
+            }
+            
             val options = arrayOf("نسخة 64-بت (arm64-v8a)", "نسخة 32-بت (armeabi-v7a)", "نسخة المحاكيات (x86)")
             val archValues = arrayOf("arm64-v8a", "armeabi-v7a", "x86")
             
@@ -118,46 +122,35 @@ class UpdatesFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        activity?.let {
-            UpdateManager.startBackgroundUpdateCheck(it)
-        }
-    }
-
-    private fun getDeviceArchitecture(): String {
-        val abi = Build.SUPPORTED_ABIS[0]
-        return when {
-            abi.contains("arm64") -> "arm64-v8a"
-            abi.contains("armeabi") -> "armeabi-v7a"
-            abi.contains("x86") -> "x86"
-            else -> "arm64-v8a"
-        }
+        activity?.let { UpdateManager.startBackgroundUpdateCheck(it) }
     }
 
     private fun manualCheckForUpdates(isSilent: Boolean = false) {
         if (!isSilent) swipeRefresh.isRefreshing = true
+        val isAdmin = AuthManager.getRole(requireContext()) == "admin"
 
-        if (AuthManager.getRole(requireContext()) == "admin" && isSilent) {
+        if (isAdmin && isSilent) {
             swipeRefresh.isRefreshing = false
             return
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val arch = getDeviceArchitecture()
+                val arch = UpdateManager.getDeviceArchitecture()
                 val url = URL("$BASE_API_URL/app/update/check?arch=$arch")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 10000
+                
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
                     val obj = JSONObject(resp)
-                    val serverVersion = obj.getInt("version")
+                    val serverVersion = obj.optInt("version", 0)
                     val totalChunks = obj.optInt("totalChunks", 0)
                     
                     withContext(Dispatchers.Main) { swipeRefresh.isRefreshing = false }
 
                     if (serverVersion > BuildConfig.VERSION_CODE && totalChunks > 0) {
                         UpdateManager.isUpdatePending = true 
-                        
                         val updateFile = File(requireContext().cacheDir, "Ashor_Update_v$serverVersion.apk")
                         if (updateFile.exists() && updateFile.length() > 0) {
                             UpdateManager.isUpdateReady = true
@@ -168,7 +161,17 @@ class UpdatesFragment : Fragment() {
                         }
                     } else {
                         if (!isSilent) {
-                            withContext(Dispatchers.Main) { Toast.makeText(requireContext(), "أنت تمتلك أحدث إصدار أو لا توجد تحديثات نشطة!", Toast.LENGTH_SHORT).show() }
+                            withContext(Dispatchers.Main) { 
+                                // 🌟 رادار الأدمن لكشف الأخطاء 🌟
+                                if (isAdmin) {
+                                    AlertDialog.Builder(requireContext())
+                                        .setTitle("رادار فحص التحديثات (للأدمن)")
+                                        .setMessage("بيانات السيرفر المُستلمة:\nرقم الإصدار في السيرفر: $serverVersion\nعدد الملفات: $totalChunks\n---\nرقم إصدار هاتفك الحالي: ${BuildConfig.VERSION_CODE}\n\nالسبب: السيرفر لا يمتلك إصدار مفعل برقم أكبر من رقم هاتفك.")
+                                        .setPositiveButton("حسناً", null).show()
+                                } else {
+                                    Toast.makeText(requireContext(), "أنت تمتلك أحدث إصدار أو لا توجد تحديثات نشطة!", Toast.LENGTH_SHORT).show() 
+                                }
+                            }
                         }
                     }
                 } else {
@@ -207,7 +210,7 @@ class UpdatesFragment : Fragment() {
                         val progress = ((i + 1f) / totalChunks * 100).toInt()
                         pb.progress = progress; tvPercent.text = "$progress%"
                     }
-                } else { fos.close(); throw Exception("Download chunk failed") }
+                } else { fos.close(); throw Exception("فشل تنزيل الجزء $i") }
             }
             fos.flush(); fos.close()
 
@@ -216,9 +219,9 @@ class UpdatesFragment : Fragment() {
 
             withContext(Dispatchers.Main) {
                 tvStatus.text = "تم التنزيل بنجاح! جاري التثبيت..."
-                forceInstallApk(updateFile)
+                activity?.let { UpdateManager.showMandatoryUpdateDialog(it, updateFile) }
             }
-        } catch (e: Exception) { withContext(Dispatchers.Main) { tvStatus.text = "حدث خطأ أثناء التنزيل." } }
+        } catch (e: Exception) { withContext(Dispatchers.Main) { tvStatus.text = "حدث خطأ أثناء التنزيل: ${e.message}" } }
     }
 
     private fun loadAdminUpdateHistory() {
@@ -243,7 +246,7 @@ class UpdatesFragment : Fragment() {
                                 val keys = archsObj.keys()
                                 while(keys.hasNext()) { availableArchs.add(keys.next() as String) }
                             }
-                            val archsStr = if (availableArchs.isEmpty()) "لا يوجد" else availableArchs.joinToString(", ")
+                            val archsStr = if (availableArchs.isEmpty()) "لم يكتمل الرفع" else availableArchs.joinToString(", ")
                             
                             addHistoryCard(v, date, isActive, archsStr)
                         }
@@ -256,7 +259,7 @@ class UpdatesFragment : Fragment() {
     private fun addHistoryCard(version: Int, date: String, isActive: Boolean, archsStr: String) {
         val card = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#252529"))
+            setBackgroundColor(if(isActive) Color.parseColor("#1B2E1C") else Color.parseColor("#252529")) // أخضر خفيف إذا نشط
             setPadding(30, 30, 30, 30)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
         }
@@ -271,7 +274,7 @@ class UpdatesFragment : Fragment() {
         val btnLayout = LinearLayout(requireContext()).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         
         val btnToggle = MaterialButton(requireContext()).apply {
-            text = if(isActive) "إيقاف" else "تشغيل"
+            text = if(isActive) "إيقاف التحديث" else "تفعيل للكل"
             setBackgroundColor(if(isActive) Color.parseColor("#FF9800") else Color.parseColor("#4CAF50"))
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, 20, 0) }
             setOnClickListener { toggleUpdateStatus(version) }
@@ -291,26 +294,34 @@ class UpdatesFragment : Fragment() {
     }
 
     private fun toggleUpdateStatus(version: Int) {
+        Toast.makeText(requireContext(), "جاري تغيير الحالة...", Toast.LENGTH_SHORT).show()
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val conn = URL("$BASE_API_URL/app/update/toggle").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
                 conn.outputStream.use { it.write(JSONObject().put("version", version).toString().toByteArray(Charsets.UTF_8)) }
-                if (conn.responseCode == 200) loadAdminUpdateHistory()
+                if (conn.responseCode == 200) {
+                    withContext(Dispatchers.Main) { Toast.makeText(requireContext(), "تم بنجاح!", Toast.LENGTH_SHORT).show() }
+                    loadAdminUpdateHistory()
+                }
             } catch (e: Exception) {}
         }
     }
 
     private fun deleteUpdate(version: Int) {
         AlertDialog.Builder(requireContext()).setTitle("تأكيد الحذف").setMessage("هل أنت متأكد من حذف تحديث $version نهائياً؟").setPositiveButton("حذف") { _, _ ->
+            Toast.makeText(requireContext(), "جاري الحذف...", Toast.LENGTH_SHORT).show()
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val conn = URL("$BASE_API_URL/app/update/delete").openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
                     conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
                     conn.outputStream.use { it.write(JSONObject().put("version", version).toString().toByteArray(Charsets.UTF_8)) }
-                    if (conn.responseCode == 200) loadAdminUpdateHistory()
+                    if (conn.responseCode == 200) {
+                        withContext(Dispatchers.Main) { Toast.makeText(requireContext(), "تم الحذف!", Toast.LENGTH_SHORT).show() }
+                        loadAdminUpdateHistory()
+                    }
                 } catch (e: Exception) {}
             }
         }.setNegativeButton("إلغاء", null).show()
@@ -322,7 +333,7 @@ class UpdatesFragment : Fragment() {
         
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val inputStream = requireActivity().contentResolver.openInputStream(uri) ?: throw Exception("Cannot open")
+                val inputStream = requireActivity().contentResolver.openInputStream(uri) ?: throw Exception("Cannot open file")
                 val fileBytes = inputStream.readBytes(); inputStream.close()
                 val chunkSize = 3 * 1024 * 1024; val totalChunks = ceil(fileBytes.size.toDouble() / chunkSize).toInt()
 
@@ -335,7 +346,7 @@ class UpdatesFragment : Fragment() {
                     .put("totalChunks", totalChunks)
                 
                 initConn.outputStream.use { it.write(initPayload.toString().toByteArray(Charsets.UTF_8)) }
-                if (initConn.responseCode != 200) throw Exception("Failed init")
+                if (initConn.responseCode != 200) throw Exception("فشل تهيئة السيرفر")
 
                 for (i in 0 until totalChunks) {
                     withContext(Dispatchers.Main) { tvStatus.text = "جاري رفع الجزء ${i + 1} من $totalChunks للنسخة $pendingArch..." }
@@ -358,14 +369,22 @@ class UpdatesFragment : Fragment() {
                             if (chunkConn.responseCode == 200) success = true
                         } catch (e: Exception) { retries--; delay(2000) }
                     }
-                    if (!success) throw Exception("Failed chunk $i")
+                    if (!success) throw Exception("فشل رفع الجزء $i")
                     withContext(Dispatchers.Main) { pb.progress = ((i + 1f) / totalChunks * 100).toInt(); tvPercent.text = "${pb.progress}%" }
                 }
                 withContext(Dispatchers.Main) { 
-                    tvStatus.text = "✅ تم حفظ النسخة $pendingArch بنجاح!"
+                    tvStatus.text = "✅ تم رفع النسخة $pendingArch بنجاح!"
                     pb.progress = 100; tvPercent.text = "100%"
-                    btnUpload.isEnabled = true; 
+                    btnUpload.isEnabled = true
                     loadAdminUpdateHistory() 
+                    
+                    // 🌟 رسالة التفعيل التلقائي بعد الرفع 🌟
+                    AlertDialog.Builder(requireContext())
+                        .setTitle("اكتمل الرفع بنجاح!")
+                        .setMessage("هل تريد تفعيل هذا التحديث لجميع المستخدمين الآن؟\n(ملاحظة: إذا لم تفعله، لن يظهر لأحد).")
+                        .setPositiveButton("نعم، فعل التحديث") { _, _ -> toggleUpdateStatus(pendingVersion.toInt()) }
+                        .setNegativeButton("لاحقاً", null)
+                        .show()
                 }
             } catch (e: Exception) { withContext(Dispatchers.Main) { tvStatus.text = "❌ خطأ: ${e.message}"; btnUpload.isEnabled = true } }
         }
