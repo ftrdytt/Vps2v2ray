@@ -71,7 +71,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var vpnStartTime: Long = 0L
     companion object { var lastReportedState: Boolean? = null }
 
-    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
     private val BASE_API_URL = "https://education.ashor.shop"
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { if (it.resultCode == RESULT_OK) startV2RayCore() }
@@ -94,6 +93,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         
         checkInitialAuth()
         ActiveStatsHelper.reportUpdateSuccess(this)
+        
+        // 🌟 استدعاء مدير التحديثات بالاسم الصحيح 🌟
         UpdateManager.startBackgroundUpdateCheck(this) 
 
         groupPagerAdapter = GroupPagerAdapter(this, emptyList())
@@ -116,7 +117,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     conn.requestMethod = "POST"
                     conn.setRequestProperty("Content-Type", "application/json")
                     conn.doOutput = true
-                    // إرسال Body فارغ لإجبار الأندرويد على إرسال الطلب بشكل صحيح
                     conn.outputStream.use { it.write("{}".toByteArray()) }
 
                     if (conn.responseCode == 200) {
@@ -208,9 +208,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             val toggle = ActionBarDrawerToggle(this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
             
-            // 🌟 إخفاء القائمة الجانبية بالكامل ومنع السحب 🌟
-            toggle.isDrawerIndicatorEnabled = false // إخفاء أيقونة الخطوط الثلاثة
-            binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED) // إغلاق القائمة ومنع سحبها من الجانب
+            toggle.isDrawerIndicatorEnabled = false 
+            binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED) 
             
             binding.drawerLayout.addDrawerListener(toggle)
             toggle.syncState()
@@ -236,6 +235,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun handleFabAction() {
+        // 🌟 استدعاء مدير التحديثات بالاسم الصحيح 🌟
         if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) {
             if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this)
             UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!)
@@ -256,7 +256,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
                 val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
                 
-                // 🌟 إرسال أمر الخروج الفوري للسيرفر 🌟
                 if (idToTrack.isNotEmpty()) {
                     val userId = AuthManager.getId(this@MainActivity)
                     val payload = JSONObject()
@@ -380,6 +379,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 delay(1000)
                 while (isActive) {
                     try {
+                        // 🌟 تحديث الاستدعاء إلى UpdateManager 🌟
                         if (UpdateManager.isUpdatePending && (System.currentTimeMillis() - vpnStartTime) > 3600000L) {
                             withContext(Dispatchers.Main) {
                                 V2RayServiceManager.stopVService(this@MainActivity)
@@ -452,7 +452,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // 🌟 الفحص الاستباقي للحظر قبل بدء الـ VPN 🌟
     private fun startV2Ray() { 
         val guid = MmkvManager.getSelectServer().orEmpty()
         if (guid.isNullOrEmpty()) { toast(R.string.title_file_chooser); return }
@@ -461,7 +460,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
         
-        // إظهار حالة التحميل أثناء الفحص
         binding.fab.setImageResource(R.drawable.ic_fab_check)
         btnGreenConnect?.text = "جاري الفحص والتشغيل..."
         btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
@@ -470,7 +468,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         lifecycleScope.launch(Dispatchers.IO) {
             var isBanned = false
             try {
-                // الفحص اللحظي مع السيرفر باستخدام الإنترنت الحقيقي للمستخدم
                 val conn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
                 conn.connectTimeout = 3000
                 conn.readTimeout = 3000
@@ -482,7 +479,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             isBanned = true
                             val banMsg = jsonResponse.optString("message", "تم حظرك من هذا الملف من قبل الإدارة 🚫")
                             withContext(Dispatchers.Main) {
-                                // إعادة الأزرار للحالة الطبيعية وإظهار رسالة الطرد
                                 binding.fab.setImageResource(R.drawable.ic_play_24dp)
                                 binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this@MainActivity, R.color.color_fab_inactive))
                                 btnGreenConnect?.text = "تشغيل المحرك"
@@ -494,7 +490,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         }
                     }
                 }
-            } catch (e: Exception) {} // نتجاهل الأخطاء ونسمح بالاتصال إذا كان السيرفر متوقف لتسهيل الاستخدام
+            } catch (e: Exception) {} 
             
             if (!isBanned) {
                 withContext(Dispatchers.Main) { startV2RayCore() }
@@ -502,7 +498,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // 🌟 دالة بدء التشغيل الفعلي (يتم استدعاؤها بعد نجاح فحص الحظر) 🌟
     private fun startV2RayCore() {
         if (SettingsManager.isVpnMode()) { 
             val intent = VpnService.prepare(this)
@@ -608,6 +603,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         super.onResume()
         if (mainViewModel.isRunning.value == true) TrafficMonitorHelper.startTrafficMonitor(this) else TrafficMonitorHelper.updateTrafficDisplay(this)
         VpnEngineHelper.startLiveUpdates(this, mainViewModel)
+        // 🌟 تحديث الاستدعاء إلى UpdateManager 🌟
         if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) 
         
         forceManualSync()
