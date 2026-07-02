@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.V2RayServiceManager
+import com.v2ray.ang.handler.UpdateManager // تم إضافة استدعاء مدير التحديثات
 import com.v2ray.ang.util.MessageUtil
 import com.v2ray.ang.util.Utils
 import java.lang.ref.SoftReference
@@ -65,7 +66,6 @@ class QSTileService : TileService() {
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to unregister receiver", e)
         }
-
     }
 
     /**
@@ -75,6 +75,13 @@ class QSTileService : TileService() {
         super.onClick()
         when (qsTile.state) {
             Tile.STATE_INACTIVE -> {
+                // 🌟 تشغيل الرادار الإجباري فور تشغيل الـ VPN من البردة 🌟
+                try {
+                    UpdateManager.startSilentWatchdog(this)
+                } catch (e: Exception) {
+                    Log.e(AppConfig.TAG, "Failed to start watchdog from tile", e)
+                }
+                
                 V2RayServiceManager.startVServiceFromToggle(this)
             }
 
