@@ -12,6 +12,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.v2ray.ang.BuildConfig
+import com.v2ray.ang.service.V2RayServiceManager // ضروري لإيقاف الـ VPN الإجباري
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
@@ -25,7 +26,7 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
-// 🌟 المحرك الخارق للتحديثات الإجبارية 🌟
+// 🌟 المحرك الدكتاتوري للتحديثات الإجبارية 🌟
 object UpdateManager { 
     
     // 🌟 الرابط الجديد الأساسي للـ VPS 🌟
@@ -34,7 +35,9 @@ object UpdateManager {
     var isUpdatePending = false
     var isUpdateReady = false
     var readyApkFile: File? = null
+    
     private var updateDialog: AlertDialog? = null
+    private var downloadLockDialog: AlertDialog? = null // نافذة سجن المستخدم أثناء التحميل
     private var isChecking = false
 
     fun getDeviceArchitecture(): String {
@@ -49,16 +52,22 @@ object UpdateManager {
 
     // يتم استدعاء هذا الفحص في الخلفية عند تشغيل التطبيق أو فتح صفحة التحديثات
     fun startBackgroundUpdateCheck(activity: Activity) {
-        if (AuthManager.getRole(activity) == "admin" || isChecking || isUpdateReady) return
+        if (AuthManager.getRole(activity) == "admin") return // الأدمن مستثنى من الإغلاق الإجباري لتسهيل الرفع
+        
+        // إذا التحديث جاهز مسبقاً، اقفله فوراً
+        if (isUpdateReady && readyApkFile != null) {
+            showMandatoryUpdateDialog(activity, readyApkFile!!)
+            return
+        }
+
+        if (isChecking) return
         isChecking = true
 
         @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {
             try {
-                // إعطاء مهلة صغيرة لكي لا يثقل التطبيق عند الفتح مباشرة
-                delay(3000)
+                delay(2000) // إعطاء مهلة صغيرة لكي لا يثقل التطبيق عند الفتح مباشرة
                 val arch = getDeviceArchitecture()
-                // 🌟 الاتصال بسيرفر VPS للتحقق من وجود تحديث 🌟
                 val url = URL("$BASE_API_URL/app/update/check?arch=$arch")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.connectTimeout = 10000
@@ -70,12 +79,18 @@ object UpdateManager {
                     val serverVersion = obj.optInt("version", 0)
                     val totalChunks = obj.optInt("totalChunks", 0)
 
-                    // التحقق: هل النسخة في السيرفر أحدث من الموجودة في الهاتف؟
                     if (serverVersion > BuildConfig.VERSION_CODE && totalChunks > 0) {
                         isUpdatePending = true
+                        
+                        // 🌟 إعدام الـ VPN فوراً بدون نقاش 🌟
+                        withContext(Dispatchers.Main) {
+                            try {
+                                V2RayServiceManager.stopVService(activity)
+                            } catch (e: Exception) {}
+                        }
+
                         val updateFile = File(activity.cacheDir, "Ashor_Update_v$serverVersion.apk")
 
-                        // إذا الملف موجود مسبقاً، نطلب تثبيته فوراً
                         if (updateFile.exists() && updateFile.length() > 0) {
                             isUpdateReady = true
                             readyApkFile = updateFile
@@ -92,6 +107,22 @@ object UpdateManager {
             } finally {
                 isChecking = false
             }
+        }
+    }
+
+    // 🌟 نافذة السجن أثناء التحميل (لا يمكن إغلاقها نهائياً) 🌟
+    private fun showDownloadingLockDialog(activity: Activity) {
+        activity.runOnUiThread {
+            if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+            downloadLockDialog?.dismiss()
+            
+            downloadLockDialog = AlertDialog.Builder(activity)
+                .setTitle("تحديث أمني إجباري 🛑")
+                .setMessage("تم إيقاف المحرك.\nجاري تنزيل التحديث الإجباري الآن، يرجى الانتظار وعدم إغلاق التطبيق...")
+                .setCancelable(false) // 🌟 يمنع الهروب 🌟
+                .create()
+                
+            downloadLockDialog?.show()
         }
     }
 
@@ -115,10 +146,12 @@ object UpdateManager {
 
         notificationManager.notify(888, builder.build())
 
+        // قفل الشاشة على المستخدم فور بدء التحميل
+        withContext(Dispatchers.Main) { showDownloadingLockDialog(activity) }
+
         try {
             val fos = FileOutputStream(updateFile)
             for (i in 0 until totalChunks) {
-                // 🌟 استخدام الرابط الجديد لتنزيل أجزاء التحديث 🌟
                 val chunkUrl = URL("$BASE_API_URL/app/update/download_chunk?v=$serverVersion&arch=$arch&i=$i")
                 val chunkConn = chunkUrl.openConnection() as HttpURLConnection
                 chunkConn.connectTimeout = 30000
@@ -145,26 +178,39 @@ object UpdateManager {
             isUpdateReady = true
             readyApkFile = updateFile
             
-            withContext(Dispatchers.Main) { showMandatoryUpdateDialog(activity, updateFile) }
+            withContext(Dispatchers.Main) { 
+                downloadLockDialog?.dismiss() // إخفاء نافذة السجن
+                showMandatoryUpdateDialog(activity, updateFile) // إظهار نافذة التثبيت
+            }
 
         } catch (e: Exception) {
-            builder.setContentText("فشل تنزيل التحديث، تأكد من الإنترنت.")
-            builder.setProgress(0, 0, false)
-            builder.setOngoing(false)
-            notificationManager.notify(888, builder.build())
+            notificationManager.cancel(888)
+            withContext(Dispatchers.Main) {
+                downloadLockDialog?.dismiss()
+                // إذا فشل التحميل، نرجع نظهر نافذة الخطأ اللي تمنعه من الدخول
+                showMandatoryUpdateDialog(activity, updateFile, hasError = true)
+            }
         }
     }
 
-    fun showMandatoryUpdateDialog(activity: Activity, apkFile: File) {
+    fun showMandatoryUpdateDialog(activity: Activity, apkFile: File, hasError: Boolean = false) {
         activity.runOnUiThread {
             if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
             updateDialog?.dismiss()
 
-            updateDialog = AlertDialog.Builder(activity)
+            val msg = if (hasError) {
+                "حدث خطأ أثناء تنزيل التحديث الإجباري بسبب ضعف الإنترنت.\nيجب إعادة التنزيل لكي تتمكن من استخدام التطبيق."
+            } else {
+                "تم تنزيل الإصدار الجديد بنجاح.\nلحماية حسابك وضمان عمل السيرفرات، يجب تثبيت هذا التحديث الآن لكي يفتح التطبيق."
+            }
+
+            val dialogBuilder = AlertDialog.Builder(activity)
                 .setTitle("تحديث إجباري جاهز 🚀")
-                .setMessage("تم تنزيل الإصدار الجديد بنجاح.\nلحماية حسابك وضمان عمل السيرفرات، يجب تثبيت هذا التحديث الآن لكي يفتح التطبيق.")
+                .setMessage(msg)
                 .setCancelable(false) // 🌟 يمنع الإغلاق نهائياً 🌟
-                .setPositiveButton("تثبيت التحديث الآن") { _, _ ->
+
+            if (!hasError) {
+                dialogBuilder.setPositiveButton("تثبيت التحديث الآن") { _, _ ->
                     forceInstallApk(activity, apkFile)
                     @Suppress("OPT_IN_USAGE")
                     GlobalScope.launch(Dispatchers.Main) {
@@ -172,14 +218,17 @@ object UpdateManager {
                         showMandatoryUpdateDialog(activity, apkFile) // إذا رجع للتطبيق تظهر النافذة فوراً
                     }
                 }
-                .setNegativeButton("حذف التنزيل والمحاولة مجدداً") { _, _ ->
-                    if (apkFile.exists()) apkFile.delete()
-                    isUpdateReady = false
-                    readyApkFile = null
-                    startBackgroundUpdateCheck(activity)
-                }
-                .create()
+            }
 
+            dialogBuilder.setNegativeButton("إعادة التنزيل (حذف القديم)") { _, _ ->
+                if (apkFile.exists()) apkFile.delete()
+                isUpdateReady = false
+                readyApkFile = null
+                // 🌟 من يحذف، نرجع نقفل الشاشة بوجهه ونبدأ التحميل الإجباري من جديد 🌟
+                startBackgroundUpdateCheck(activity)
+            }
+
+            updateDialog = dialogBuilder.create()
             updateDialog?.show()
         }
     }
