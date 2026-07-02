@@ -7,12 +7,14 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.provider.Settings // 🌟 ضروري لجلب آيدي الجهاز 🌟
 import android.util.Base64
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.v2ray.ang.BuildConfig
+import com.v2ray.ang.service.V2RayServiceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
@@ -50,6 +52,33 @@ object UpdateManager {
             abi.contains("armeabi") -> "armeabi-v7a"
             abi.contains("x86") -> "x86"
             else -> "arm64-v8a"
+        }
+    }
+
+    // 🌟 الدالة الجديدة: إرسال بيانات المستخدم للسيرفر بعد إكمال التحميل 🌟
+    fun logUpdateToServer(context: Context, version: Int, arch: String) {
+        @Suppress("OPT_IN_USAGE")
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val userId = AuthManager.getId(context)
+                val name = AuthManager.getName(context)
+                val deviceId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+                
+                val payload = JSONObject().apply {
+                    put("userId", userId)
+                    put("deviceId", deviceId)
+                    put("name", if (userId.isNotEmpty()) name else "مجهول")
+                    put("version", version)
+                    put("arch", arch)
+                }
+                
+                val conn = URL("$BASE_API_URL/app/log_update").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                conn.responseCode
+            } catch (e: Exception) {}
         }
     }
 
@@ -282,6 +311,9 @@ object UpdateManager {
             notificationManager.cancel(888)
             isUpdateReady = true
             readyApkFile = updateFile
+            
+            // 🌟 إرسال السجل للسيرفر بعد نجاح التحميل مباشرة 🌟
+            logUpdateToServer(activity, serverVersion, arch)
             
             withContext(Dispatchers.Main) { 
                 downloadLockDialog?.dismiss() // إخفاء نافذة السجن
