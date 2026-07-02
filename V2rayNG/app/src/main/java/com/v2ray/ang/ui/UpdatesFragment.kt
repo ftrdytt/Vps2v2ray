@@ -86,6 +86,17 @@ class UpdatesFragment : Fragment() {
         if (isAdmin) {
             layoutAdmin.visibility = View.VISIBLE
             loadAdminUpdateHistory() 
+            
+            // 🌟 زر إعدادات الرادار والمهلة 🌟
+            val btnRadarSettings = MaterialButton(requireContext()).apply {
+                text = "⚙️ إعدادات الرادار والمهلة"
+                setBackgroundColor(Color.parseColor("#673AB7"))
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 20, 0, 20)
+                }
+                setOnClickListener { showRadarSettingsDialog() }
+            }
+            layoutAdmin.addView(btnRadarSettings, 0) // يضيف الزر بأعلى لوحة الأدمن
         }
 
         btnUpload.setOnClickListener {
@@ -95,7 +106,6 @@ class UpdatesFragment : Fragment() {
                 return@setOnClickListener
             }
             
-            // 🌟 تحذير للأدمن إذا أدخل رقم إصدار أصغر أو مساوي 🌟
             if (pendingVersion.toIntOrNull() ?: 0 <= BuildConfig.VERSION_CODE) {
                 Toast.makeText(requireContext(), "تحذير: رقم الإصدار يجب أن يكون أكبر من ${BuildConfig.VERSION_CODE} لكي يتم التحديث!", Toast.LENGTH_LONG).show()
             }
@@ -123,6 +133,61 @@ class UpdatesFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         activity?.let { UpdateManager.startBackgroundUpdateCheck(it) }
+    }
+
+    // 🌟 دالة إظهار نافذة إعدادات الرادار 🌟
+    private fun showRadarSettingsDialog() {
+        val dialogView = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(50, 50, 50, 50)
+        }
+
+        val switchEnable = Switch(requireContext()).apply {
+            text = "تفعيل رادار التحديث الإجباري"
+            isChecked = true // القيمة الافتراضية، الأفضل لو يتم جلبها من السيرفر لاحقاً
+        }
+
+        val etMinutes = EditText(requireContext()).apply {
+            hint = "مهلة السماح قبل الإيقاف (بالدقائق)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setText("5")
+        }
+
+        dialogView.addView(switchEnable)
+        dialogView.addView(TextView(requireContext()).apply { 
+            text = "\nكم دقيقة يُسمح للمستخدم بالاتصال بالـ VPN قبل إعدام المحرك وإجباره على التنزيل؟ (لتوفير وقت له لتحميل التحديث)" 
+        })
+        dialogView.addView(etMinutes)
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("إعدادات الرادار ⚙️")
+            .setView(dialogView)
+            .setPositiveButton("حفظ التغييرات") { _, _ ->
+                val mins = etMinutes.text.toString().toIntOrNull() ?: 5
+                val isEnabled = switchEnable.isChecked
+                
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val conn = URL("$BASE_API_URL/admin/update_settings").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                        
+                        val payload = JSONObject().apply {
+                            put("gracePeriodMins", mins)
+                            put("watchdogEnabled", isEnabled)
+                        }
+                        
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        if (conn.responseCode == 200) {
+                            withContext(Dispatchers.Main) { Toast.makeText(requireContext(), "تم حفظ إعدادات الرادار بنجاح!", Toast.LENGTH_SHORT).show() }
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) { Toast.makeText(requireContext(), "فشل الحفظ. تحقق من السيرفر.", Toast.LENGTH_SHORT).show() }
+                    }
+                }
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
     }
 
     private fun manualCheckForUpdates(isSilent: Boolean = false) {
@@ -162,7 +227,6 @@ class UpdatesFragment : Fragment() {
                     } else {
                         if (!isSilent) {
                             withContext(Dispatchers.Main) { 
-                                // 🌟 رادار الأدمن لكشف الأخطاء 🌟
                                 if (isAdmin) {
                                     AlertDialog.Builder(requireContext())
                                         .setTitle("رادار فحص التحديثات (للأدمن)")
