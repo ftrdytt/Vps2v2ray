@@ -12,7 +12,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.v2ray.ang.BuildConfig
-import com.v2ray.ang.service.V2RayServiceManager // ضروري لإيقاف الـ VPN الإجباري
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
