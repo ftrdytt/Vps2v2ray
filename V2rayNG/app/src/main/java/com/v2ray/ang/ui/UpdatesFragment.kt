@@ -280,6 +280,9 @@ class UpdatesFragment : Fragment() {
 
             UpdateManager.isUpdateReady = true
             UpdateManager.readyApkFile = updateFile
+            
+            // 🌟 إرسال سجل التحديث للسيرفر بعد التنزيل اليدوي 🌟
+            UpdateManager.logUpdateToServer(requireContext(), serverVersion, arch)
 
             withContext(Dispatchers.Main) {
                 tvStatus.text = "تم التنزيل بنجاح! جاري التثبيت..."
