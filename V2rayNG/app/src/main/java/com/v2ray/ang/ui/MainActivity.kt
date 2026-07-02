@@ -94,7 +94,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkInitialAuth()
         ActiveStatsHelper.reportUpdateSuccess(this)
         
-        // 🌟 استدعاء مدير التحديثات بالاسم الصحيح 🌟
+        // 🌟 استدعاء مدير التحديثات بالاسم الصحيح عند فتح التطبيق 🌟
         UpdateManager.startBackgroundUpdateCheck(this) 
 
         groupPagerAdapter = GroupPagerAdapter(this, emptyList())
@@ -379,15 +379,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 delay(1000)
                 while (isActive) {
                     try {
-                        // 🌟 تحديث الاستدعاء إلى UpdateManager 🌟
-                        if (UpdateManager.isUpdatePending && (System.currentTimeMillis() - vpnStartTime) > 3600000L) {
-                            withContext(Dispatchers.Main) {
-                                V2RayServiceManager.stopVService(this@MainActivity)
-                                vpnStartTime = 0L
-                                AlertDialog.Builder(this@MainActivity).setTitle("تحديث إجباري 🛑").setMessage("انتهت مهلة السماح (ساعة واحدة). تم إيقاف التطبيق لوجود تحديث أمني هام.").setPositiveButton("موافق", null).setCancelable(false).show()
-                            }
-                            break 
-                        }
+                        // 🌟 (تم حذف الإغلاق الإجباري القديم من هنا، صار كله بيد UpdateManager) 🌟
                         
                         mainViewModel.testCurrentServerRealPing()
 
@@ -499,6 +491,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun startV2RayCore() {
+        // 🌟 تشغيل رادار التحديثات الصامت (لسد ثغرة تشغيل التطبيق بالخلفية) 🌟
+        UpdateManager.startSilentWatchdog(this)
+        
         if (SettingsManager.isVpnMode()) { 
             val intent = VpnService.prepare(this)
             if (intent == null) V2RayServiceManager.startVService(this) else requestVpnPermission.launch(intent) 
