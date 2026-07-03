@@ -7,14 +7,13 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.provider.Settings // 🌟 ضروري لجلب آيدي الجهاز 🌟
+import android.provider.Settings 
 import android.util.Base64
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import com.v2ray.ang.BuildConfig
-import com.v2ray.ang.service.V2RayServiceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
