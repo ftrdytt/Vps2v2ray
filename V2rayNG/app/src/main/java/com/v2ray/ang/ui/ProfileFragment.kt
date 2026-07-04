@@ -273,17 +273,22 @@ class ProfileFragment : Fragment() {
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(requireContext(), "تم الحفظ بنجاح!", Toast.LENGTH_SHORT).show()
                                 updateProfilePicture(currentBase64Pfp, newName, AuthManager.getId(requireContext()))
-                                btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية"
+                                btnSave.isEnabled = true
+                                btnSave.text = "حفظ التعديلات السحابية"
                             }
                         } else {
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(requireContext(), obj.optString("message", "فشل الحفظ"), Toast.LENGTH_SHORT).show()
-                                btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية"
+                                btnSave.isEnabled = true
+                                btnSave.text = "حفظ التعديلات السحابية"
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    withContext(Dispatchers.Main) { btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" }
+                    withContext(Dispatchers.Main) { 
+                        btnSave.isEnabled = true
+                        btnSave.text = "حفظ التعديلات السحابية" 
+                    }
                 }
             }
         }
@@ -415,7 +420,7 @@ class ProfileFragment : Fragment() {
                                             withContext(Dispatchers.Main) { renderDevices(); Toast.makeText(requireContext(), "تم طرد الجهاز بنجاح! 🔒", Toast.LENGTH_SHORT).show() }
                                         }
                                     }
-                                } catch(e){}
+                                } catch(e: Exception){} // 🌟 تم تصحيح نوع الاستثناء هنا 🌟
                             }
                         }
                     }
