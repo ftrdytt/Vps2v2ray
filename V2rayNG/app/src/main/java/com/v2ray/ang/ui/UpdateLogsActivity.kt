@@ -1,5 +1,6 @@
 package com.v2ray.ang.ui
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -11,7 +12,7 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.cardview.widget.CardView
+import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.R
@@ -66,7 +67,7 @@ class UpdateLogsActivity : AppCompatActivity() {
         }
 
         btnTabUsers = MaterialButton(this).apply {
-            text = "سجل المُحَدِّثين 👥"
+            text = "سجل المُحَدِّثين 👥"
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(10, 0, 10, 0) }
             setOnClickListener { switchTab(true) }
         }
@@ -124,8 +125,19 @@ class UpdateLogsActivity : AppCompatActivity() {
         }
     }
 
+    // 🌟 دالة قوية لتنظيف وفك تشفير الصور (لضمان عدم اختفائها) 🌟
+    private fun getSafeBitmap(base64Str: String?): Bitmap? {
+        if (base64Str.isNullOrEmpty()) return null
+        return try {
+            var cleanStr = if (base64Str.contains(",")) base64Str.substringAfter(",") else base64Str
+            cleanStr = cleanStr.replace("\\s+".toRegex(), "") // إزالة أي مسافات أو أسطر تالفة
+            val b = Base64.decode(cleanStr, Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(b, 0, b.size)
+        } catch (e: Exception) { null }
+    }
+
     // ==========================================
-    // 🟢 القسم الأول: سجل الأشخاص المُحَدِّثين 🟢
+    // 🟢 القسم الأول: سجل الأشخاص المُحَدِّثين 🟢
     // ==========================================
     private fun loadUserLogs() {
         lifecycleScope.launch(Dispatchers.IO) {
@@ -170,7 +182,7 @@ class UpdateLogsActivity : AppCompatActivity() {
                             for (date in dates) {
                                 val logsForThisDay = groupedLogs[date]!!
                                 val dateBtn = MaterialButton(this@UpdateLogsActivity).apply {
-                                    text = "📅 يوم $date (عدد المُحَدِّثين: ${logsForThisDay.length()})"
+                                    text = "📅 يوم $date (عدد المُحَدِّثين: ${logsForThisDay.length()})"
                                     setBackgroundColor(Color.parseColor("#1B2E1C"))
                                     setTextColor(Color.parseColor("#8BC34A"))
                                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 150).apply { setMargins(0, 0, 0, 20) }
@@ -198,32 +210,33 @@ class UpdateLogsActivity : AppCompatActivity() {
             val userId = logItem.optString("userId", "")
             val deviceId = logItem.optString("deviceId", "غير معروف")
             val version = logItem.optInt("version", 0)
+            val arch = logItem.optString("arch", "غير محدد")
             val fullDate = logItem.optString("date", "")
             val time = if (fullDate.contains(" ")) fullDate.split(" ")[1] else fullDate
             
             var name = logItem.optString("name", "مجهول الهوية")
-            var pfp = ""
-            var role = "مستخدم"
+            var role = logItem.optString("role", "مستخدم")
+            var pfp = logItem.optString("pfp", "")
             
-            if (userId.isNotEmpty()) {
+            if (pfp.isEmpty() && userId.isNotEmpty()) {
                 val u = allUsersCache[userId]
                 if (u != null) {
                     name = u.optString("name", name)
                     pfp = u.optString("pfp", "")
-                    role = u.optString("role", "مستخدم")
+                    role = u.optString("role", role)
                 }
             }
             
             if (name.trim().isEmpty() || name == "مجهول") name = "مجهول"
             val displayId = if (userId.isNotEmpty()) "حساب ID: $userId" else "جهاز ID: $deviceId"
             
-            addUserCard(scrollContent, displayId, name, pfp, version, time, role)
+            addUserCard(scrollContent, displayId, name, pfp, version, arch, time, role)
         }
         AlertDialog.Builder(this).setView(dialogView).setPositiveButton("رجوع", null).show()
     }
 
-    // 🌟 تصميم كارت المستخدم الاحترافي (صورة دائرية أو أول حرف) 🌟
-    private fun addUserCard(container: LinearLayout, idString: String, name: String, pfp: String, version: Int, time: String, role: String) {
+    // 🌟 تصميم كارت المستخدم الاحترافي (صورة دائرية 100% أو أول حرف) 🌟
+    private fun addUserCard(container: LinearLayout, idString: String, name: String, pfp: String, version: Int, arch: String, time: String, role: String) {
         val card = LinearLayout(this).apply { 
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -232,15 +245,10 @@ class UpdateLogsActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } 
         }
         
-        // 🌟 دائرة الصورة (CardView) لضمان القص الدائري 🌟
-        val avatarCard = CardView(this).apply {
+        // 🌟 حاوية الصورة (نستخدم FrameLayout لأنها الأفضل والأقل مشاكل) 🌟
+        val avatarContainer = FrameLayout(this).apply { 
             layoutParams = LinearLayout.LayoutParams(140, 140).apply { setMargins(0, 0, 30, 0) }
-            radius = 70f // نصف الحجم لجعله دائرة مثالية
-            setCardBackgroundColor(Color.TRANSPARENT)
-            cardElevation = 0f
         }
-        
-        val flContainer = FrameLayout(this).apply { layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT) }
         
         val tvLetter = TextView(this).apply {
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -253,45 +261,50 @@ class UpdateLogsActivity : AppCompatActivity() {
             bg.setColor(Color.parseColor("#3F51B5")) // خلفية الحرف الأول
             background = bg
             text = name.trim().firstOrNull()?.toString()?.uppercase() ?: "م"
+            visibility = View.VISIBLE
         }
         
         val ivAvatar = ImageView(this).apply {
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            scaleType = ImageView.ScaleType.CENTER_CROP
+            scaleType = ImageView.ScaleType.FIT_XY // لجعل الصورة تملأ الدائرة تماماً
             visibility = View.GONE
         }
 
-        if (pfp.isNotEmpty()) {
-            try {
-                val b = Base64.decode(pfp, Base64.DEFAULT)
-                ivAvatar.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size))
-                ivAvatar.visibility = View.VISIBLE
-                tvLetter.visibility = View.GONE
-            } catch (e: Exception) {}
+        val bitmap = getSafeBitmap(pfp)
+        if (bitmap != null) {
+            // 🌟 صناعة دائرة حقيقية 100% باستخدام أداة الأندرويد الأصلية 🌟
+            val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap)
+            circularDrawable.isCircular = true
+            
+            ivAvatar.setImageDrawable(circularDrawable)
+            ivAvatar.visibility = View.VISIBLE
+            tvLetter.visibility = View.GONE
         }
         
-        flContainer.addView(tvLetter)
-        flContainer.addView(ivAvatar)
-        avatarCard.addView(flContainer)
+        avatarContainer.addView(tvLetter)
+        avatarContainer.addView(ivAvatar)
 
         // 🌟 ميزة الضغط لعرض التفاصيل الكاملة والصورة المربعة 🌟
-        avatarCard.setOnClickListener {
-            showFullUserDetails(name, idString, version, time, role, pfp)
+        avatarContainer.setOnClickListener {
+            showFullUserDetails(name, idString, version, arch, time, role, pfp)
         }
 
         // 🌟 معلومات المستخدم الجانبية 🌟
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
         infoLayout.addView(TextView(this).apply { text = name; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) })
         infoLayout.addView(TextView(this).apply { text = idString; setTextColor(Color.parseColor("#FF9800")); textSize = 12f })
-        infoLayout.addView(TextView(this).apply { text = "التحديث: $version | الساعة: $time"; setTextColor(Color.parseColor("#80FFFFFF")); textSize = 12f })
         
-        card.addView(avatarCard)
+        val archText = if (arch.contains("64")) "64-بت" else if (arch.contains("v7a")) "32-بت" else "غير محدد"
+        infoLayout.addView(TextView(this).apply { text = "نسخة: $version | نوع: $archText"; setTextColor(Color.parseColor("#2196F3")); textSize = 12f; setTypeface(null, android.graphics.Typeface.BOLD) })
+        infoLayout.addView(TextView(this).apply { text = "الساعة: $time"; setTextColor(Color.parseColor("#80FFFFFF")); textSize = 12f })
+        
+        card.addView(avatarContainer)
         card.addView(infoLayout)
         container.addView(card)
     }
 
-    // 🌟 النافذة المنبثقة للتفاصيل الكاملة (تظهر عند الضغط على الصورة الدائرية) 🌟
-    private fun showFullUserDetails(name: String, idString: String, version: Int, time: String, role: String, pfp: String) {
+    // 🌟 النافذة المنبثقة للتفاصيل الكاملة (تظهر عند الضغط على الصورة) 🌟
+    private fun showFullUserDetails(name: String, idString: String, version: Int, arch: String, time: String, role: String, pfp: String) {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#141417"))
@@ -299,7 +312,7 @@ class UpdateLogsActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_HORIZONTAL
         }
 
-        // 🌟 الصورة بالحجم الكبير المربع 🌟
+        // 🌟 الصورة بالحجم الكبير المربع المقوس مثل التليجرام 🌟
         val largeImageContainer = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(400, 400).apply { setMargins(0, 0, 0, 40) }
         }
@@ -312,7 +325,7 @@ class UpdateLogsActivity : AppCompatActivity() {
             setTypeface(null, android.graphics.Typeface.BOLD)
             val bg = GradientDrawable()
             bg.shape = GradientDrawable.RECTANGLE // مربعة
-            bg.cornerRadius = 20f
+            bg.cornerRadius = 40f // حواف مقوسة
             bg.setColor(Color.parseColor("#3F51B5"))
             background = bg
             text = name.trim().firstOrNull()?.toString()?.uppercase() ?: "م"
@@ -320,17 +333,19 @@ class UpdateLogsActivity : AppCompatActivity() {
 
         val largeIvAvatar = ImageView(this).apply {
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            scaleType = ImageView.ScaleType.CENTER_CROP
+            scaleType = ImageView.ScaleType.FIT_XY
             visibility = View.GONE
         }
 
-        if (pfp.isNotEmpty()) {
-            try {
-                val b = Base64.decode(pfp, Base64.DEFAULT)
-                largeIvAvatar.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size))
-                largeIvAvatar.visibility = View.VISIBLE
-                largeTvLetter.visibility = View.GONE
-            } catch (e: Exception) {}
+        val bitmap = getSafeBitmap(pfp)
+        if (bitmap != null) {
+            // 🌟 صناعة صورة مربعة ذات حواف مقوسة 🌟
+            val roundedDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap)
+            roundedDrawable.cornerRadius = 40f // حواف منحنية مثل التليجرام
+            
+            largeIvAvatar.setImageDrawable(roundedDrawable)
+            largeIvAvatar.visibility = View.VISIBLE
+            largeTvLetter.visibility = View.GONE
         }
 
         largeImageContainer.addView(largeTvLetter)
@@ -340,7 +355,9 @@ class UpdateLogsActivity : AppCompatActivity() {
         val tvName = TextView(this).apply { text = "الاسم: $name"; setTextColor(Color.WHITE); textSize = 20f; setTypeface(null, android.graphics.Typeface.BOLD); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 15) } }
         val tvId = TextView(this).apply { text = idString; setTextColor(Color.parseColor("#FF9800")); textSize = 16f; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 15) } }
         val tvRole = TextView(this).apply { text = "الصلاحية: ${if (role == "admin") "مدير 👑" else "مستخدم"}"; setTextColor(Color.parseColor("#E91E63")); textSize = 16f; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 15) } }
-        val tvVersion = TextView(this).apply { text = "قام بتثبيت تحديث رقم: $version"; setTextColor(Color.parseColor("#2196F3")); textSize = 16f; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 15) } }
+        
+        val archText = if (arch.contains("64")) "64-بت (arm64-v8a)" else if (arch.contains("v7a")) "32-بت (armeabi-v7a)" else "غير محدد"
+        val tvVersion = TextView(this).apply { text = "قام بتثبيت تحديث رقم: $version ($archText)"; setTextColor(Color.parseColor("#2196F3")); textSize = 16f; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 15) } }
         val tvTime = TextView(this).apply { text = "تاريخ ووقت التحديث: $time"; setTextColor(Color.parseColor("#80FFFFFF")); textSize = 16f; }
 
         root.addView(largeImageContainer)
