@@ -1,6 +1,9 @@
 package com.v2ray.ang.ui
 
 import android.app.Activity.RESULT_OK
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -10,6 +13,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.provider.Settings
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Base64
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -19,14 +24,15 @@ import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.cardview.widget.CardView
+import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AuthManager
 import com.v2ray.ang.util.AvatarGenerator 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
@@ -35,14 +41,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.min
 import kotlin.math.roundToInt
-import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 
 class ProfileFragment : Fragment() {
 
     private val BASE_API_URL = "https://education.ashor.shop"
 
-    // 🌟 واجهات الواجهة برمجياً 🌟
-    private lateinit var mainContainer: LinearLayout
     private lateinit var flAvatarContainer: FrameLayout
     private lateinit var tvLetterAvatar: TextView
     private lateinit var ivAvatar: ImageView
@@ -51,12 +54,14 @@ class ProfileFragment : Fragment() {
     private lateinit var btnUpdateLogs: ImageView 
     private lateinit var etId: EditText
     private lateinit var etName: EditText
-    private lateinit var etUsername: EditText // 🌟 حقل المعرف 🌟
+    private lateinit var etUsername: EditText
+    private lateinit var tvUsernameStatus: TextView // 🌟 نص فحص المعرف الفوري 🌟
     private lateinit var etPass: EditText
-    private lateinit var tvDeviceId: TextView // 🌟 عرض آيدي الجهاز 🌟
     
     private var currentBase64Pfp: String = ""
     private var myDeviceId: String = ""
+    private var activeDevicesList = JSONArray()
+    private var checkUserJob: Job? = null // 🌟 وظيفة الفحص الفوري 🌟
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -82,17 +87,15 @@ class ProfileFragment : Fragment() {
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        // نستخدم نفس ملف الـ XML الخاص بك
         return inflater.inflate(R.layout.fragment_profile, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // 🌟 استخراج آيدي الجهاز 🌟
+        // استخراج آيدي الجهاز
         myDeviceId = Settings.Secure.getString(requireActivity().contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
 
-        // جلب العناصر من ملف الـ XML
         btnAdminDashboard = view.findViewById(R.id.btn_admin_dashboard)
         btnUpdateLogs = view.findViewById(R.id.btn_update_logs) 
         etId = view.findViewById(R.id.et_profile_id)
@@ -101,17 +104,24 @@ class ProfileFragment : Fragment() {
         val btnSave = view.findViewById<Button>(R.id.btn_save_profile)
         val btnLogout = view.findViewById<Button>(R.id.btn_logout)
 
-        // 🌟 بناء وتخصيص حاوية الصورة لتكون دائرية (نفس نظام التليجرام) 🌟
+        // ========================================================
+        // 🌟 1. حل مشكلة توسيط الصورة (جعلها بالنص 100%) 🌟
+        // ========================================================
         val originalImageContainer = view.findViewById<View>(R.id.iv_profile_pic).parent as ViewGroup
         val imageIndex = originalImageContainer.indexOfChild(view.findViewById(R.id.iv_profile_pic))
-        originalImageContainer.removeView(view.findViewById(R.id.iv_profile_pic)) // مسح الصورة القديمة المربعة
+        originalImageContainer.removeView(view.findViewById(R.id.iv_profile_pic))
+
+        val centerWrapper = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER // 🌟 هذا السطر يضمن التوسيط التام 🌟
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
 
         val avatarCard = CardView(requireContext()).apply {
-            layoutParams = LinearLayout.LayoutParams(250, 250).apply { gravity = Gravity.CENTER; setMargins(0, 40, 0, 40) }
-            radius = 125f // دائري
+            layoutParams = LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 20, 0, 20) }
+            radius = 125f
             setCardBackgroundColor(Color.TRANSPARENT)
             cardElevation = 0f
-            clipChildren = true
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
             setOnClickListener { val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI); pickImage.launch(intent) }
         }
@@ -123,9 +133,20 @@ class ProfileFragment : Fragment() {
         flAvatarContainer.addView(tvLetterAvatar)
         flAvatarContainer.addView(ivAvatar)
         avatarCard.addView(flAvatarContainer)
-        originalImageContainer.addView(avatarCard, imageIndex)
+        centerWrapper.addView(avatarCard)
+        originalImageContainer.addView(centerWrapper, imageIndex)
 
-        // 🌟 إضافة حقل المعرف (Username) برمجياً تحت حقل الاسم 🌟
+        // ========================================================
+        // 🌟 2. إضافة حقل المعرف (Username) والفحص الفوري 🌟
+        // ========================================================
+        val rootLayout = etId.parent as LinearLayout
+
+        tvUsernameStatus = TextView(requireContext()).apply {
+            textSize = 12f
+            setPadding(20, 5, 20, 0)
+            visibility = View.GONE
+        }
+
         etUsername = EditText(requireContext()).apply {
             hint = "المعرف (@) اختياري"
             setHintTextColor(Color.parseColor("#80FFFFFF"))
@@ -134,23 +155,53 @@ class ProfileFragment : Fragment() {
             setBackgroundColor(Color.parseColor("#1A1A1D"))
             setPadding(40, 40, 40, 40)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 30, 0, 0) }
+            
+            // الفحص المباشر أثناء الكتابة
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    val input = s.toString().trim().replace("@", "")
+                    checkUsernameLive(input)
+                }
+                override fun afterTextChanged(s: Editable?) {}
+            })
         }
-        val nameContainer = etName.parent as ViewGroup
-        val nameIndex = nameContainer.indexOfChild(etName)
-        nameContainer.addView(etUsername, nameIndex + 1)
 
-        // 🌟 إضافة معلومات الجهاز (ثابتة للمشاهدة فقط) في الأسفل 🌟
-        tvDeviceId = TextView(requireContext()).apply {
-            text = "📱 حسابك محمي ومقفل على هذا الجهاز فقط:\nID: $myDeviceId"
+        val nameIdx = rootLayout.indexOfChild(etName)
+        rootLayout.addView(etUsername, nameIdx + 1)
+        rootLayout.addView(tvUsernameStatus, nameIdx + 2)
+
+        // ========================================================
+        // 🌟 3. أزرار النسخ وحقل آيدي الجهاز 🌟
+        // ========================================================
+        setupCopyButtonToField(etId, "نسخ آيدي الحساب 📋")
+        
+        val etDeviceDisplay = EditText(requireContext()).apply {
+            setText(myDeviceId)
+            isEnabled = false
             setTextColor(Color.parseColor("#4CAF50"))
-            textSize = 12f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(0, 30, 0, 30)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            textSize = 14f
+            setBackgroundColor(Color.parseColor("#1A1A1D"))
+            setPadding(40, 40, 40, 40)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 30, 0, 0) }
         }
-        val logoutContainer = btnLogout.parent as ViewGroup
-        logoutContainer.addView(tvDeviceId, 0)
+        
+        val passIdx = rootLayout.indexOfChild(etPass)
+        rootLayout.addView(TextView(requireContext()).apply { text = "آيدي جهازك الحالي 📱:"; setTextColor(Color.GRAY); setPadding(10,30,10,0) }, passIdx + 1)
+        rootLayout.addView(etDeviceDisplay, passIdx + 2)
+        setupCopyButtonToField(etDeviceDisplay, "نسخ آيدي الجهاز 📋")
+
+        // ========================================================
+        // 🌟 4. زر إدارة الأجهزة النشطة (مثل التليجرام) 🌟
+        // ========================================================
+        val btnManageDevices = MaterialButton(requireContext()).apply {
+            text = "📱 الأجهزة المرتبطة بحسابك"
+            setBackgroundColor(Color.parseColor("#9C27B0"))
+            setTextColor(Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 30, 0, 20) }
+            setOnClickListener { showDevicesDialog() }
+        }
+        rootLayout.addView(btnManageDevices, rootLayout.indexOfChild(btnSave))
 
         // ==========================================
 
@@ -168,7 +219,6 @@ class ProfileFragment : Fragment() {
         if (userRole == "admin") {
             btnAdminDashboard.visibility = View.VISIBLE
             btnAdminDashboard.setOnClickListener { startActivity(Intent(requireContext(), AdminDashboardActivity::class.java)) }
-            
             btnUpdateLogs.visibility = View.VISIBLE
             btnUpdateLogs.setOnClickListener { startActivity(Intent(requireContext(), UpdateLogsActivity::class.java)) }
         }
@@ -190,16 +240,13 @@ class ProfileFragment : Fragment() {
                 return@setOnClickListener
             }
 
-            // 🌟 فحص شروط المعرف (طريقة التليجرام) 🌟
-            if (newUsername.isNotEmpty()) {
-                if (!newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
-                    Toast.makeText(requireContext(), "المعرف غير صالح! مسموح فقط بالحروف، الأرقام، ( _ )، و ( . ) ويجب أن يكون حرفين فأكثر.", Toast.LENGTH_LONG).show()
-                    return@setOnClickListener
-                }
+            if (newUsername.isNotEmpty() && !newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
+                Toast.makeText(requireContext(), "المعرف غير صالح! مسموح فقط بالحروف، الأرقام، ( _ )، و ( . )", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
             }
 
             btnSave.isEnabled = false
-            btnSave.text = "جاري الحفظ السحابي..."
+            btnSave.text = "جاري حفظ بياناتك..."
 
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
@@ -210,101 +257,194 @@ class ProfileFragment : Fragment() {
                     conn.doOutput = true
                     
                     val payload = JSONObject().apply {
-                        put("id", AuthManager.getId(requireContext()))
+                        put("id", userId)
                         put("currentPassword", AuthManager.getPass(requireContext()))
                         put("newName", newName)
                         put("password", newPass)
                         put("newPfp", currentBase64Pfp)
-                        put("username", newUsername) // 🌟 إرسال المعرف للسيرفر 🌟
+                        put("username", newUsername)
                     }
                     conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
                     if (conn.responseCode == 200) {
-                        val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                        val obj = JSONObject(resp)
+                        val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
                         if (obj.getBoolean("success")) {
-                            AuthManager.saveUser(requireContext(), AuthManager.getId(requireContext()), newName, newPass, AuthManager.getRole(requireContext()), currentBase64Pfp)
+                            AuthManager.saveUser(requireContext(), userId, newName, newPass, userRole, currentBase64Pfp)
                             withContext(Dispatchers.Main) {
-                                Toast.makeText(requireContext(), "تم حفظ التعديلات بنجاح!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(requireContext(), "تم الحفظ بنجاح!", Toast.LENGTH_SHORT).show()
                                 updateProfilePicture(currentBase64Pfp, newName, AuthManager.getId(requireContext()))
-                                btnSave.isEnabled = true
-                                btnSave.text = "حفظ التعديلات السحابية"
+                                btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية"
                             }
                         } else {
                             withContext(Dispatchers.Main) {
-                                Toast.makeText(requireContext(), obj.optString("message", "لا يمكن تعديل هذا الحساب"), Toast.LENGTH_SHORT).show()
-                                btnSave.isEnabled = true
-                                btnSave.text = "حفظ التعديلات السحابية"
+                                Toast.makeText(requireContext(), obj.optString("message", "فشل الحفظ"), Toast.LENGTH_SHORT).show()
+                                btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية"
                             }
-                        }
-                    } else {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(requireContext(), "فشل الاتصال بالسيرفر", Toast.LENGTH_SHORT).show()
-                            btnSave.isEnabled = true
-                            btnSave.text = "حفظ التعديلات السحابية"
                         }
                     }
                 } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(requireContext(), "تأكد من الإنترنت لحفظ التعديلات", Toast.LENGTH_SHORT).show()
-                        btnSave.isEnabled = true
-                        btnSave.text = "حفظ التعديلات السحابية"
-                    }
+                    withContext(Dispatchers.Main) { btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" }
                 }
             }
         }
 
         btnLogout.setOnClickListener {
-            AlertDialog.Builder(requireContext())
-                .setTitle("تسجيل خروج")
-                .setMessage("هل أنت متأكد من تسجيل الخروج؟")
+            AlertDialog.Builder(requireContext()).setTitle("تسجيل خروج").setMessage("هل أنت متأكد من الخروج التام؟")
                 .setPositiveButton("نعم") { _, _ ->
                     lifecycleScope.launch(Dispatchers.IO) {
                         try {
-                            val conn = URL("$BASE_API_URL/admin/log_logout").openConnection() as HttpURLConnection
+                            // 🌟 إبلاغ السيرفر لحذف الجلسة الحالية لهذا الجهاز بالتحديد 🌟
+                            val conn = URL("$BASE_API_URL/auth/terminate_device").openConnection() as HttpURLConnection
                             conn.requestMethod = "POST"
-                            conn.setRequestProperty("Content-Type", "application/json")
-                            conn.doOutput = true
-                            conn.outputStream.use { it.write(JSONObject().put("id", userId).toString().toByteArray(Charsets.UTF_8)) }
-                            conn.responseCode 
+                            conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                            conn.outputStream.use { it.write(JSONObject().put("id", userId).put("targetDeviceId", myDeviceId).toString().toByteArray(Charsets.UTF_8)) }
+                            conn.responseCode
                         } catch (e: Exception) {}
                     }
-                    
                     AuthManager.logout(requireContext())
-                    val intent = Intent(requireActivity(), LoginActivity::class.java)
-                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                    startActivity(intent)
-                    requireActivity().finish()
-                }
-                .setNegativeButton("إلغاء", null)
-                .show()
+                    val intent = Intent(requireActivity(), LoginActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK }
+                    startActivity(intent); requireActivity().finish()
+                }.setNegativeButton("إلغاء", null).show()
         }
     }
 
+    // 🌟 دالة ربط أزرار النسخ الفوري 🌟
+    private fun setupCopyButtonToField(targetEditText: EditText, buttonText: String) {
+        val rootLayout = targetEditText.parent as LinearLayout
+        val idx = rootLayout.indexOfChild(targetEditText)
+        
+        val btnCopy = MaterialButton(requireContext()).apply {
+            text = buttonText
+            setBackgroundColor(Color.parseColor("#252529"))
+            setTextColor(Color.parseColor("#FF9800"))
+            textSize = 12f
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 120).apply { setMargins(0, 5, 0, 20) }
+            setOnClickListener {
+                val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("Copied Data", targetEditText.text.toString())
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(requireContext(), "تم النسخ بنجاح! 📋", Toast.LENGTH_SHORT).show()
+            }
+        }
+        rootLayout.addView(btnCopy, idx + 1)
+    }
+
+    // 🌟 دالة فحص المعرف الفوري (Live Check) 🌟
+    private fun checkUsernameLive(username: String) {
+        checkUserJob?.cancel()
+        if (username.isEmpty()) {
+            tvUsernameStatus.visibility = View.GONE
+            return
+        }
+        if (username.length < 2) {
+            tvUsernameStatus.visibility = View.VISIBLE
+            tvUsernameStatus.text = "❌ المعرف قصير جداً (حرفين فما فوق)"
+            tvUsernameStatus.setTextColor(Color.RED)
+            return
+        }
+
+        tvUsernameStatus.visibility = View.VISIBLE
+        tvUsernameStatus.text = "⏳ جاري فحص توفر المعرف..."
+        tvUsernameStatus.setTextColor(Color.parseColor("#FF9800"))
+
+        checkUserJob = lifecycleScope.launch(Dispatchers.IO) {
+            delay(600) // تأخير ذكي حتى يكمل المستخدم كتابة
+            try {
+                val conn = URL("$BASE_API_URL/auth/check_username?username=$username&id=${AuthManager.getId(requireContext())}").openConnection() as HttpURLConnection
+                if (conn.responseCode == 200) {
+                    val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
+                    val available = obj.getBoolean("available")
+                    withContext(Dispatchers.Main) {
+                        if (available) {
+                            tvUsernameStatus.text = "✅ المعرف متاح للاستخدام من قبلك"
+                            tvUsernameStatus.setTextColor(Color.parseColor("#4CAF50"))
+                        } else {
+                            tvUsernameStatus.text = "❌ المعرف محجوز ومستخدم مسبقاً"
+                            tvUsernameStatus.setTextColor(Color.RED)
+                        }
+                    }
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
+    // 🌟 نافذة إدارة الأجهزة النشطة وطرد الجلسات المتعددة 🌟
+    private fun showDevicesDialog() {
+        val dialogView = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL; setPadding(40, 40, 40, 40); setBackgroundColor(Color.parseColor("#141417")) }
+        val tvTitle = TextView(requireContext()).apply { text = "📱 الأجهزة المرتبطة بحسابك"; setTextColor(Color.parseColor("#9C27B0")); textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER; setPadding(0,0,0,30) }
+        val scrollContent = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL }
+        dialogView.addView(tvTitle); dialogView.addView(ScrollView(requireContext()).apply { addView(scrollContent) })
+
+        AlertDialog.Builder(requireContext()).setView(dialogView).setPositiveButton("إغلاق", null).show()
+
+        fun renderDevices() {
+            scrollContent.removeAllViews()
+            if (activeDevicesList.length() == 0) {
+                scrollContent.addView(TextView(requireContext()).apply { text = "لا توجد أجهزة مسجلة حالياً"; setTextColor(Color.WHITE); gravity = Gravity.CENTER })
+                return
+            }
+
+            for (i in 0 until activeDevicesList.length()) {
+                val devId = activeDevicesList.getString(i)
+                val isCurrent = (devId == myDeviceId)
+
+                val item = LinearLayout(requireContext()).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,0,15) } }
+                val info = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
+                
+                info.addView(TextView(requireContext()).apply { text = if (isCurrent) "💻 جهازك الحالي" else "📱 جهاز مرتبط"; setTextColor(if(isCurrent) Color.parseColor("#4CAF50") else Color.WHITE); setTypeface(null, android.graphics.Typeface.BOLD) })
+                info.addView(TextView(requireContext()).apply { text = "ID: $devId"; setTextColor(Color.GRAY); textSize = 12f })
+                item.addView(info)
+
+                if (!isCurrent) {
+                    val btnTerminate = MaterialButton(requireContext()).apply {
+                        text = "طرد ❌"
+                        setBackgroundColor(Color.RED)
+                        textSize = 10f
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(10, 0, 0, 0) }
+                        setOnClickListener {
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                try {
+                                    val conn = URL("$BASE_API_URL/auth/terminate_device").openConnection() as HttpURLConnection
+                                    conn.requestMethod = "POST"
+                                    conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                                    conn.outputStream.use { it.write(JSONObject().put("id", AuthManager.getId(requireContext())).put("targetDeviceId", devId).toString().toByteArray()) }
+                                    if (conn.responseCode == 200) {
+                                        val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
+                                        if (obj.getBoolean("success")) {
+                                            activeDevicesList = obj.getJSONArray("devices")
+                                            withContext(Dispatchers.Main) { renderDevices(); Toast.makeText(requireContext(), "تم طرد الجهاز بنجاح! 🔒", Toast.LENGTH_SHORT).show() }
+                                        }
+                                    }
+                                } catch(e){}
+                            }
+                        }
+                    }
+                    item.addView(btnTerminate)
+                }
+                scrollContent.addView(item)
+            }
+        }
+        renderDevices()
+    }
+
     private fun fetchUserDataFromServer(userId: String) {
-        if (userId.isEmpty()) return
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // ملاحظة: بما أنك لم ترسل لي كود (auth/get_user) في السيرفر، سيفشل هذا الطلب إذا لم يكن مبرمجاً في السيرفر
                 val conn = URL("$BASE_API_URL/auth/get_user?id=$userId").openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
                 if (conn.responseCode == 200) {
-                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                    val obj = JSONObject(resp)
-                    
+                    val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
                     if (obj.getBoolean("success")) {
-                        val serverName = obj.optString("name", AuthManager.getName(requireContext()))
-                        val serverPass = obj.optString("password", AuthManager.getPass(requireContext()))
+                        val serverName = obj.getString("name")
+                        val serverPass = obj.getString("password")
                         val serverPfp = obj.optString("pfp", currentBase64Pfp)
-                        val serverUsername = obj.optString("username", "") // جلب المعرف
+                        val serverUsername = obj.optString("username", "")
+                        activeDevicesList = obj.optJSONArray("devices") ?: JSONArray()
                         
-                        AuthManager.saveUser(requireContext(), userId, serverName, serverPass, AuthManager.getRole(requireContext()), serverPfp)
                         currentBase64Pfp = serverPfp
-
                         withContext(Dispatchers.Main) {
                             etName.setText(serverName)
-                            if (serverUsername.isNotEmpty()) etUsername.setText(serverUsername)
                             etPass.setText(serverPass)
+                            if (serverUsername.isNotEmpty()) etUsername.setText(serverUsername)
                             updateProfilePicture(currentBase64Pfp, serverName, userId)
                         }
                     }
@@ -313,7 +453,6 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    // تنظيف Base64
     private fun getSafeBitmap(base64Str: String?): Bitmap? {
         if (base64Str.isNullOrEmpty()) return null
         return try {
@@ -323,12 +462,10 @@ class ProfileFragment : Fragment() {
         } catch (e: Exception) { null }
     }
 
-    // تحديث الصورة وعملها دائرية
     private fun updateProfilePicture(base64Str: String, name: String, userId: String) {
         val bitmap = getSafeBitmap(base64Str)
         if (bitmap != null) {
-            val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap)
-            circularDrawable.isCircular = true
+            val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
             ivAvatar.setImageDrawable(circularDrawable)
             ivAvatar.visibility = View.VISIBLE
             tvLetterAvatar.visibility = View.GONE
