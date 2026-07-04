@@ -20,6 +20,7 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
+import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.R
@@ -44,6 +45,7 @@ class AdminDashboardActivity : AppCompatActivity() {
     private lateinit var tvTotalUsers: TextView
     private lateinit var tvTotalActive: TextView
 
+    // 🌟 حاويات اللستة الداخلية لعدم تداخلها مع شريط البحث 🌟
     private lateinit var usersContainer: LinearLayout
     private lateinit var activeUsersContainer: LinearLayout
 
@@ -441,17 +443,29 @@ class AdminDashboardActivity : AppCompatActivity() {
         AlertDialog.Builder(this).setTitle("تعديل بيانات $id").setView(layout)
             .setPositiveButton("حفظ") { _, _ ->
                 val newUsername = etUsername.text.toString().trim().replace("@", "")
+                
+                // 🌟 حماية وفلترة المعرف حسب قواعد التليجرام 🌟
                 if (newUsername.isNotEmpty() && !newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
-                    Toast.makeText(this, "المعرف غير صالح!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "المعرف غير صالح! يجب أن يتكون من حرفين أو أكثر، ويسمح فقط بالحروف والأرقام والـ ( _ ) والـ ( . )", Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
+
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
                         val conn = URL("$BASE_API_URL/admin/force_update").openConnection() as HttpURLConnection
                         conn.requestMethod = "POST"
-                        conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                        val payload = JSONObject().apply { put("id", id); put("name", etName.text.toString()); put("password", etPass.text.toString()); put("username", newUsername) }
-                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        
+                        val payload = JSONObject().apply {
+                            put("id", id)
+                            put("name", etName.text.toString())
+                            put("password", etPass.text.toString())
+                            put("username", newUsername) // إرسال المعرف للسيرفر
+                        }
+                        
+                        // 🌟 دعم اللغة العربية 🌟
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                         if (conn.responseCode == 200) fetchAllUsers()
                     } catch (e: Exception) {}
                 }
@@ -459,16 +473,17 @@ class AdminDashboardActivity : AppCompatActivity() {
     }
 
     private fun unbindDevice(id: String) {
-        AlertDialog.Builder(this).setTitle("مسح الأجهزة").setMessage("هل تريد مسح كل الأجهزة المرتبطة بحساب هذا المستخدم؟")
+        AlertDialog.Builder(this).setTitle("مسح الأجهزة").setMessage("هل تريد السماح لهذا الحساب بتسجيل الدخول من جهاز آخر؟")
             .setPositiveButton("نعم") { _, _ ->
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
                         val conn = URL("$BASE_API_URL/admin/reset_device").openConnection() as HttpURLConnection
                         conn.requestMethod = "POST"
                         conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                        conn.outputStream.use { it.write(JSONObject().put("id", id).toString().toByteArray()) }
+                        // 🌟 دعم اللغة العربية 🌟
+                        conn.outputStream.use { it.write(JSONObject().put("id", id).toString().toByteArray(Charsets.UTF_8)) }
                         if (conn.responseCode == 200) {
-                            withContext(Dispatchers.Main) { Toast.makeText(this@AdminDashboardActivity, "تم مسح الأجهزة بنجاح!", Toast.LENGTH_SHORT).show() }
+                            withContext(Dispatchers.Main) { Toast.makeText(this@AdminDashboardActivity, "تم فك الجهاز بنجاح!", Toast.LENGTH_SHORT).show() }
                             fetchAllUsers()
                         }
                     } catch (e: Exception) {}
@@ -482,7 +497,8 @@ class AdminDashboardActivity : AppCompatActivity() {
                 val conn = URL("$BASE_API_URL/admin/toggle_ban").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                conn.outputStream.use { it.write(JSONObject().put("id", id).put("banned", banStatus).toString().toByteArray()) }
+                // 🌟 دعم اللغة العربية 🌟
+                conn.outputStream.use { it.write(JSONObject().put("id", id).put("banned", banStatus).toString().toByteArray(Charsets.UTF_8)) }
                 if (conn.responseCode == 200) fetchAllUsers()
             } catch (e: Exception) {}
         }
@@ -498,7 +514,8 @@ class AdminDashboardActivity : AppCompatActivity() {
                             val conn = URL("$BASE_API_URL/admin/delete_user").openConnection() as HttpURLConnection
                             conn.requestMethod = "POST"
                             conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                            conn.outputStream.use { it.write(JSONObject().put("id", id).toString().toByteArray()) }
+                            // 🌟 دعم اللغة العربية 🌟
+                            conn.outputStream.use { it.write(JSONObject().put("id", id).toString().toByteArray(Charsets.UTF_8)) }
                             if (conn.responseCode == 200) fetchAllUsers()
                         } catch (e: Exception) {}
                     }
