@@ -1,8 +1,13 @@
 package com.v2ray.ang.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
@@ -14,7 +19,7 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
+import androidx.cardview.widget.CardView
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.R
@@ -39,7 +44,6 @@ class AdminDashboardActivity : AppCompatActivity() {
     private lateinit var tvTotalUsers: TextView
     private lateinit var tvTotalActive: TextView
 
-    // 🌟 حاويات اللستة الداخلية لعدم تداخلها مع شريط البحث 🌟
     private lateinit var usersContainer: LinearLayout
     private lateinit var activeUsersContainer: LinearLayout
 
@@ -55,13 +59,13 @@ class AdminDashboardActivity : AppCompatActivity() {
         listAllUsers = findViewById(R.id.list_all_users)
         tvTotalUsers = findViewById(R.id.tv_total_users)
 
-        // 🌟 إعداد شريط البحث الذكي 🌟
+        // 🌟 شريط البحث الشامل 🌟
         val searchInput = EditText(this).apply {
-            hint = "🔍 بحث (الاسم، المعرف، الآيدي)..."
+            hint = "🔍 بحث (الاسم، المعرف، الآيدي، الجهاز)..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#1A1A1D"))
-            setPadding(30, 30, 30, 30)
+            setPadding(40, 40, 40, 40)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -74,12 +78,10 @@ class AdminDashboardActivity : AppCompatActivity() {
             })
         }
 
-        // إعداد حاوية جميع المستخدمين
         listAllUsers.addView(searchInput)
         usersContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         listAllUsers.addView(usersContainer)
 
-        // إعداد وتفعيل قسم النشطين
         val layoutActive = findViewById<LinearLayout>(R.id.layout_active_container)
         layoutActive.removeAllViews()
         tvTotalActive = TextView(this).apply { 
@@ -97,12 +99,10 @@ class AdminDashboardActivity : AppCompatActivity() {
         layoutActive.addView(tvTotalActive)
         layoutActive.addView(ScrollView(this).apply { addView(listActiveUsers) })
 
-        // إعداد وتفعيل قسم الإحصائيات
         val layoutStatsContainer = findViewById<LinearLayout>(R.id.layout_stats_container)
         layoutStatsContainer.removeAllViews()
         setupStatsTab(layoutStatsContainer)
 
-        // الأزرار للتبديل بين الصفحات
         val tabAllUsers = findViewById<Button>(R.id.tab_all_users)
         val tabActive = findViewById<Button>(R.id.tab_active_now)
         val tabStats = findViewById<Button>(R.id.tab_stats)
@@ -122,7 +122,7 @@ class AdminDashboardActivity : AppCompatActivity() {
             tabActive.setBackgroundColor(Color.parseColor("#FF9800")); tabActive.setTextColor(Color.WHITE)
             tabAllUsers.setBackgroundColor(Color.parseColor("#252529")); tabAllUsers.setTextColor(Color.parseColor("#80FFFFFF"))
             tabStats.setBackgroundColor(Color.parseColor("#252529")); tabStats.setTextColor(Color.parseColor("#80FFFFFF"))
-            searchInput.visibility = View.GONE
+            searchInput.visibility = View.VISIBLE 
             fetchActiveUsers()
         }
 
@@ -138,7 +138,6 @@ class AdminDashboardActivity : AppCompatActivity() {
         fetchAllUsers()
     }
 
-    // دالة لتنظيف وفك تشفير الصور
     private fun getSafeBitmap(base64Str: String?): Bitmap? {
         if (base64Str.isNullOrEmpty()) return null
         return try {
@@ -148,7 +147,14 @@ class AdminDashboardActivity : AppCompatActivity() {
         } catch (e: Exception) { null }
     }
 
-    // =================== 1. جميع المستخدمين ===================
+    // 🌟 دالة النسخ الفوري 🌟
+    private fun copyToClipboard(label: String, text: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText(label, text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(this, "تم نسخ $label 📋", Toast.LENGTH_SHORT).show()
+    }
+
     private fun fetchAllUsers() {
         tvTotalUsers.text = "جاري تحميل المستخدمين من السحابة..."
         lifecycleScope.launch(Dispatchers.IO) {
@@ -181,20 +187,24 @@ class AdminDashboardActivity : AppCompatActivity() {
             val id = u.getString("id")
             val name = u.getString("name")
             val username = u.optString("username", "")
+            val devicesArray = u.optJSONArray("devices")
             
-            // 🌟 فلترة البحث الذكي 🌟
-            if (searchQuery.isNotEmpty() && !name.contains(searchQuery, true) && !id.contains(searchQuery, true) && !username.contains(searchQuery, true)) {
-                continue
+            // فلترة البحث شاملة لكل شيء
+            var match = name.contains(searchQuery, true) || id.contains(searchQuery, true) || username.contains(searchQuery, true)
+            if (!match && devicesArray != null) {
+                for (j in 0 until devicesArray.length()) {
+                    if (devicesArray.getString(j).contains(searchQuery, true)) { match = true; break }
+                }
             }
+            if (searchQuery.isNotEmpty() && !match) continue
 
             addUserCard(
                 usersContainer, id, name, u.getString("password"), u.optString("pfp", ""),
-                u.optBoolean("banned", false), username, u.optString("deviceId", "")
+                u.optBoolean("banned", false), username, devicesArray
             )
         }
     }
 
-    // =================== 2. النشطين الآن ===================
     private fun fetchActiveUsers() {
         tvTotalActive.text = "جاري البحث عن النشطين..."
         lifecycleScope.launch(Dispatchers.IO) {
@@ -220,8 +230,9 @@ class AdminDashboardActivity : AppCompatActivity() {
             val u = activeUsersArray.getJSONObject(i)
             val id = u.getString("id")
             val name = u.getString("name")
+            val deviceId = u.optString("deviceId", "")
             
-            if (searchQuery.isNotEmpty() && !name.contains(searchQuery, true) && !id.contains(searchQuery, true)) {
+            if (searchQuery.isNotEmpty() && !name.contains(searchQuery, true) && !id.contains(searchQuery, true) && !deviceId.contains(searchQuery, true)) {
                 continue
             }
 
@@ -235,27 +246,51 @@ class AdminDashboardActivity : AppCompatActivity() {
                 if (hours > 0) append("$hours ساعة و ")
                 append("$mins دقيقة")
             }
-            addActiveUserCard(id, name, u.optString("pfp", ""), timeStr, u.optString("deviceId", ""))
+            addActiveUserCard(id, name, u.optString("pfp", ""), timeStr, deviceId)
         }
     }
 
+    // =================== كارت النشطين ===================
     private fun addActiveUserCard(id: String, name: String, pfp: String, timeStr: String, deviceId: String) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
         
-        // 🌟 دائرة النشطين 100% 🌟
-        val ivAvatar = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 30, 0) } }
+        // 🌟 دائرة النشطين 100% باستخدام CardView 🌟
+        val avatarCard = CardView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 30, 0) }
+            radius = 60f
+            setCardBackgroundColor(Color.TRANSPARENT)
+            cardElevation = 0f
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
+        }
+        val ivAvatar = ImageView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
         val bitmap = getSafeBitmap(pfp) ?: AvatarGenerator.generateAvatar(name, id)
-        val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
-        ivAvatar.setImageDrawable(circularDrawable)
+        ivAvatar.setImageBitmap(bitmap)
+        avatarCard.addView(ivAvatar)
         
-        val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
         infoLayout.addView(TextView(this).apply { text = name; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
-        infoLayout.addView(TextView(this).apply { text = "ID: $id | الجهاز: ${if(deviceId.length>8) deviceId.substring(0,8)+".." else deviceId}"; setTextColor(Color.parseColor("#FF9800")); textSize = 12f })
-        infoLayout.addView(TextView(this).apply { text = "مدة النشاط: $timeStr"; setTextColor(Color.parseColor("#4CAF50")); textSize = 12f })
-        card.addView(ivAvatar); card.addView(infoLayout); activeUsersContainer.addView(card)
+        
+        // صف الآيدي مع النسخ
+        val idLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        idLayout.addView(TextView(this).apply { text = "ID: $id"; setTextColor(Color.parseColor("#FF9800")); textSize = 12f; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
+        val btnCopyId = TextView(this).apply { text = "📋 نسخ"; setTextColor(Color.parseColor("#FF9800")); textSize = 12f; setPadding(15,10,15,10); background = GradientDrawable().apply { setColor(Color.parseColor("#252529")); cornerRadius = 10f }; setOnClickListener { copyToClipboard("آيدي الحساب", id) } }
+        idLayout.addView(btnCopyId)
+        infoLayout.addView(idLayout)
+
+        // صف الجهاز مع النسخ
+        val devLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0,10,0,0) }
+        devLayout.addView(TextView(this).apply { text = "الجهاز: ${if(deviceId.length>10) deviceId.substring(0,10)+".." else deviceId}"; setTextColor(Color.parseColor("#9C27B0")); textSize = 12f; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
+        val btnCopyDev = TextView(this).apply { text = "📋 نسخ"; setTextColor(Color.parseColor("#9C27B0")); textSize = 12f; setPadding(15,10,15,10); background = GradientDrawable().apply { setColor(Color.parseColor("#252529")); cornerRadius = 10f }; setOnClickListener { copyToClipboard("آيدي الجهاز", deviceId) } }
+        devLayout.addView(btnCopyDev)
+        infoLayout.addView(devLayout)
+
+        infoLayout.addView(TextView(this).apply { text = "مدة النشاط: $timeStr"; setTextColor(Color.parseColor("#4CAF50")); textSize = 12f; setPadding(0,10,0,0) })
+        card.addView(avatarCard); card.addView(infoLayout); activeUsersContainer.addView(card)
     }
 
-    // =================== 3. الإحصائيات (التقويم) ===================
     private fun setupStatsTab(container: LinearLayout) {
         val btnLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(20, 20, 20, 20) }
         fun createStatButton(text: String, color: String, type: String) {
@@ -285,7 +320,7 @@ class AdminDashboardActivity : AppCompatActivity() {
                     val bannedList = allUsersCache.values.filter { it.optBoolean("banned", false) }
                     withContext(Dispatchers.Main) {
                         if (bannedList.isEmpty()) scrollContent.addView(TextView(this@AdminDashboardActivity).apply { text = "لا يوجد محظورين"; setTextColor(Color.WHITE) })
-                        bannedList.forEach { u -> addUserCard(scrollContent, u.getString("id"), u.getString("name"), u.getString("password"), u.optString("pfp", ""), true, u.optString("username", ""), u.optString("deviceId", "")) }
+                        bannedList.forEach { u -> addUserCard(scrollContent, u.getString("id"), u.getString("name"), u.getString("password"), u.optString("pfp", ""), true, u.optString("username", ""), u.optJSONArray("devices")) }
                     }
                 } else {
                     val url = URL("$BASE_API_URL/admin/get_stats?type=$type")
@@ -319,47 +354,72 @@ class AdminDashboardActivity : AppCompatActivity() {
         for (i in 0 until idsArray.length()) {
             val id = idsArray.getString(i)
             val u = allUsersCache[id]
-            if (u != null) addUserCard(scrollContent, id, u.getString("name"), u.getString("password"), u.optString("pfp", ""), u.optBoolean("banned", false), u.optString("username", ""), u.optString("deviceId", ""))
+            if (u != null) addUserCard(scrollContent, id, u.getString("name"), u.getString("password"), u.optString("pfp", ""), u.optBoolean("banned", false), u.optString("username", ""), u.optJSONArray("devices"))
             else scrollContent.addView(TextView(this).apply { text = "ID: $id (محذوف من النظام)"; setTextColor(Color.GRAY) })
         }
         AlertDialog.Builder(this).setView(dialogView).setPositiveButton("رجوع", null).show()
     }
 
-    // =================== بطاقة المستخدم العامة VIP ===================
-    private fun addUserCard(container: LinearLayout, id: String, name: String, pass: String, pfp: String, isBanned: Boolean, username: String, deviceId: String) {
+    // =================== بطاقة المستخدم الشاملة VIP ===================
+    private fun addUserCard(container: LinearLayout, id: String, name: String, pass: String, pfp: String, isBanned: Boolean, username: String, devicesArray: JSONArray?) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
 
         val topLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         
         // 🌟 دائرة المستخدم الشاملة 100% 🌟
-        val ivAvatar = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(130, 130).apply { setMargins(0, 0, 30, 0) } }
+        val avatarCard = CardView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(130, 130).apply { setMargins(0, 0, 30, 0) }
+            radius = 65f
+            setCardBackgroundColor(Color.TRANSPARENT)
+            cardElevation = 0f
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
+        }
+        val ivAvatar = ImageView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
         val bitmap = getSafeBitmap(pfp) ?: AvatarGenerator.generateAvatar(name, id)
-        val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
-        ivAvatar.setImageDrawable(circularDrawable)
+        ivAvatar.setImageBitmap(bitmap)
+        avatarCard.addView(ivAvatar)
         
-        val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
         infoLayout.addView(TextView(this).apply { text = "الاسم: $name"; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
         
-        // 🌟 إظهار المعرف 🌟
         if (username.isNotEmpty()) {
             infoLayout.addView(TextView(this).apply { text = "المعرف: @$username"; setTextColor(Color.parseColor("#2196F3")); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD) })
         }
         
-        infoLayout.addView(TextView(this).apply { text = "ID: $id"; setTextColor(Color.parseColor("#FF9800")); textSize = 14f })
+        // 🌟 صف الآيدي الشامل للنسخ 🌟
+        val idLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0,5,0,5) }
+        idLayout.addView(TextView(this).apply { text = "ID: $id"; setTextColor(Color.parseColor("#FF9800")); textSize = 14f; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
+        val btnCopyId = TextView(this).apply { text = "📋 نسخ"; setTextColor(Color.parseColor("#FF9800")); textSize = 12f; setPadding(20,10,20,10); background = GradientDrawable().apply { setColor(Color.parseColor("#252529")); cornerRadius = 15f }; setOnClickListener { copyToClipboard("آيدي الحساب", id) } }
+        idLayout.addView(btnCopyId)
+        infoLayout.addView(idLayout)
+
         infoLayout.addView(TextView(this).apply { text = "الرمز: $pass"; setTextColor(Color.parseColor("#80FFFFFF")); textSize = 14f })
         
-        // 🌟 إظهار جهاز المستخدم 🌟
-        val displayDevice = if (deviceId.isNotEmpty() && deviceId != "غير محدد") deviceId else "غير مرتبط بجهاز"
-        infoLayout.addView(TextView(this).apply { text = "الجهاز: $displayDevice"; setTextColor(Color.parseColor("#9C27B0")); textSize = 12f })
+        // 🌟 إظهار جميع الأجهزة مع أزرار النسخ 🌟
+        if (devicesArray != null && devicesArray.length() > 0) {
+            infoLayout.addView(TextView(this).apply { text = "الأجهزة المسجلة (${devicesArray.length()}):"; setTextColor(Color.parseColor("#9C27B0")); textSize = 12f; setPadding(0, 15, 0, 10) })
+            for (j in 0 until devicesArray.length()) {
+                val devId = devicesArray.getString(j)
+                val devLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, 10) }
+                devLayout.addView(TextView(this).apply { text = "📱 $devId"; setTextColor(Color.LTGRAY); textSize = 12f; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
+                val btnCopyDev = TextView(this).apply { text = "📋 نسخ"; setTextColor(Color.LTGRAY); textSize = 10f; setPadding(20,10,20,10); background = GradientDrawable().apply { setColor(Color.parseColor("#252529")); cornerRadius = 15f }; setOnClickListener { copyToClipboard("آيدي الجهاز", devId) } }
+                devLayout.addView(btnCopyDev)
+                infoLayout.addView(devLayout)
+            }
+        } else {
+            infoLayout.addView(TextView(this).apply { text = "لا توجد أجهزة مرتبطة"; setTextColor(Color.GRAY); textSize = 12f; setPadding(0, 10, 0, 5) })
+        }
         
-        if (isBanned) { infoLayout.addView(TextView(this).apply { text = "🚫 محظور"; setTextColor(Color.RED); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD) }) }
+        if (isBanned) { infoLayout.addView(TextView(this).apply { text = "🚫 محظور"; setTextColor(Color.RED); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD); setPadding(0,10,0,0) }) }
 
-        topLayout.addView(ivAvatar); topLayout.addView(infoLayout); card.addView(topLayout)
+        topLayout.addView(avatarCard); topLayout.addView(infoLayout); card.addView(topLayout)
 
-        // أزرار التحكم
         val btnLayout1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 20 } }
         val btnEdit = MaterialButton(this).apply { text = "تعديل"; setBackgroundColor(Color.parseColor("#2196F3")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, 10, 0) }; setOnClickListener { showEditDialog(id, name, pass, username) } }
-        val btnUnbind = MaterialButton(this).apply { text = "فك الجهاز"; setBackgroundColor(Color.parseColor("#9C27B0")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { unbindDevice(id) } }
+        val btnUnbind = MaterialButton(this).apply { text = "مسح جميع الأجهزة"; setBackgroundColor(Color.parseColor("#9C27B0")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { unbindDevice(id) } }
         btnLayout1.addView(btnEdit); btnLayout1.addView(btnUnbind)
 
         val btnLayout2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 10 } }
@@ -371,7 +431,6 @@ class AdminDashboardActivity : AppCompatActivity() {
         container.addView(card)
     }
 
-    // 🌟 تعديل نافذة التعديل لتدعم المعرف (يوزرنيم) 🌟
     private fun showEditDialog(id: String, oldName: String, oldPass: String, oldUsername: String) {
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 40, 50, 40) }
         val etName = EditText(this).apply { hint = "الاسم الجديد"; setText(oldName); setTextColor(Color.BLACK) }
@@ -382,27 +441,16 @@ class AdminDashboardActivity : AppCompatActivity() {
         AlertDialog.Builder(this).setTitle("تعديل بيانات $id").setView(layout)
             .setPositiveButton("حفظ") { _, _ ->
                 val newUsername = etUsername.text.toString().trim().replace("@", "")
-                
-                // 🌟 حماية وفلترة المعرف حسب قواعد التليجرام 🌟
                 if (newUsername.isNotEmpty() && !newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
-                    Toast.makeText(this, "المعرف غير صالح! يجب أن يتكون من حرفين أو أكثر، ويسمح فقط بالحروف والأرقام والـ ( _ ) والـ ( . )", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "المعرف غير صالح!", Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
-
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
                         val conn = URL("$BASE_API_URL/admin/force_update").openConnection() as HttpURLConnection
                         conn.requestMethod = "POST"
-                        conn.setRequestProperty("Content-Type", "application/json")
-                        conn.doOutput = true
-                        
-                        val payload = JSONObject().apply {
-                            put("id", id)
-                            put("name", etName.text.toString())
-                            put("password", etPass.text.toString())
-                            put("username", newUsername) // إرسال المعرف للسيرفر
-                        }
-                        
+                        conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                        val payload = JSONObject().apply { put("id", id); put("name", etName.text.toString()); put("password", etPass.text.toString()); put("username", newUsername) }
                         conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                         if (conn.responseCode == 200) fetchAllUsers()
                     } catch (e: Exception) {}
@@ -410,9 +458,8 @@ class AdminDashboardActivity : AppCompatActivity() {
             }.setNegativeButton("إلغاء", null).show()
     }
 
-    // 🌟 دالة فك ارتباط الجهاز 🌟
     private fun unbindDevice(id: String) {
-        AlertDialog.Builder(this).setTitle("فك ارتباط الجهاز").setMessage("هل تريد السماح لهذا الحساب بتسجيل الدخول من جهاز آخر؟")
+        AlertDialog.Builder(this).setTitle("مسح الأجهزة").setMessage("هل تريد مسح كل الأجهزة المرتبطة بحساب هذا المستخدم؟")
             .setPositiveButton("نعم") { _, _ ->
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
@@ -421,7 +468,7 @@ class AdminDashboardActivity : AppCompatActivity() {
                         conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
                         conn.outputStream.use { it.write(JSONObject().put("id", id).toString().toByteArray()) }
                         if (conn.responseCode == 200) {
-                            withContext(Dispatchers.Main) { Toast.makeText(this@AdminDashboardActivity, "تم فك الجهاز بنجاح!", Toast.LENGTH_SHORT).show() }
+                            withContext(Dispatchers.Main) { Toast.makeText(this@AdminDashboardActivity, "تم مسح الأجهزة بنجاح!", Toast.LENGTH_SHORT).show() }
                             fetchAllUsers()
                         }
                     } catch (e: Exception) {}
