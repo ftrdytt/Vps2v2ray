@@ -8,8 +8,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.provider.Settings
@@ -23,7 +21,6 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.cardview.widget.CardView
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -46,8 +43,6 @@ class ProfileFragment : Fragment() {
 
     private val BASE_API_URL = "https://education.ashor.shop"
 
-    private lateinit var flAvatarContainer: FrameLayout
-    private lateinit var tvLetterAvatar: TextView
     private lateinit var ivAvatar: ImageView
     
     private lateinit var btnAdminDashboard: ImageView
@@ -55,7 +50,7 @@ class ProfileFragment : Fragment() {
     private lateinit var etId: EditText
     private lateinit var etName: EditText
     private lateinit var etUsername: EditText
-    private lateinit var tvUsernameStatus: TextView // 🌟 نص فحص المعرف الفوري 🌟
+    private lateinit var tvUsernameStatus: TextView // 🌟 نص فحص المعرف 🌟
     private lateinit var etPass: EditText
     
     private var currentBase64Pfp: String = ""
@@ -90,10 +85,35 @@ class ProfileFragment : Fragment() {
         return inflater.inflate(R.layout.fragment_profile, container, false)
     }
 
+    // 🌟 دالة الحقن الآمن (تمنع الخروج المفاجئ وتدمج الحقول بدون كسر التصميم) 🌟
+    private fun safeAddViewBelow(target: View, newView: View, container: ViewGroup) {
+        var child = target
+        while (child.parent != null && child.parent != container) {
+            child = child.parent as View
+        }
+        val idx = container.indexOfChild(child)
+        if (idx != -1) container.addView(newView, idx + 1) else container.addView(newView)
+    }
+
+    private fun safeAddViewAbove(target: View, newView: View, container: ViewGroup) {
+        var child = target
+        while (child.parent != null && child.parent != container) {
+            child = child.parent as View
+        }
+        val idx = container.indexOfChild(child)
+        if (idx != -1) container.addView(newView, idx) else container.addView(newView, 0)
+    }
+
+    private fun copyToClipboard(label: String, text: String) {
+        val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("Copied Data", text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(requireContext(), "تم نسخ $label 📋", Toast.LENGTH_SHORT).show()
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // استخراج آيدي الجهاز
         myDeviceId = Settings.Secure.getString(requireActivity().contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
 
         btnAdminDashboard = view.findViewById(R.id.btn_admin_dashboard)
@@ -103,105 +123,105 @@ class ProfileFragment : Fragment() {
         etPass = view.findViewById(R.id.et_profile_pass)
         val btnSave = view.findViewById<Button>(R.id.btn_save_profile)
         val btnLogout = view.findViewById<Button>(R.id.btn_logout)
+        ivAvatar = view.findViewById(R.id.iv_profile_pic) // 🌟 الحفاظ على مكان الصورة الأصلي 🌟
 
-        // ========================================================
-        // 🌟 1. حل مشكلة توسيط الصورة (جعلها بالنص 100%) 🌟
-        // ========================================================
-        val originalImageContainer = view.findViewById<View>(R.id.iv_profile_pic).parent as ViewGroup
-        val imageIndex = originalImageContainer.indexOfChild(view.findViewById(R.id.iv_profile_pic))
-        originalImageContainer.removeView(view.findViewById(R.id.iv_profile_pic))
-
-        val centerWrapper = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER // 🌟 هذا السطر يضمن التوسيط التام 🌟
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        ivAvatar.setOnClickListener {
+            val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+            pickImage.launch(intent)
         }
 
-        val avatarCard = CardView(requireContext()).apply {
-            layoutParams = LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 20, 0, 20) }
-            radius = 125f
-            setCardBackgroundColor(Color.TRANSPARENT)
-            cardElevation = 0f
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
-            setOnClickListener { val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI); pickImage.launch(intent) }
-        }
-        
-        flAvatarContainer = FrameLayout(requireContext()).apply { layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT) }
-        tvLetterAvatar = TextView(requireContext()).apply { layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT); gravity = Gravity.CENTER; setTextColor(Color.WHITE); textSize = 40f; setTypeface(null, android.graphics.Typeface.BOLD); val bg = GradientDrawable(); bg.shape = GradientDrawable.OVAL; bg.setColor(Color.parseColor("#E91E63")); background = bg }
-        ivAvatar = ImageView(requireContext()).apply { layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT); scaleType = ImageView.ScaleType.FIT_XY; visibility = View.GONE }
+        // الحاوية الأم لجميع العناصر لضمان الحقن الآمن
+        val mainContainer = btnSave.parent as ViewGroup
 
-        flAvatarContainer.addView(tvLetterAvatar)
-        flAvatarContainer.addView(ivAvatar)
-        avatarCard.addView(flAvatarContainer)
-        centerWrapper.addView(avatarCard)
-        originalImageContainer.addView(centerWrapper, imageIndex)
+        // ========================================================
+        // 🌟 1. إضافة زر نسخ آيدي الحساب 🌟
+        // ========================================================
+        val tvCopyId = TextView(requireContext()).apply {
+            text = "📋 نسخ آيدي الحساب"
+            setTextColor(Color.parseColor("#FF9800"))
+            textSize = 14f
+            setPadding(20, 10, 20, 30)
+            setOnClickListener { copyToClipboard("آيدي الحساب", etId.text.toString()) }
+        }
+        safeAddViewBelow(etId, tvCopyId, mainContainer)
 
         // ========================================================
         // 🌟 2. إضافة حقل المعرف (Username) والفحص الفوري 🌟
         // ========================================================
-        val rootLayout = etId.parent as LinearLayout
-
-        tvUsernameStatus = TextView(requireContext()).apply {
-            textSize = 12f
-            setPadding(20, 5, 20, 0)
-            visibility = View.GONE
+        val wrapperUsername = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setPadding(0, 20, 0, 0)
         }
-
         etUsername = EditText(requireContext()).apply {
             hint = "المعرف (@) اختياري"
             setHintTextColor(Color.parseColor("#80FFFFFF"))
             setTextColor(Color.WHITE)
             textSize = 16f
-            setBackgroundColor(Color.parseColor("#1A1A1D"))
-            setPadding(40, 40, 40, 40)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 30, 0, 0) }
-            
-            // الفحص المباشر أثناء الكتابة
+            background = etName.background // يأخذ نفس شكل حقول التطبيق
+            setPadding(etName.paddingLeft, etName.paddingTop, etName.paddingRight, etName.paddingBottom)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    val input = s.toString().trim().replace("@", "")
-                    checkUsernameLive(input)
+                    checkUsernameLive(s.toString().trim().replace("@", ""))
                 }
                 override fun afterTextChanged(s: Editable?) {}
             })
         }
-
-        val nameIdx = rootLayout.indexOfChild(etName)
-        rootLayout.addView(etUsername, nameIdx + 1)
-        rootLayout.addView(tvUsernameStatus, nameIdx + 2)
+        tvUsernameStatus = TextView(requireContext()).apply {
+            textSize = 12f
+            setPadding(20, 5, 20, 10)
+            visibility = View.GONE
+        }
+        wrapperUsername.addView(etUsername)
+        wrapperUsername.addView(tvUsernameStatus)
+        safeAddViewBelow(etName, wrapperUsername, mainContainer)
 
         // ========================================================
-        // 🌟 3. أزرار النسخ وحقل آيدي الجهاز 🌟
+        // 🌟 3. حقل آيدي الجهاز بالعربي وزر النسخ 🌟
         // ========================================================
-        setupCopyButtonToField(etId, "نسخ آيدي الحساب 📋")
-        
+        val wrapperDevice = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setPadding(0, 30, 0, 0)
+        }
+        val tvDeviceLabel = TextView(requireContext()).apply {
+            text = "آيدي جهازك الحالي 📱:"
+            setTextColor(Color.GRAY)
+            setPadding(10, 10, 10, 10)
+        }
         val etDeviceDisplay = EditText(requireContext()).apply {
             setText(myDeviceId)
             isEnabled = false
             setTextColor(Color.parseColor("#4CAF50"))
-            textSize = 14f
-            setBackgroundColor(Color.parseColor("#1A1A1D"))
-            setPadding(40, 40, 40, 40)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 30, 0, 0) }
+            textSize = 16f
+            background = etId.background
+            setPadding(etId.paddingLeft, etId.paddingTop, etId.paddingRight, etId.paddingBottom)
         }
-        
-        val passIdx = rootLayout.indexOfChild(etPass)
-        rootLayout.addView(TextView(requireContext()).apply { text = "آيدي جهازك الحالي 📱:"; setTextColor(Color.GRAY); setPadding(10,30,10,0) }, passIdx + 1)
-        rootLayout.addView(etDeviceDisplay, passIdx + 2)
-        setupCopyButtonToField(etDeviceDisplay, "نسخ آيدي الجهاز 📋")
+        val tvCopyDevice = TextView(requireContext()).apply {
+            text = "📋 نسخ آيدي الجهاز"
+            setTextColor(Color.parseColor("#FF9800"))
+            textSize = 14f
+            setPadding(20, 10, 20, 30)
+            setOnClickListener { copyToClipboard("آيدي الجهاز", myDeviceId) }
+        }
+        wrapperDevice.addView(tvDeviceLabel)
+        wrapperDevice.addView(etDeviceDisplay)
+        wrapperDevice.addView(tvCopyDevice)
+        safeAddViewBelow(etPass, wrapperDevice, mainContainer)
 
         // ========================================================
-        // 🌟 4. زر إدارة الأجهزة النشطة (مثل التليجرام) 🌟
+        // 🌟 4. زر إدارة الأجهزة النشطة وطرد الجلسات 🌟
         // ========================================================
         val btnManageDevices = MaterialButton(requireContext()).apply {
-            text = "📱 الأجهزة المرتبطة بحسابك"
+            text = "📱 إدارة الأجهزة النشطة ومراقبة الجلسات"
             setBackgroundColor(Color.parseColor("#9C27B0"))
             setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 30, 0, 20) }
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             setOnClickListener { showDevicesDialog() }
         }
-        rootLayout.addView(btnManageDevices, rootLayout.indexOfChild(btnSave))
+        val manageWrapper = LinearLayout(requireContext()).apply { setPadding(0, 30, 0, 30); addView(btnManageDevices) }
+        safeAddViewAbove(btnSave, manageWrapper, mainContainer)
 
         // ==========================================
 
@@ -224,11 +244,6 @@ class ProfileFragment : Fragment() {
         }
 
         updateProfilePicture(currentBase64Pfp, userName, userId)
-
-        view.findViewById<View>(R.id.btn_change_avatar)?.setOnClickListener {
-            val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-            pickImage.launch(intent)
-        }
 
         btnSave.setOnClickListener {
             val newName = etName.text.toString().trim()
@@ -273,22 +288,17 @@ class ProfileFragment : Fragment() {
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(requireContext(), "تم الحفظ بنجاح!", Toast.LENGTH_SHORT).show()
                                 updateProfilePicture(currentBase64Pfp, newName, AuthManager.getId(requireContext()))
-                                btnSave.isEnabled = true
-                                btnSave.text = "حفظ التعديلات السحابية"
+                                btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية"
                             }
                         } else {
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(requireContext(), obj.optString("message", "فشل الحفظ"), Toast.LENGTH_SHORT).show()
-                                btnSave.isEnabled = true
-                                btnSave.text = "حفظ التعديلات السحابية"
+                                btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية"
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    withContext(Dispatchers.Main) { 
-                        btnSave.isEnabled = true
-                        btnSave.text = "حفظ التعديلات السحابية" 
-                    }
+                    withContext(Dispatchers.Main) { btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" }
                 }
             }
         }
@@ -298,7 +308,6 @@ class ProfileFragment : Fragment() {
                 .setPositiveButton("نعم") { _, _ ->
                     lifecycleScope.launch(Dispatchers.IO) {
                         try {
-                            // 🌟 إبلاغ السيرفر لحذف الجلسة الحالية لهذا الجهاز بالتحديد 🌟
                             val conn = URL("$BASE_API_URL/auth/terminate_device").openConnection() as HttpURLConnection
                             conn.requestMethod = "POST"
                             conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
@@ -311,27 +320,6 @@ class ProfileFragment : Fragment() {
                     startActivity(intent); requireActivity().finish()
                 }.setNegativeButton("إلغاء", null).show()
         }
-    }
-
-    // 🌟 دالة ربط أزرار النسخ الفوري 🌟
-    private fun setupCopyButtonToField(targetEditText: EditText, buttonText: String) {
-        val rootLayout = targetEditText.parent as LinearLayout
-        val idx = rootLayout.indexOfChild(targetEditText)
-        
-        val btnCopy = MaterialButton(requireContext()).apply {
-            text = buttonText
-            setBackgroundColor(Color.parseColor("#252529"))
-            setTextColor(Color.parseColor("#FF9800"))
-            textSize = 12f
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 120).apply { setMargins(0, 5, 0, 20) }
-            setOnClickListener {
-                val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = ClipData.newPlainText("Copied Data", targetEditText.text.toString())
-                clipboard.setPrimaryClip(clip)
-                Toast.makeText(requireContext(), "تم النسخ بنجاح! 📋", Toast.LENGTH_SHORT).show()
-            }
-        }
-        rootLayout.addView(btnCopy, idx + 1)
     }
 
     // 🌟 دالة فحص المعرف الفوري (Live Check) 🌟
@@ -353,7 +341,7 @@ class ProfileFragment : Fragment() {
         tvUsernameStatus.setTextColor(Color.parseColor("#FF9800"))
 
         checkUserJob = lifecycleScope.launch(Dispatchers.IO) {
-            delay(600) // تأخير ذكي حتى يكمل المستخدم كتابة
+            delay(600)
             try {
                 val conn = URL("$BASE_API_URL/auth/check_username?username=$username&id=${AuthManager.getId(requireContext())}").openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
@@ -373,7 +361,7 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    // 🌟 نافذة إدارة الأجهزة النشطة وطرد الجلسات المتعددة 🌟
+    // 🌟 نافذة إدارة الأجهزة النشطة 🌟
     private fun showDevicesDialog() {
         val dialogView = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL; setPadding(40, 40, 40, 40); setBackgroundColor(Color.parseColor("#141417")) }
         val tvTitle = TextView(requireContext()).apply { text = "📱 الأجهزة المرتبطة بحسابك"; setTextColor(Color.parseColor("#9C27B0")); textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER; setPadding(0,0,0,30) }
@@ -420,7 +408,7 @@ class ProfileFragment : Fragment() {
                                             withContext(Dispatchers.Main) { renderDevices(); Toast.makeText(requireContext(), "تم طرد الجهاز بنجاح! 🔒", Toast.LENGTH_SHORT).show() }
                                         }
                                     }
-                                } catch(e: Exception){} // 🌟 تم تصحيح نوع الاستثناء هنا 🌟
+                                } catch(e: Exception){} 
                             }
                         }
                     }
@@ -467,17 +455,12 @@ class ProfileFragment : Fragment() {
         } catch (e: Exception) { null }
     }
 
+    // 🌟 تدوير الصورة بدون الخروج من مكانها 🌟
     private fun updateProfilePicture(base64Str: String, name: String, userId: String) {
-        val bitmap = getSafeBitmap(base64Str)
+        val bitmap = getSafeBitmap(base64Str) ?: AvatarGenerator.generateAvatar(name, userId)
         if (bitmap != null) {
             val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
             ivAvatar.setImageDrawable(circularDrawable)
-            ivAvatar.visibility = View.VISIBLE
-            tvLetterAvatar.visibility = View.GONE
-        } else {
-            tvLetterAvatar.text = name.trim().firstOrNull()?.toString()?.uppercase() ?: "م"
-            tvLetterAvatar.visibility = View.VISIBLE
-            ivAvatar.visibility = View.GONE
         }
     }
 }
