@@ -40,12 +40,11 @@ class AdminDashboardActivity : AppCompatActivity() {
 
     private val BASE_API_URL = "https://education.ashor.shop"
 
-    private lateinit var listAllUsers: LinearLayout
+    private lateinit var listAllUsers: ViewGroup
     private lateinit var listActiveUsers: LinearLayout
     private lateinit var tvTotalUsers: TextView
     private lateinit var tvTotalActive: TextView
 
-    // 🌟 حاويات اللستة الداخلية لعدم تداخلها مع شريط البحث 🌟
     private lateinit var usersContainer: LinearLayout
     private lateinit var activeUsersContainer: LinearLayout
 
@@ -58,17 +57,18 @@ class AdminDashboardActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_admin_dashboard)
 
-        listAllUsers = findViewById(R.id.list_all_users)
+        // 🌟 حماية من الكراش باستخدام ViewGroup بدلاً من LinearLayout 🌟
+        listAllUsers = findViewById<ViewGroup>(R.id.list_all_users)
         tvTotalUsers = findViewById(R.id.tv_total_users)
 
-        // 🌟 شريط البحث الشامل 🌟
+        // إعداد شريط البحث
         val searchInput = EditText(this).apply {
             hint = "🔍 بحث (الاسم، المعرف، الآيدي، الجهاز)..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#1A1A1D"))
             setPadding(40, 40, 40, 40)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
+            layoutParams = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -81,10 +81,13 @@ class AdminDashboardActivity : AppCompatActivity() {
         }
 
         listAllUsers.addView(searchInput)
-        usersContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        usersContainer = LinearLayout(this).apply { 
+            orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
         listAllUsers.addView(usersContainer)
 
-        val layoutActive = findViewById<LinearLayout>(R.id.layout_active_container)
+        val layoutActive = findViewById<ViewGroup>(R.id.layout_active_container)
         layoutActive.removeAllViews()
         tvTotalActive = TextView(this).apply { 
             text = "النشطين الآن: جاري التحميل..."
@@ -92,7 +95,7 @@ class AdminDashboardActivity : AppCompatActivity() {
             textSize = 16f
             setTypeface(null, android.graphics.Typeface.BOLD) 
             gravity = Gravity.CENTER
-            setPadding(10, 10, 10, 10) 
+            setPadding(10, 10, 10, 10)
         }
         listActiveUsers = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(10, 10, 10, 10) }
         activeUsersContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -101,7 +104,7 @@ class AdminDashboardActivity : AppCompatActivity() {
         layoutActive.addView(tvTotalActive)
         layoutActive.addView(ScrollView(this).apply { addView(listActiveUsers) })
 
-        val layoutStatsContainer = findViewById<LinearLayout>(R.id.layout_stats_container)
+        val layoutStatsContainer = findViewById<ViewGroup>(R.id.layout_stats_container)
         layoutStatsContainer.removeAllViews()
         setupStatsTab(layoutStatsContainer)
 
@@ -149,7 +152,7 @@ class AdminDashboardActivity : AppCompatActivity() {
         } catch (e: Exception) { null }
     }
 
-    // 🌟 دالة النسخ الفوري 🌟
+    // 🌟 دالة النسخ 🌟
     private fun copyToClipboard(label: String, text: String) {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText(label, text)
@@ -191,7 +194,7 @@ class AdminDashboardActivity : AppCompatActivity() {
             val username = u.optString("username", "")
             val devicesArray = u.optJSONArray("devices")
             
-            // فلترة البحث شاملة لكل شيء
+            // فلترة البحث
             var match = name.contains(searchQuery, true) || id.contains(searchQuery, true) || username.contains(searchQuery, true)
             if (!match && devicesArray != null) {
                 for (j in 0 until devicesArray.length()) {
@@ -256,7 +259,6 @@ class AdminDashboardActivity : AppCompatActivity() {
     private fun addActiveUserCard(id: String, name: String, pfp: String, timeStr: String, deviceId: String) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
         
-        // 🌟 دائرة النشطين 100% باستخدام CardView 🌟
         val avatarCard = CardView(this).apply {
             layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 30, 0) }
             radius = 60f
@@ -275,14 +277,12 @@ class AdminDashboardActivity : AppCompatActivity() {
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
         infoLayout.addView(TextView(this).apply { text = name; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
         
-        // صف الآيدي مع النسخ
         val idLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         idLayout.addView(TextView(this).apply { text = "ID: $id"; setTextColor(Color.parseColor("#FF9800")); textSize = 12f; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
         val btnCopyId = TextView(this).apply { text = "📋 نسخ"; setTextColor(Color.parseColor("#FF9800")); textSize = 12f; setPadding(15,10,15,10); background = GradientDrawable().apply { setColor(Color.parseColor("#252529")); cornerRadius = 10f }; setOnClickListener { copyToClipboard("آيدي الحساب", id) } }
         idLayout.addView(btnCopyId)
         infoLayout.addView(idLayout)
 
-        // صف الجهاز مع النسخ
         val devLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0,10,0,0) }
         devLayout.addView(TextView(this).apply { text = "الجهاز: ${if(deviceId.length>10) deviceId.substring(0,10)+".." else deviceId}"; setTextColor(Color.parseColor("#9C27B0")); textSize = 12f; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
         val btnCopyDev = TextView(this).apply { text = "📋 نسخ"; setTextColor(Color.parseColor("#9C27B0")); textSize = 12f; setPadding(15,10,15,10); background = GradientDrawable().apply { setColor(Color.parseColor("#252529")); cornerRadius = 10f }; setOnClickListener { copyToClipboard("آيدي الجهاز", deviceId) } }
@@ -293,7 +293,7 @@ class AdminDashboardActivity : AppCompatActivity() {
         card.addView(avatarCard); card.addView(infoLayout); activeUsersContainer.addView(card)
     }
 
-    private fun setupStatsTab(container: LinearLayout) {
+    private fun setupStatsTab(container: ViewGroup) {
         val btnLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(20, 20, 20, 20) }
         fun createStatButton(text: String, color: String, type: String) {
             val btn = MaterialButton(this).apply { this.text = text; setBackgroundColor(Color.parseColor(color)); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 150).apply { setMargins(0, 0, 0, 20) }
@@ -365,10 +365,8 @@ class AdminDashboardActivity : AppCompatActivity() {
     // =================== بطاقة المستخدم الشاملة VIP ===================
     private fun addUserCard(container: LinearLayout, id: String, name: String, pass: String, pfp: String, isBanned: Boolean, username: String, devicesArray: JSONArray?) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
-
         val topLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         
-        // 🌟 دائرة المستخدم الشاملة 100% 🌟
         val avatarCard = CardView(this).apply {
             layoutParams = LinearLayout.LayoutParams(130, 130).apply { setMargins(0, 0, 30, 0) }
             radius = 65f
@@ -376,10 +374,7 @@ class AdminDashboardActivity : AppCompatActivity() {
             cardElevation = 0f
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
         }
-        val ivAvatar = ImageView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-        }
+        val ivAvatar = ImageView(this).apply { layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT); scaleType = ImageView.ScaleType.CENTER_CROP }
         val bitmap = getSafeBitmap(pfp) ?: AvatarGenerator.generateAvatar(name, id)
         ivAvatar.setImageBitmap(bitmap)
         avatarCard.addView(ivAvatar)
@@ -391,7 +386,6 @@ class AdminDashboardActivity : AppCompatActivity() {
             infoLayout.addView(TextView(this).apply { text = "المعرف: @$username"; setTextColor(Color.parseColor("#2196F3")); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD) })
         }
         
-        // 🌟 صف الآيدي الشامل للنسخ 🌟
         val idLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0,5,0,5) }
         idLayout.addView(TextView(this).apply { text = "ID: $id"; setTextColor(Color.parseColor("#FF9800")); textSize = 14f; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
         val btnCopyId = TextView(this).apply { text = "📋 نسخ"; setTextColor(Color.parseColor("#FF9800")); textSize = 12f; setPadding(20,10,20,10); background = GradientDrawable().apply { setColor(Color.parseColor("#252529")); cornerRadius = 15f }; setOnClickListener { copyToClipboard("آيدي الحساب", id) } }
@@ -400,7 +394,6 @@ class AdminDashboardActivity : AppCompatActivity() {
 
         infoLayout.addView(TextView(this).apply { text = "الرمز: $pass"; setTextColor(Color.parseColor("#80FFFFFF")); textSize = 14f })
         
-        // 🌟 إظهار جميع الأجهزة مع أزرار النسخ 🌟
         if (devicesArray != null && devicesArray.length() > 0) {
             infoLayout.addView(TextView(this).apply { text = "الأجهزة المسجلة (${devicesArray.length()}):"; setTextColor(Color.parseColor("#9C27B0")); textSize = 12f; setPadding(0, 15, 0, 10) })
             for (j in 0 until devicesArray.length()) {
@@ -421,7 +414,7 @@ class AdminDashboardActivity : AppCompatActivity() {
 
         val btnLayout1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 20 } }
         val btnEdit = MaterialButton(this).apply { text = "تعديل"; setBackgroundColor(Color.parseColor("#2196F3")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, 10, 0) }; setOnClickListener { showEditDialog(id, name, pass, username) } }
-        val btnUnbind = MaterialButton(this).apply { text = "مسح جميع الأجهزة"; setBackgroundColor(Color.parseColor("#9C27B0")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { unbindDevice(id) } }
+        val btnUnbind = MaterialButton(this).apply { text = "مسح الأجهزة"; setBackgroundColor(Color.parseColor("#9C27B0")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { unbindDevice(id) } }
         btnLayout1.addView(btnEdit); btnLayout1.addView(btnUnbind)
 
         val btnLayout2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 10 } }
@@ -443,28 +436,16 @@ class AdminDashboardActivity : AppCompatActivity() {
         AlertDialog.Builder(this).setTitle("تعديل بيانات $id").setView(layout)
             .setPositiveButton("حفظ") { _, _ ->
                 val newUsername = etUsername.text.toString().trim().replace("@", "")
-                
-                // 🌟 حماية وفلترة المعرف حسب قواعد التليجرام 🌟
                 if (newUsername.isNotEmpty() && !newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
-                    Toast.makeText(this, "المعرف غير صالح! يجب أن يتكون من حرفين أو أكثر، ويسمح فقط بالحروف والأرقام والـ ( _ ) والـ ( . )", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "المعرف غير صالح!", Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
-
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
                         val conn = URL("$BASE_API_URL/admin/force_update").openConnection() as HttpURLConnection
                         conn.requestMethod = "POST"
-                        conn.setRequestProperty("Content-Type", "application/json")
-                        conn.doOutput = true
-                        
-                        val payload = JSONObject().apply {
-                            put("id", id)
-                            put("name", etName.text.toString())
-                            put("password", etPass.text.toString())
-                            put("username", newUsername) // إرسال المعرف للسيرفر
-                        }
-                        
-                        // 🌟 دعم اللغة العربية 🌟
+                        conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                        val payload = JSONObject().apply { put("id", id); put("name", etName.text.toString()); put("password", etPass.text.toString()); put("username", newUsername) }
                         conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                         if (conn.responseCode == 200) fetchAllUsers()
                     } catch (e: Exception) {}
@@ -480,7 +461,6 @@ class AdminDashboardActivity : AppCompatActivity() {
                         val conn = URL("$BASE_API_URL/admin/reset_device").openConnection() as HttpURLConnection
                         conn.requestMethod = "POST"
                         conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                        // 🌟 دعم اللغة العربية 🌟
                         conn.outputStream.use { it.write(JSONObject().put("id", id).toString().toByteArray(Charsets.UTF_8)) }
                         if (conn.responseCode == 200) {
                             withContext(Dispatchers.Main) { Toast.makeText(this@AdminDashboardActivity, "تم فك الجهاز بنجاح!", Toast.LENGTH_SHORT).show() }
@@ -497,7 +477,6 @@ class AdminDashboardActivity : AppCompatActivity() {
                 val conn = URL("$BASE_API_URL/admin/toggle_ban").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                // 🌟 دعم اللغة العربية 🌟
                 conn.outputStream.use { it.write(JSONObject().put("id", id).put("banned", banStatus).toString().toByteArray(Charsets.UTF_8)) }
                 if (conn.responseCode == 200) fetchAllUsers()
             } catch (e: Exception) {}
@@ -514,7 +493,6 @@ class AdminDashboardActivity : AppCompatActivity() {
                             val conn = URL("$BASE_API_URL/admin/delete_user").openConnection() as HttpURLConnection
                             conn.requestMethod = "POST"
                             conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                            // 🌟 دعم اللغة العربية 🌟
                             conn.outputStream.use { it.write(JSONObject().put("id", id).toString().toByteArray(Charsets.UTF_8)) }
                             if (conn.responseCode == 200) fetchAllUsers()
                         } catch (e: Exception) {}
