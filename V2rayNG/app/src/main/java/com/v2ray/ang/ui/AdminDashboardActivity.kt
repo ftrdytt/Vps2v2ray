@@ -7,7 +7,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
@@ -19,7 +18,6 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.cardview.widget.CardView
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
@@ -41,7 +39,6 @@ class AdminDashboardActivity : AppCompatActivity() {
     private val BASE_API_URL = "https://education.ashor.shop"
 
     private lateinit var listAllUsers: ViewGroup
-    private lateinit var listActiveUsers: LinearLayout
     private lateinit var tvTotalUsers: TextView
     private lateinit var tvTotalActive: TextView
 
@@ -57,18 +54,17 @@ class AdminDashboardActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_admin_dashboard)
 
-        // 🌟 حماية من الكراش باستخدام ViewGroup بدلاً من LinearLayout 🌟
+        // 🌟 حماية تامة باستخدام ViewGroup 🌟
         listAllUsers = findViewById<ViewGroup>(R.id.list_all_users)
         tvTotalUsers = findViewById(R.id.tv_total_users)
 
-        // إعداد شريط البحث
         val searchInput = EditText(this).apply {
             hint = "🔍 بحث (الاسم، المعرف، الآيدي، الجهاز)..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#1A1A1D"))
             setPadding(40, 40, 40, 40)
-            layoutParams = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -81,10 +77,7 @@ class AdminDashboardActivity : AppCompatActivity() {
         }
 
         listAllUsers.addView(searchInput)
-        usersContainer = LinearLayout(this).apply { 
-            orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
+        usersContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         listAllUsers.addView(usersContainer)
 
         val layoutActive = findViewById<ViewGroup>(R.id.layout_active_container)
@@ -95,9 +88,9 @@ class AdminDashboardActivity : AppCompatActivity() {
             textSize = 16f
             setTypeface(null, android.graphics.Typeface.BOLD) 
             gravity = Gravity.CENTER
-            setPadding(10, 10, 10, 10)
+            setPadding(10, 10, 10, 10) 
         }
-        listActiveUsers = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(10, 10, 10, 10) }
+        val listActiveUsers = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(10, 10, 10, 10) }
         activeUsersContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         listActiveUsers.addView(activeUsersContainer)
         
@@ -108,9 +101,9 @@ class AdminDashboardActivity : AppCompatActivity() {
         layoutStatsContainer.removeAllViews()
         setupStatsTab(layoutStatsContainer)
 
-        val tabAllUsers = findViewById<Button>(R.id.tab_all_users)
-        val tabActive = findViewById<Button>(R.id.tab_active_now)
-        val tabStats = findViewById<Button>(R.id.tab_stats)
+        val tabAllUsers = findViewById<TextView>(R.id.tab_all_users) // 🌟 استخدام TextView حماية من الكراش 🌟
+        val tabActive = findViewById<TextView>(R.id.tab_active_now)
+        val tabStats = findViewById<TextView>(R.id.tab_stats)
         val layoutAll = findViewById<View>(R.id.layout_all_users_container)
 
         tabAllUsers.setOnClickListener {
@@ -152,7 +145,6 @@ class AdminDashboardActivity : AppCompatActivity() {
         } catch (e: Exception) { null }
     }
 
-    // 🌟 دالة النسخ 🌟
     private fun copyToClipboard(label: String, text: String) {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText(label, text)
@@ -194,7 +186,6 @@ class AdminDashboardActivity : AppCompatActivity() {
             val username = u.optString("username", "")
             val devicesArray = u.optJSONArray("devices")
             
-            // فلترة البحث
             var match = name.contains(searchQuery, true) || id.contains(searchQuery, true) || username.contains(searchQuery, true)
             if (!match && devicesArray != null) {
                 for (j in 0 until devicesArray.length()) {
@@ -255,24 +246,17 @@ class AdminDashboardActivity : AppCompatActivity() {
         }
     }
 
-    // =================== كارت النشطين ===================
     private fun addActiveUserCard(id: String, name: String, pfp: String, timeStr: String, deviceId: String) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
         
-        val avatarCard = CardView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 30, 0) }
-            radius = 60f
-            setCardBackgroundColor(Color.TRANSPARENT)
-            cardElevation = 0f
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
-        }
-        val ivAvatar = ImageView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-        }
+        // 🌟 دائرة خفيفة الوزن 🌟
+        val px = (60 * resources.displayMetrics.density).toInt()
+        val ivAvatar = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(px, px).apply { setMargins(0, 0, 30, 0) }; scaleType = ImageView.ScaleType.FIT_CENTER }
         val bitmap = getSafeBitmap(pfp) ?: AvatarGenerator.generateAvatar(name, id)
-        ivAvatar.setImageBitmap(bitmap)
-        avatarCard.addView(ivAvatar)
+        if (bitmap != null) {
+            val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
+            ivAvatar.setImageDrawable(circularDrawable)
+        }
         
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
         infoLayout.addView(TextView(this).apply { text = name; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
@@ -290,7 +274,7 @@ class AdminDashboardActivity : AppCompatActivity() {
         infoLayout.addView(devLayout)
 
         infoLayout.addView(TextView(this).apply { text = "مدة النشاط: $timeStr"; setTextColor(Color.parseColor("#4CAF50")); textSize = 12f; setPadding(0,10,0,0) })
-        card.addView(avatarCard); card.addView(infoLayout); activeUsersContainer.addView(card)
+        card.addView(ivAvatar); card.addView(infoLayout); activeUsersContainer.addView(card)
     }
 
     private fun setupStatsTab(container: ViewGroup) {
@@ -362,22 +346,18 @@ class AdminDashboardActivity : AppCompatActivity() {
         AlertDialog.Builder(this).setView(dialogView).setPositiveButton("رجوع", null).show()
     }
 
-    // =================== بطاقة المستخدم الشاملة VIP ===================
     private fun addUserCard(container: LinearLayout, id: String, name: String, pass: String, pfp: String, isBanned: Boolean, username: String, devicesArray: JSONArray?) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
+
         val topLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         
-        val avatarCard = CardView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(130, 130).apply { setMargins(0, 0, 30, 0) }
-            radius = 65f
-            setCardBackgroundColor(Color.TRANSPARENT)
-            cardElevation = 0f
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
-        }
-        val ivAvatar = ImageView(this).apply { layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT); scaleType = ImageView.ScaleType.CENTER_CROP }
+        val px = (65 * resources.displayMetrics.density).toInt()
+        val ivAvatar = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(px, px).apply { setMargins(0, 0, 30, 0) }; scaleType = ImageView.ScaleType.FIT_CENTER }
         val bitmap = getSafeBitmap(pfp) ?: AvatarGenerator.generateAvatar(name, id)
-        ivAvatar.setImageBitmap(bitmap)
-        avatarCard.addView(ivAvatar)
+        if (bitmap != null) {
+            val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
+            ivAvatar.setImageDrawable(circularDrawable)
+        }
         
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
         infoLayout.addView(TextView(this).apply { text = "الاسم: $name"; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
@@ -410,11 +390,11 @@ class AdminDashboardActivity : AppCompatActivity() {
         
         if (isBanned) { infoLayout.addView(TextView(this).apply { text = "🚫 محظور"; setTextColor(Color.RED); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD); setPadding(0,10,0,0) }) }
 
-        topLayout.addView(avatarCard); topLayout.addView(infoLayout); card.addView(topLayout)
+        topLayout.addView(ivAvatar); topLayout.addView(infoLayout); card.addView(topLayout)
 
         val btnLayout1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 20 } }
         val btnEdit = MaterialButton(this).apply { text = "تعديل"; setBackgroundColor(Color.parseColor("#2196F3")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, 10, 0) }; setOnClickListener { showEditDialog(id, name, pass, username) } }
-        val btnUnbind = MaterialButton(this).apply { text = "مسح الأجهزة"; setBackgroundColor(Color.parseColor("#9C27B0")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { unbindDevice(id) } }
+        val btnUnbind = MaterialButton(this).apply { text = "مسح جميع الأجهزة"; setBackgroundColor(Color.parseColor("#9C27B0")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { unbindDevice(id) } }
         btnLayout1.addView(btnEdit); btnLayout1.addView(btnUnbind)
 
         val btnLayout2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 10 } }
