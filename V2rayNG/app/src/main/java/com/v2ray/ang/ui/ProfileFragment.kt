@@ -23,7 +23,6 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -84,8 +83,8 @@ class ProfileFragment : Fragment() {
         return inflater.inflate(R.layout.fragment_profile, container, false)
     }
 
-    // 🌟 دالة الإشعار الحديثة مع دعم الأيقونات الحقيقية (Icons) 🌟
-    private fun showCustomSnackbar(message: String, colorHex: String, iconResId: Int? = null) {
+    // 🌟 دالة الإشعارات الحديثة ذات الطراز الخاص 🌟
+    private fun showCustomSnackbar(message: String, colorHex: String, type: String = "info") {
         view?.let { root ->
             val snackbar = Snackbar.make(root, "", Snackbar.LENGTH_SHORT)
             val snackbarLayout = snackbar.view as Snackbar.SnackbarLayout
@@ -98,22 +97,32 @@ class ProfileFragment : Fragment() {
                 setPadding(40, 30, 40, 30)
                 background = GradientDrawable().apply {
                     setColor(Color.parseColor(colorHex))
-                    cornerRadius = 50f // حواف دائرية حديثة
+                    cornerRadius = 60f // حواف دائرية قوية لمظهر فخم
                 }
                 layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(50, 0, 50, 50) // تطفو بشكل فخم
+                    setMargins(50, 0, 50, 50) 
                 }
             }
 
-            // إضافة الأيقونة إذا كانت موجودة
-            if (iconResId != null) {
-                val iconView = ImageView(requireContext()).apply {
-                    setImageResource(iconResId)
-                    setColorFilter(Color.WHITE) // تلوين الأيقونة بالأبيض
-                    layoutParams = LinearLayout.LayoutParams(60, 60).apply { setMargins(0, 0, 20, 0) } // حجم الايقونة والمسافة
+            // رسم أيقونة عصرية برمجياً (بدون صور خارجية)
+            val iconText = TextView(requireContext()).apply {
+                text = when (type) {
+                    "success" -> "✔"
+                    "error" -> "✖"
+                    "copy" -> "📄"
+                    else -> "ℹ"
                 }
-                customLayout.addView(iconView)
+                setTextColor(Color.parseColor(colorHex))
+                textSize = 12f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    setColor(Color.WHITE)
+                    shape = GradientDrawable.OVAL
+                }
+                layoutParams = LinearLayout.LayoutParams(50, 50).apply { setMargins(0, 0, 20, 0) }
             }
+            customLayout.addView(iconText)
 
             val textView = TextView(requireContext()).apply {
                 text = message
@@ -132,8 +141,7 @@ class ProfileFragment : Fragment() {
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText("Copied Data", text)
         clipboard.setPrimaryClip(clip)
-        // استخدام أيقونة النسخ الأساسية في الأندرويد
-        showCustomSnackbar("تم نسخ $label", "#FF9800", android.R.drawable.ic_menu_copy)
+        showCustomSnackbar("تم نسخ $label", "#FF9800", "copy") 
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -197,11 +205,11 @@ class ProfileFragment : Fragment() {
             val newPass = etPass.text.toString().trim()
             
             if (newName.isEmpty() || newPass.isEmpty()) {
-                showCustomSnackbar("يرجى ملء الاسم وكلمة المرور", "#F44336", android.R.drawable.ic_dialog_alert)
+                showCustomSnackbar("يرجى ملء الاسم وكلمة المرور", "#F44336", "error")
                 return@setOnClickListener
             }
             if (newUsername.isNotEmpty() && !newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
-                showCustomSnackbar("المعرف غير صالح! مسموح فقط بالحروف، الأرقام، ( _ )، و ( . )", "#F44336", android.R.drawable.ic_dialog_alert)
+                showCustomSnackbar("المعرف غير صالح! مسموح بالحروف والأرقام فقط", "#F44336", "error")
                 return@setOnClickListener
             }
             saveProfile(newName, newUsername, newPass, userRole)
@@ -251,17 +259,17 @@ class ProfileFragment : Fragment() {
                     if (obj.getBoolean("success")) {
                         AuthManager.saveUser(requireContext(), AuthManager.getId(requireContext()), name, pass, role, currentBase64Pfp)
                         withContext(Dispatchers.Main) {
-                            showCustomSnackbar("تم حفظ التعديلات السحابية بنجاح!", "#4CAF50", android.R.drawable.ic_dialog_info) // أيقونة النجاح
+                            showCustomSnackbar("تم حفظ التعديلات بنجاح السحابية!", "#4CAF50", "success") 
                             updateProfilePicture(currentBase64Pfp, name, AuthManager.getId(requireContext()))
                             btnSave.isEnabled = true
                             btnSave.text = "حفظ التعديلات السحابية"
                         }
                     } else {
-                        withContext(Dispatchers.Main) { showCustomSnackbar(obj.optString("message", "فشل الحفظ"), "#F44336", android.R.drawable.ic_dialog_alert); btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" }
+                        withContext(Dispatchers.Main) { showCustomSnackbar(obj.optString("message", "فشل الحفظ"), "#F44336", "error"); btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" }
                     }
                 }
             } catch (e: Exception) { 
-                withContext(Dispatchers.Main) { showCustomSnackbar("خطأ في الاتصال بالإنترنت", "#F44336", android.R.drawable.ic_dialog_alert); btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" } 
+                withContext(Dispatchers.Main) { showCustomSnackbar("خطأ في الاتصال بالإنترنت", "#F44336", "error"); btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" } 
             }
         }
     }
@@ -343,7 +351,7 @@ class ProfileFragment : Fragment() {
                                         val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
                                         if (obj.getBoolean("success")) {
                                             activeDevicesList = obj.getJSONArray("devices")
-                                            withContext(Dispatchers.Main) { renderDevices(); showCustomSnackbar("تم طرد الجهاز بنجاح!", "#4CAF50", android.R.drawable.ic_dialog_info) }
+                                            withContext(Dispatchers.Main) { renderDevices(); showCustomSnackbar("تم طرد الجهاز بنجاح!", "#4CAF50", "success") }
                                         }
                                     }
                                 } catch(e: Exception){} 
