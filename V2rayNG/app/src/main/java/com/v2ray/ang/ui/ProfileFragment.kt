@@ -8,6 +8,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.provider.Settings
@@ -25,6 +26,7 @@ import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.snackbar.Snackbar
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AuthManager
 import com.v2ray.ang.util.AvatarGenerator 
@@ -82,11 +84,40 @@ class ProfileFragment : Fragment() {
         return inflater.inflate(R.layout.fragment_profile, container, false)
     }
 
+    // 🌟 دالة الإشعار الحديث (Custom Snackbar) بدلاً من الـ Toast القديم 🌟
+    private fun showCustomSnackbar(message: String, colorHex: String) {
+        view?.let {
+            val snackbar = Snackbar.make(it, "", Snackbar.LENGTH_SHORT)
+            val snackbarLayout = snackbar.view as Snackbar.SnackbarLayout
+            snackbarLayout.setBackgroundColor(Color.TRANSPARENT)
+            snackbarLayout.setPadding(0, 0, 0, 0)
+
+            val customView = TextView(requireContext()).apply {
+                text = message
+                setTextColor(Color.WHITE)
+                textSize = 14f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                gravity = Gravity.CENTER
+                setPadding(30, 30, 30, 30)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Color.parseColor(colorHex))
+                    cornerRadius = 40f // حواف دائرية أنيقة
+                }
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(40, 0, 40, 40) // هوامش من الجوانب والأسفل
+                }
+            }
+
+            snackbarLayout.addView(customView, 0)
+            snackbar.show()
+        }
+    }
+
     private fun copyToClipboard(label: String, text: String) {
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText("Copied Data", text)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(requireContext(), "تم نسخ $label 📋", Toast.LENGTH_SHORT).show()
+        showCustomSnackbar("تم نسخ $label 📋", "#FF9800") // لون برتقالي للنسخ
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -94,7 +125,7 @@ class ProfileFragment : Fragment() {
 
         myDeviceId = Settings.Secure.getString(requireActivity().contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
 
-        // 🌟 ربط جميع العناصر المحدثة في الـ XML 🌟
+        // ربط جميع العناصر المحدثة في الـ XML
         ivAvatar = view.findViewById(R.id.iv_profile_pic)
         etId = view.findViewById(R.id.et_profile_id)
         etName = view.findViewById(R.id.et_profile_name)
@@ -104,7 +135,7 @@ class ProfileFragment : Fragment() {
         val etDevice = view.findViewById<EditText>(R.id.et_profile_device)
         btnSave = view.findViewById(R.id.btn_save_profile)
         
-        // 🌟 تفعيل أزرار الكاميرا والنسخ والإدارة 🌟
+        // تفعيل أزرار الكاميرا والنسخ والإدارة
         view.findViewById<ImageView>(R.id.btn_change_avatar).setOnClickListener {
             pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
         }
@@ -159,11 +190,11 @@ class ProfileFragment : Fragment() {
             val newPass = etPass.text.toString().trim()
             
             if (newName.isEmpty() || newPass.isEmpty()) {
-                Toast.makeText(requireContext(), "يرجى ملء الاسم وكلمة المرور", Toast.LENGTH_SHORT).show()
+                showCustomSnackbar("يرجى ملء الاسم وكلمة المرور", "#F44336") // لون أحمر للخطأ
                 return@setOnClickListener
             }
             if (newUsername.isNotEmpty() && !newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
-                Toast.makeText(requireContext(), "المعرف غير صالح! مسموح فقط بالحروف، الأرقام، ( _ )، و ( . )", Toast.LENGTH_LONG).show()
+                showCustomSnackbar("المعرف غير صالح! مسموح فقط بالحروف، الأرقام، ( _ )، و ( . )", "#F44336")
                 return@setOnClickListener
             }
             saveProfile(newName, newUsername, newPass, userRole)
@@ -213,17 +244,17 @@ class ProfileFragment : Fragment() {
                     if (obj.getBoolean("success")) {
                         AuthManager.saveUser(requireContext(), AuthManager.getId(requireContext()), name, pass, role, currentBase64Pfp)
                         withContext(Dispatchers.Main) {
-                            Toast.makeText(requireContext(), "تم الحفظ بنجاح!", Toast.LENGTH_SHORT).show()
+                            showCustomSnackbar("تم حفظ التعديلات بنجاح السحابية! ✅", "#4CAF50") // لون أخضر للنجاح
                             updateProfilePicture(currentBase64Pfp, name, AuthManager.getId(requireContext()))
                             btnSave.isEnabled = true
                             btnSave.text = "حفظ التعديلات السحابية"
                         }
                     } else {
-                        withContext(Dispatchers.Main) { Toast.makeText(requireContext(), obj.optString("message", "فشل الحفظ"), Toast.LENGTH_SHORT).show(); btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" }
+                        withContext(Dispatchers.Main) { showCustomSnackbar(obj.optString("message", "فشل الحفظ"), "#F44336"); btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" }
                     }
                 }
             } catch (e: Exception) { 
-                withContext(Dispatchers.Main) { btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" } 
+                withContext(Dispatchers.Main) { showCustomSnackbar("خطأ في الاتصال بالإنترنت", "#F44336"); btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" } 
             }
         }
     }
@@ -233,13 +264,13 @@ class ProfileFragment : Fragment() {
         if (username.isEmpty()) { tvUsernameStatus.visibility = View.GONE; return }
         if (username.length < 2) {
             tvUsernameStatus.visibility = View.VISIBLE
-            tvUsernameStatus.text = "❌ المعرف قصير جداً"
+            tvUsernameStatus.text = "❌ المعرف قصير جداً (حرفين فما فوق)"
             tvUsernameStatus.setTextColor(Color.RED)
             return
         }
 
         tvUsernameStatus.visibility = View.VISIBLE
-        tvUsernameStatus.text = "⏳ فحص المعرف..."
+        tvUsernameStatus.text = "⏳ جاري فحص توفر المعرف..."
         tvUsernameStatus.setTextColor(Color.parseColor("#FF9800"))
 
         checkUserJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -249,7 +280,7 @@ class ProfileFragment : Fragment() {
                 if (conn.responseCode == 200) {
                     val available = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText()).getBoolean("available")
                     withContext(Dispatchers.Main) {
-                        tvUsernameStatus.text = if (available) "✅ المعرف متاح" else "❌ المعرف محجوز"
+                        tvUsernameStatus.text = if (available) "✅ المعرف متاح للاستخدام من قبلك" else "❌ المعرف محجوز ومستخدم مسبقاً"
                         tvUsernameStatus.setTextColor(if (available) Color.GREEN else Color.RED)
                     }
                 }
@@ -272,7 +303,7 @@ class ProfileFragment : Fragment() {
             if (childCount > 1) layout.removeViews(1, childCount - 1)
 
             if (activeDevicesList.length() == 0) {
-                layout.addView(TextView(requireContext()).apply { text = "لا توجد أجهزة مسجلة"; setTextColor(Color.WHITE); gravity = Gravity.CENTER })
+                layout.addView(TextView(requireContext()).apply { text = "لا توجد أجهزة مسجلة حالياً"; setTextColor(Color.WHITE); gravity = Gravity.CENTER })
                 return
             }
 
@@ -304,7 +335,7 @@ class ProfileFragment : Fragment() {
                                         val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
                                         if (obj.getBoolean("success")) {
                                             activeDevicesList = obj.getJSONArray("devices")
-                                            withContext(Dispatchers.Main) { renderDevices(); Toast.makeText(requireContext(), "تم طرد الجهاز بنجاح! 🔒", Toast.LENGTH_SHORT).show() }
+                                            withContext(Dispatchers.Main) { renderDevices(); showCustomSnackbar("تم طرد الجهاز بنجاح! 🔒", "#4CAF50") }
                                         }
                                     }
                                 } catch(e: Exception){} 
