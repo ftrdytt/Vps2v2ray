@@ -1,16 +1,23 @@
 package com.v2ray.ang.ui
 
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.provider.Settings
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.EditText
-import android.widget.Toast
+import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.snackbar.Snackbar
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AuthManager
-import com.v2ray.ang.handler.UpdateManager // الاستدعاء السحري لحل المشكلة 🚀
+import com.v2ray.ang.handler.UpdateManager 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -22,14 +29,16 @@ import java.net.URL
 
 class LoginActivity : AppCompatActivity() {
 
-    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
     private val BASE_API_URL = "https://education.ashor.shop"
+    private var myDeviceId: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
 
-        // بدء فحص التحديثات التلقائي بالاعتماد على الملف المساعد (Clean Architecture)
+        // 🌟 استخراج آيدي الجهاز فوراً لإرساله للسيرفر 🌟
+        myDeviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+
         UpdateManager.startBackgroundUpdateCheck(this)
 
         val btnQuickLogin = findViewById<MaterialButton>(R.id.btn_quick_login)
@@ -38,7 +47,6 @@ class LoginActivity : AppCompatActivity() {
         val etPass = findViewById<EditText>(R.id.et_login_pass)
         val btnManualLogin = findViewById<MaterialButton>(R.id.btn_manual_login)
 
-        // فحص وجود حساب قديم مسجل خروج
         val savedId = AuthManager.getSavedId(this)
         val savedName = AuthManager.getSavedName(this)
         val savedPass = AuthManager.getSavedPass(this)
@@ -54,41 +62,47 @@ class LoginActivity : AppCompatActivity() {
         btnCreateRandom.setOnClickListener {
             btnCreateRandom.isEnabled = false
             btnCreateRandom.text = "جاري إنشاء الحساب..."
+            
             lifecycleScope.launch(Dispatchers.IO) {
+                var isSuccess = false
+                var message = "فشل الاتصال بالإنترنت"
                 try {
-                    // 🌟 استخدام الرابط الجديد 🌟
                     val url = URL("$BASE_API_URL/auth/init")
                     val conn = url.openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
-                    
-                    // 🌟 التعديل المهم جداً: إرسال كائن فارغ لكي لا يرفضه سيرفر Node.js 🌟
                     conn.setRequestProperty("Content-Type", "application/json")
                     conn.doOutput = true
-                    conn.outputStream.use { it.write("{}".toByteArray(Charsets.UTF_8)) }
+                    
+                    // 🌟 إرسال آيدي الجهاز ليتم تسجيله كجهاز مرتبط 🌟
+                    val payload = JSONObject().apply { put("deviceId", myDeviceId) }
+                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
                     if (conn.responseCode == 200) {
                         val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
                         val obj = JSONObject(resp)
                         if (obj.getBoolean("success")) {
                             AuthManager.saveUser(this@LoginActivity, obj.getString("id"), obj.getString("name"), obj.getString("password"), "user", "")
-                            withContext(Dispatchers.Main) {
-                                Toast.makeText(this@LoginActivity, "تم إنشاء الحساب بنجاح!", Toast.LENGTH_SHORT).show()
-                                startActivity(Intent(this@LoginActivity, MainActivity::class.java))
-                                finish()
-                            }
+                            isSuccess = true
+                            message = "تم إنشاء الحساب بنجاح! ✅"
+                        } else {
+                            message = "حدث خطأ أثناء الإنشاء ❌"
                         }
                     } else {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(this@LoginActivity, "خطأ في السيرفر: ${conn.responseCode}", Toast.LENGTH_SHORT).show()
+                        message = "خطأ في السيرفر: ${conn.responseCode} ❌"
+                    }
+                } catch (e: Exception) {
+                    message = "تأكد من اتصالك بالإنترنت 🌐"
+                } finally {
+                    withContext(Dispatchers.Main) {
+                        if (isSuccess) {
+                            showCustomSnackbar(message, "#4CAF50")
+                            startActivity(Intent(this@LoginActivity, MainActivity::class.java))
+                            finish()
+                        } else {
+                            showCustomSnackbar(message, "#F44336")
                             btnCreateRandom.isEnabled = true
                             btnCreateRandom.text = "إنشاء حساب عشوائي جديد بضغطة"
                         }
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@LoginActivity, "فشل الاتصال بالإنترنت", Toast.LENGTH_SHORT).show()
-                        btnCreateRandom.isEnabled = true
-                        btnCreateRandom.text = "إنشاء حساب عشوائي جديد بضغطة"
                     }
                 }
             }
@@ -98,7 +112,7 @@ class LoginActivity : AppCompatActivity() {
             val id = etId.text.toString().trim()
             val pass = etPass.text.toString().trim()
             if (id.isEmpty() || pass.isEmpty()) {
-                Toast.makeText(this, "يرجى إدخال الايدي والباسورد", Toast.LENGTH_SHORT).show()
+                showCustomSnackbar("يرجى إدخال الايدي والباسورد ⚠️", "#FF9800")
                 return@setOnClickListener
             }
             loginProcess(id, pass, btnManualLogin)
@@ -111,14 +125,22 @@ class LoginActivity : AppCompatActivity() {
         button.text = "جاري التحقق..."
 
         lifecycleScope.launch(Dispatchers.IO) {
+            var isSuccess = false
+            var message = "تأكد من اتصالك بالإنترنت 🌐"
+            
             try {
-                // 🌟 استخدام الرابط الجديد 🌟
                 val url = URL("$BASE_API_URL/auth/login")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
-                val payload = JSONObject().apply { put("id", id); put("password", pass) }
+                
+                // 🌟 إرسال آيدي الجهاز ليتم التحقق منه وتسجيله 🌟
+                val payload = JSONObject().apply { 
+                    put("id", id)
+                    put("password", pass)
+                    put("deviceId", myDeviceId) 
+                }
                 conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
                 if (conn.responseCode == 200) {
@@ -126,28 +148,56 @@ class LoginActivity : AppCompatActivity() {
                     val obj = JSONObject(resp)
                     if (obj.getBoolean("success")) {
                         AuthManager.saveUser(this@LoginActivity, id, obj.getString("name"), pass, obj.getString("role"), obj.optString("pfp", ""))
-                        withContext(Dispatchers.Main) {
-                            startActivity(Intent(this@LoginActivity, MainActivity::class.java))
-                            finish()
-                        }
+                        isSuccess = true
                     } else {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(this@LoginActivity, obj.optString("message", "خطأ في تسجيل الدخول"), Toast.LENGTH_SHORT).show()
-                            button.isEnabled = true; button.text = originalText
-                        }
+                        // 🌟 استقبال وتمرير رسالة الخطأ الدقيقة من السيرفر (مثل: الباسورد خطأ) 🌟
+                        message = obj.optString("message", "خطأ في تسجيل الدخول ❌")
                     }
                 } else {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@LoginActivity, "فشل الاتصال بالسيرفر", Toast.LENGTH_SHORT).show()
-                        button.isEnabled = true; button.text = originalText
-                    }
+                    message = "فشل الاتصال بالسيرفر ❌"
                 }
             } catch (e: Exception) {
+                 message = "تأكد من اتصالك بالإنترنت 🌐"
+            } finally {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@LoginActivity, "تأكد من اتصالك بالإنترنت", Toast.LENGTH_SHORT).show()
-                    button.isEnabled = true; button.text = originalText
+                    if (isSuccess) {
+                        startActivity(Intent(this@LoginActivity, MainActivity::class.java))
+                        finish()
+                    } else {
+                        showCustomSnackbar(message, "#F44336")
+                        button.isEnabled = true
+                        button.text = originalText
+                    }
                 }
             }
         }
+    }
+
+    // 🌟 دالة الإشعارات الأنيقة والحديثة (VIP Snackbar) 🌟
+    private fun showCustomSnackbar(message: String, colorHex: String) {
+        val rootView = findViewById<View>(android.R.id.content)
+        val snackbar = Snackbar.make(rootView, "", Snackbar.LENGTH_SHORT)
+        val snackbarLayout = snackbar.view as Snackbar.SnackbarLayout
+        snackbarLayout.setBackgroundColor(Color.TRANSPARENT)
+        snackbarLayout.setPadding(0, 0, 0, 0)
+
+        val customView = TextView(this).apply {
+            text = message
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(30, 30, 30, 30)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor(colorHex))
+                cornerRadius = 40f
+            }
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(40, 0, 40, 40)
+            }
+        }
+
+        snackbarLayout.addView(customView, 0)
+        snackbar.show()
     }
 }
