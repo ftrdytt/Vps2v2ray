@@ -26,6 +26,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
 import com.v2ray.ang.R
@@ -53,6 +54,8 @@ class ProfileFragment : Fragment() {
     private lateinit var tvUsernameStatus: TextView 
     private lateinit var etPass: EditText
     private lateinit var btnSave: Button
+    
+    private var swipeRefreshLayout: SwipeRefreshLayout? = null
     
     private var currentBase64Pfp: String = ""
     private var myDeviceId: String = ""
@@ -83,7 +86,6 @@ class ProfileFragment : Fragment() {
         return inflater.inflate(R.layout.fragment_profile, container, false)
     }
 
-    // 🌟 دالة الإشعارات الحديثة ذات الطراز الخاص 🌟
     private fun showCustomSnackbar(message: String, colorHex: String, type: String = "info") {
         view?.let { root ->
             val snackbar = Snackbar.make(root, "", Snackbar.LENGTH_SHORT)
@@ -97,14 +99,13 @@ class ProfileFragment : Fragment() {
                 setPadding(40, 30, 40, 30)
                 background = GradientDrawable().apply {
                     setColor(Color.parseColor(colorHex))
-                    cornerRadius = 60f // حواف دائرية قوية لمظهر فخم
+                    cornerRadius = 60f 
                 }
                 layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                     setMargins(50, 0, 50, 50) 
                 }
             }
 
-            // رسم أيقونة عصرية برمجياً (بدون صور خارجية)
             val iconText = TextView(requireContext()).apply {
                 text = when (type) {
                     "success" -> "✔"
@@ -148,6 +149,38 @@ class ProfileFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         myDeviceId = Settings.Secure.getString(requireActivity().contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+        val userId = AuthManager.getId(requireContext())
+        val userRole = AuthManager.getRole(requireContext())
+
+        // 🌟 إضافة ميزة السحب للتحديث (Pull-to-Refresh) 🌟
+        val rootLayout = view as? ViewGroup
+        var scrollView: ScrollView? = null
+        rootLayout?.let {
+            for (i in 0 until it.childCount) {
+                val child = it.getChildAt(i)
+                if (child is ScrollView) {
+                    scrollView = child
+                    break
+                }
+            }
+        }
+
+        scrollView?.let { sv ->
+            val parent = sv.parent as ViewGroup
+            val index = parent.indexOfChild(sv)
+            parent.removeView(sv)
+
+            swipeRefreshLayout = SwipeRefreshLayout(requireContext()).apply {
+                layoutParams = sv.layoutParams
+                setProgressBackgroundColorSchemeColor(Color.parseColor("#1A1A1D"))
+                setColorSchemeColors(Color.parseColor("#FF9800"), Color.parseColor("#4CAF50"), Color.parseColor("#2196F3"))
+                addView(sv)
+                setOnRefreshListener {
+                    fetchUserDataFromServer(userId, isSwipeRefresh = true)
+                }
+            }
+            parent.addView(swipeRefreshLayout, index)
+        }
 
         ivAvatar = view.findViewById(R.id.iv_profile_pic)
         etId = view.findViewById(R.id.et_profile_id)
@@ -174,9 +207,6 @@ class ProfileFragment : Fragment() {
             }
             override fun afterTextChanged(s: Editable?) {}
         })
-
-        val userId = AuthManager.getId(requireContext())
-        val userRole = AuthManager.getRole(requireContext())
         
         etId.setText(userId)
         etDevice.setText(myDeviceId)
@@ -227,11 +257,27 @@ class ProfileFragment : Fragment() {
                             conn.responseCode
                         } catch (e: Exception) {}
                     }
-                    AuthManager.logout(requireContext())
-                    val intent = Intent(requireActivity(), LoginActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK }
-                    startActivity(intent)
-                    requireActivity().finish()
+                    performLogout()
                 }.setNegativeButton("إلغاء", null).show()
+        }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        checkUserJob?.cancel()
+    }
+
+    private fun performLogout(kickedMessage: String? = null) {
+        lifecycleScope.launch(Dispatchers.Main) {
+            if (kickedMessage != null) {
+                Toast.makeText(requireContext(), kickedMessage, Toast.LENGTH_LONG).show()
+            }
+            AuthManager.logout(requireContext())
+            val intent = Intent(requireActivity(), LoginActivity::class.java).apply { 
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK 
+            }
+            startActivity(intent)
+            requireActivity().finish()
         }
     }
 
@@ -259,7 +305,7 @@ class ProfileFragment : Fragment() {
                     if (obj.getBoolean("success")) {
                         AuthManager.saveUser(requireContext(), AuthManager.getId(requireContext()), name, pass, role, currentBase64Pfp)
                         withContext(Dispatchers.Main) {
-                            showCustomSnackbar("تم حفظ التعديلات بنجاح السحابية!", "#4CAF50", "success") 
+                            showCustomSnackbar("تم حفظ التعديلات السحابية بنجاح!", "#4CAF50", "success") 
                             updateProfilePicture(currentBase64Pfp, name, AuthManager.getId(requireContext()))
                             btnSave.isEnabled = true
                             btnSave.text = "حفظ التعديلات السحابية"
@@ -379,24 +425,47 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    private fun fetchUserDataFromServer(userId: String) {
+    private fun fetchUserDataFromServer(userId: String, isSwipeRefresh: Boolean = false) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val conn = URL("$BASE_API_URL/auth/get_user?id=$userId").openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
                     val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
                     if (obj.getBoolean("success")) {
+                        val serverDevices = obj.optJSONArray("devices") ?: JSONArray()
+                        
+                        // 🌟 التحقق: هل جهازي انطرد؟ 🌟
+                        var isDeviceAuthorized = false
+                        for (i in 0 until serverDevices.length()) {
+                            if (serverDevices.getString(i) == myDeviceId) {
+                                isDeviceAuthorized = true
+                                break
+                            }
+                        }
+                        
+                        if (!isDeviceAuthorized) {
+                            performLogout("تم إنهاء جلستك من جهاز آخر أو من الإدارة! 🚫")
+                            return@launch
+                        }
+
                         withContext(Dispatchers.Main) {
                             etName.setText(obj.getString("name"))
                             etPass.setText(obj.getString("password"))
                             etUsername.setText(obj.optString("username", ""))
-                            activeDevicesList = obj.optJSONArray("devices") ?: JSONArray()
+                            activeDevicesList = serverDevices
                             currentBase64Pfp = obj.optString("pfp", currentBase64Pfp)
                             updateProfilePicture(currentBase64Pfp, obj.getString("name"), userId)
+                            if (isSwipeRefresh) showCustomSnackbar("تم تحديث البيانات بنجاح ✔", "#4CAF50", "success")
                         }
                     }
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                if (isSwipeRefresh) withContext(Dispatchers.Main) { showCustomSnackbar("فشل التحديث، تأكد من الإنترنت!", "#F44336", "error") }
+            } finally {
+                if (isSwipeRefresh) {
+                    withContext(Dispatchers.Main) { swipeRefreshLayout?.isRefreshing = false }
+                }
+            }
         }
     }
 }
