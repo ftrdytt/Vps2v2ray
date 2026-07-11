@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
@@ -18,9 +19,11 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.snackbar.Snackbar
 import com.v2ray.ang.R
 import com.v2ray.ang.util.AvatarGenerator
 import kotlinx.coroutines.Dispatchers
@@ -54,7 +57,6 @@ class AdminDashboardActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_admin_dashboard)
 
-        // 🌟 حماية تامة باستخدام ViewGroup 🌟
         listAllUsers = findViewById<ViewGroup>(R.id.list_all_users)
         tvTotalUsers = findViewById(R.id.tv_total_users)
 
@@ -101,7 +103,7 @@ class AdminDashboardActivity : AppCompatActivity() {
         layoutStatsContainer.removeAllViews()
         setupStatsTab(layoutStatsContainer)
 
-        val tabAllUsers = findViewById<TextView>(R.id.tab_all_users) // 🌟 استخدام TextView حماية من الكراش 🌟
+        val tabAllUsers = findViewById<TextView>(R.id.tab_all_users)
         val tabActive = findViewById<TextView>(R.id.tab_active_now)
         val tabStats = findViewById<TextView>(R.id.tab_stats)
         val layoutAll = findViewById<View>(R.id.layout_all_users_container)
@@ -136,6 +138,34 @@ class AdminDashboardActivity : AppCompatActivity() {
         fetchAllUsers()
     }
 
+    // 🌟 دالة الإشعار الحديث (Custom Snackbar) 🌟
+    private fun showCustomSnackbar(message: String, colorHex: String) {
+        val rootView = findViewById<View>(android.R.id.content)
+        val snackbar = Snackbar.make(rootView, "", Snackbar.LENGTH_SHORT)
+        val snackbarLayout = snackbar.view as Snackbar.SnackbarLayout
+        snackbarLayout.setBackgroundColor(Color.TRANSPARENT)
+        snackbarLayout.setPadding(0, 0, 0, 0)
+
+        val customView = TextView(this).apply {
+            text = message
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(30, 30, 30, 30)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor(colorHex))
+                cornerRadius = 40f
+            }
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(40, 0, 40, 40)
+            }
+        }
+
+        snackbarLayout.addView(customView, 0)
+        snackbar.show()
+    }
+
     private fun getSafeBitmap(base64Str: String?): Bitmap? {
         if (base64Str.isNullOrEmpty()) return null
         return try {
@@ -149,7 +179,7 @@ class AdminDashboardActivity : AppCompatActivity() {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText(label, text)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(this, "تم نسخ $label 📋", Toast.LENGTH_SHORT).show()
+        showCustomSnackbar("تم نسخ $label 📋", "#FF9800")
     }
 
     private fun fetchAllUsers() {
@@ -249,14 +279,20 @@ class AdminDashboardActivity : AppCompatActivity() {
     private fun addActiveUserCard(id: String, name: String, pfp: String, timeStr: String, deviceId: String) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
         
-        // 🌟 دائرة خفيفة الوزن 🌟
-        val px = (60 * resources.displayMetrics.density).toInt()
-        val ivAvatar = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(px, px).apply { setMargins(0, 0, 30, 0) }; scaleType = ImageView.ScaleType.FIT_CENTER }
-        val bitmap = getSafeBitmap(pfp) ?: AvatarGenerator.generateAvatar(name, id)
-        if (bitmap != null) {
-            val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
-            ivAvatar.setImageDrawable(circularDrawable)
+        val avatarCard = CardView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 30, 0) }
+            radius = 60f
+            setCardBackgroundColor(Color.TRANSPARENT)
+            cardElevation = 0f
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
         }
+        val ivAvatar = ImageView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
+        val bitmap = getSafeBitmap(pfp) ?: AvatarGenerator.generateAvatar(name, id)
+        ivAvatar.setImageBitmap(bitmap)
+        avatarCard.addView(ivAvatar)
         
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
         infoLayout.addView(TextView(this).apply { text = name; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
@@ -274,7 +310,7 @@ class AdminDashboardActivity : AppCompatActivity() {
         infoLayout.addView(devLayout)
 
         infoLayout.addView(TextView(this).apply { text = "مدة النشاط: $timeStr"; setTextColor(Color.parseColor("#4CAF50")); textSize = 12f; setPadding(0,10,0,0) })
-        card.addView(ivAvatar); card.addView(infoLayout); activeUsersContainer.addView(card)
+        card.addView(avatarCard); card.addView(infoLayout); activeUsersContainer.addView(card)
     }
 
     private fun setupStatsTab(container: ViewGroup) {
@@ -351,13 +387,17 @@ class AdminDashboardActivity : AppCompatActivity() {
 
         val topLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         
-        val px = (65 * resources.displayMetrics.density).toInt()
-        val ivAvatar = ImageView(this).apply { layoutParams = LinearLayout.LayoutParams(px, px).apply { setMargins(0, 0, 30, 0) }; scaleType = ImageView.ScaleType.FIT_CENTER }
-        val bitmap = getSafeBitmap(pfp) ?: AvatarGenerator.generateAvatar(name, id)
-        if (bitmap != null) {
-            val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
-            ivAvatar.setImageDrawable(circularDrawable)
+        val avatarCard = CardView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(130, 130).apply { setMargins(0, 0, 30, 0) }
+            radius = 65f
+            setCardBackgroundColor(Color.TRANSPARENT)
+            cardElevation = 0f
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
         }
+        val ivAvatar = ImageView(this).apply { layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT); scaleType = ImageView.ScaleType.CENTER_CROP }
+        val bitmap = getSafeBitmap(pfp) ?: AvatarGenerator.generateAvatar(name, id)
+        ivAvatar.setImageBitmap(bitmap)
+        avatarCard.addView(ivAvatar)
         
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
         infoLayout.addView(TextView(this).apply { text = "الاسم: $name"; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
@@ -390,11 +430,11 @@ class AdminDashboardActivity : AppCompatActivity() {
         
         if (isBanned) { infoLayout.addView(TextView(this).apply { text = "🚫 محظور"; setTextColor(Color.RED); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD); setPadding(0,10,0,0) }) }
 
-        topLayout.addView(ivAvatar); topLayout.addView(infoLayout); card.addView(topLayout)
+        topLayout.addView(avatarCard); topLayout.addView(infoLayout); card.addView(topLayout)
 
         val btnLayout1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 20 } }
         val btnEdit = MaterialButton(this).apply { text = "تعديل"; setBackgroundColor(Color.parseColor("#2196F3")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, 10, 0) }; setOnClickListener { showEditDialog(id, name, pass, username) } }
-        val btnUnbind = MaterialButton(this).apply { text = "مسح جميع الأجهزة"; setBackgroundColor(Color.parseColor("#9C27B0")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { unbindDevice(id) } }
+        val btnUnbind = MaterialButton(this).apply { text = "مسح الأجهزة"; setBackgroundColor(Color.parseColor("#9C27B0")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { unbindDevice(id) } }
         btnLayout1.addView(btnEdit); btnLayout1.addView(btnUnbind)
 
         val btnLayout2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 10 } }
@@ -417,7 +457,7 @@ class AdminDashboardActivity : AppCompatActivity() {
             .setPositiveButton("حفظ") { _, _ ->
                 val newUsername = etUsername.text.toString().trim().replace("@", "")
                 if (newUsername.isNotEmpty() && !newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
-                    Toast.makeText(this, "المعرف غير صالح!", Toast.LENGTH_LONG).show()
+                    showCustomSnackbar("المعرف غير صالح!", "#F44336")
                     return@setPositiveButton
                 }
                 lifecycleScope.launch(Dispatchers.IO) {
@@ -443,7 +483,7 @@ class AdminDashboardActivity : AppCompatActivity() {
                         conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
                         conn.outputStream.use { it.write(JSONObject().put("id", id).toString().toByteArray(Charsets.UTF_8)) }
                         if (conn.responseCode == 200) {
-                            withContext(Dispatchers.Main) { Toast.makeText(this@AdminDashboardActivity, "تم فك الجهاز بنجاح!", Toast.LENGTH_SHORT).show() }
+                            withContext(Dispatchers.Main) { showCustomSnackbar("تم مسح الأجهزة بنجاح! ✅", "#4CAF50") }
                             fetchAllUsers()
                         }
                     } catch (e: Exception) {}
@@ -458,7 +498,10 @@ class AdminDashboardActivity : AppCompatActivity() {
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
                 conn.outputStream.use { it.write(JSONObject().put("id", id).put("banned", banStatus).toString().toByteArray(Charsets.UTF_8)) }
-                if (conn.responseCode == 200) fetchAllUsers()
+                if (conn.responseCode == 200) {
+                    withContext(Dispatchers.Main) { showCustomSnackbar(if(banStatus) "تم الحظر 🚫" else "تم فك الحظر ✅", if(banStatus) "#F44336" else "#4CAF50") }
+                    fetchAllUsers()
+                }
             } catch (e: Exception) {}
         }
     }
@@ -474,10 +517,13 @@ class AdminDashboardActivity : AppCompatActivity() {
                             conn.requestMethod = "POST"
                             conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
                             conn.outputStream.use { it.write(JSONObject().put("id", id).toString().toByteArray(Charsets.UTF_8)) }
-                            if (conn.responseCode == 200) fetchAllUsers()
+                            if (conn.responseCode == 200) {
+                                withContext(Dispatchers.Main) { showCustomSnackbar("تم الحذف بنجاح 🗑️", "#4CAF50") }
+                                fetchAllUsers()
+                            }
                         } catch (e: Exception) {}
                     }
-                } else Toast.makeText(this, "رمز الأدمن خاطئ!", Toast.LENGTH_SHORT).show()
+                } else showCustomSnackbar("رمز الأدمن خاطئ! ❌", "#F44336")
             }.setNegativeButton("إلغاء", null).show()
     }
 }
