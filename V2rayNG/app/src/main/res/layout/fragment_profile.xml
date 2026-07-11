@@ -80,8 +80,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
                             android:scaleType="centerCrop"
-                            android:src="@drawable/ic_stat_name"
-                            app:tint="#80FFFFFF"/>
+                            android:src="@drawable/ic_stat_name" />
                     </androidx.cardview.widget.CardView>
 
                     <androidx.cardview.widget.CardView
@@ -110,27 +109,46 @@
                 android:textSize="12sp"
                 android:layout_marginBottom="32dp"/>
 
-            <com.google.android.material.textfield.TextInputLayout
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                app:boxBackgroundColor="#1A1A1D"
-                app:boxCornerRadiusTopStart="16dp"
-                app:boxCornerRadiusTopEnd="16dp"
-                app:boxCornerRadiusBottomStart="16dp"
-                app:boxCornerRadiusBottomEnd="16dp"
-                app:boxStrokeWidth="0dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
                 android:layout_marginBottom="16dp">
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/et_profile_id"
-                    android:layout_width="match_parent"
+                
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    app:boxBackgroundColor="#1A1A1D"
+                    app:boxCornerRadiusTopStart="16dp"
+                    app:boxCornerRadiusTopEnd="16dp"
+                    app:boxCornerRadiusBottomStart="16dp"
+                    app:boxCornerRadiusBottomEnd="16dp"
+                    app:boxStrokeWidth="0dp">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/et_profile_id"
+                        android:layout_width="match_parent"
+                        android:layout_height="65dp"
+                        android:hint="الايدي الخاص بك (ID)"
+                        android:textColorHint="#80FFFFFF"
+                        android:textColor="#FF9800"
+                        android:enabled="false"
+                        android:textStyle="bold"
+                        android:textSize="16sp"/>
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_copy_id"
+                    android:layout_width="wrap_content"
                     android:layout_height="65dp"
-                    android:hint="الايدي الخاص بك (ID)"
-                    android:textColorHint="#80FFFFFF"
-                    android:textColor="#FF9800"
-                    android:enabled="false"
-                    android:textStyle="bold"
-                    android:textSize="18sp"/>
-            </com.google.android.material.textfield.TextInputLayout>
+                    android:layout_marginStart="8dp"
+                    android:text="📋 نسخ"
+                    android:textSize="14sp"
+                    app:cornerRadius="16dp"
+                    app:backgroundTint="#252529"
+                    android:textColor="#FF9800"/>
+            </LinearLayout>
 
             <com.google.android.material.textfield.TextInputLayout
                 android:layout_width="match_parent"
@@ -161,10 +179,40 @@
                 app:boxCornerRadiusBottomStart="16dp"
                 app:boxCornerRadiusBottomEnd="16dp"
                 app:boxStrokeWidth="0dp"
+                android:layout_marginBottom="4dp">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_profile_username"
+                    android:layout_width="match_parent"
+                    android:layout_height="65dp"
+                    android:hint="المعرف (@) اختياري"
+                    android:textColorHint="#80FFFFFF"
+                    android:textColor="#2196F3"
+                    android:textSize="16sp"/>
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <TextView
+                android:id="@+id/tv_username_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:gravity="start"
+                android:paddingStart="12dp"
+                android:layout_marginBottom="16dp"
+                android:visibility="gone"/>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:boxBackgroundColor="#1A1A1D"
+                app:boxCornerRadiusTopStart="16dp"
+                app:boxCornerRadiusTopEnd="16dp"
+                app:boxCornerRadiusBottomStart="16dp"
+                app:boxCornerRadiusBottomEnd="16dp"
+                app:boxStrokeWidth="0dp"
                 app:passwordToggleEnabled="true"
                 app:passwordToggleTint="#80FFFFFF"
                 app:hintTextColor="#80FFFFFF"
-                android:layout_marginBottom="32dp">
+                android:layout_marginBottom="16dp">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/et_profile_pass"
                     android:layout_width="match_parent"
@@ -175,6 +223,57 @@
                     android:textColor="#FFFFFF"
                     android:textSize="16sp"/>
             </com.google.android.material.textfield.TextInputLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="24dp">
+                
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    app:boxBackgroundColor="#1A1A1D"
+                    app:boxCornerRadiusTopStart="16dp"
+                    app:boxCornerRadiusTopEnd="16dp"
+                    app:boxCornerRadiusBottomStart="16dp"
+                    app:boxCornerRadiusBottomEnd="16dp"
+                    app:boxStrokeWidth="0dp">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/et_profile_device"
+                        android:layout_width="match_parent"
+                        android:layout_height="65dp"
+                        android:hint="آيدي جهازك الحالي"
+                        android:textColorHint="#80FFFFFF"
+                        android:textColor="#4CAF50"
+                        android:enabled="false"
+                        android:textSize="14sp"/>
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_copy_device"
+                    android:layout_width="wrap_content"
+                    android:layout_height="65dp"
+                    android:layout_marginStart="8dp"
+                    android:text="📋 نسخ"
+                    android:textSize="14sp"
+                    app:cornerRadius="16dp"
+                    app:backgroundTint="#252529"
+                    android:textColor="#4CAF50"/>
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_manage_devices"
+                android:layout_width="match_parent"
+                android:layout_height="65dp"
+                android:text="📱 إدارة الأجهزة النشطة ومراقبة الجلسات"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                app:cornerRadius="16dp"
+                app:backgroundTint="#9C27B0"
+                android:layout_marginBottom="24dp"/>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_save_profile"
