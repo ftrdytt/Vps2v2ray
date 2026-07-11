@@ -52,6 +52,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -69,6 +70,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var pingJob: Job? = null
     private var activePingJob: Job? = null
     private var vpnStartTime: Long = 0L
+
+    // 🌟 وظيفة الفحص العالمي للطرد 🌟
+    private var accountWatchdogJob: Job? = null 
+
     companion object { var lastReportedState: Boolean? = null }
 
     private val BASE_API_URL = "https://education.ashor.shop"
@@ -94,8 +99,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkInitialAuth()
         ActiveStatsHelper.reportUpdateSuccess(this)
         
-        // 🌟 استدعاء مدير التحديثات بالاسم الصحيح عند فتح التطبيق 🌟
         UpdateManager.startBackgroundUpdateCheck(this) 
+
+        // 🌟 تفعيل الرادار الخفي لفحص الحساب 🌟
+        startAccountWatchdog()
 
         groupPagerAdapter = GroupPagerAdapter(this, emptyList())
         binding.viewPager.adapter = groupPagerAdapter
@@ -107,6 +114,90 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         setupViewModel()
         mainViewModel.reloadServerList()
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
+    }
+
+    // 🌟 رادار فحص الحساب والطرد الفوري (يعمل حتى بالخلفية) 🌟
+    private fun startAccountWatchdog() {
+        val userId = AuthManager.getId(this)
+        if (userId.isEmpty()) return
+        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+
+        accountWatchdogJob?.cancel()
+        accountWatchdogJob = lifecycleScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                try {
+                    val conn = URL("$BASE_API_URL/auth/get_user?id=$userId").openConnection() as HttpURLConnection
+                    conn.connectTimeout = 5000
+                    conn.readTimeout = 5000
+                    if (conn.responseCode == 200) {
+                        val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                        val obj = JSONObject(resp)
+                        if (obj.getBoolean("success")) {
+                            val serverDevices = obj.optJSONArray("devices") ?: JSONArray()
+                            var isDeviceAuthorized = false
+                            for (i in 0 until serverDevices.length()) {
+                                if (serverDevices.getString(i) == deviceId) {
+                                    isDeviceAuthorized = true
+                                    break
+                                }
+                            }
+                            // إذا الجهاز انطرد، نفذ الخروج الفوري ومسح البيانات
+                            if (!isDeviceAuthorized) {
+                                forceLogoutAndClean("تم إنهاء جلستك من جهاز آخر أو من الإدارة! 🚫")
+                                break
+                            }
+                        } else {
+                            // إذا الحساب انحذف بالكامل
+                            forceLogoutAndClean("تم حذف حسابك من قبل الإدارة! 🚫")
+                            break
+                        }
+                    }
+                } catch (e: Exception) {}
+                delay(15000) // يفحص كل 15 ثانية بالخلفية
+            }
+        }
+    }
+
+    // 🌟 دالة الخروج الإجباري والتنظيف (حتى تصير مجهول الهوية) 🌟
+    private fun forceLogoutAndClean(reason: String) {
+        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+        val guid = MmkvManager.getSelectServer().orEmpty()
+        val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            // 1. إيقاف الـ VPN إذا كان شغال حتى ينفصل اسمك عن الملف
+            if (mainViewModel.isRunning.value == true) {
+                try {
+                    val payload = JSONObject().put("guid", idToTrack).put("deviceId", deviceId).put("userId", "").put("disconnect", true)
+                    val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                    conn.responseCode
+                } catch (e: Exception) {}
+                withContext(Dispatchers.Main) { V2RayServiceManager.stopVService(this@MainActivity) }
+            }
+
+            // 2. إخبار السيرفر بإنهاء الجلسة
+            try {
+                val conn = URL("$BASE_API_URL/auth/terminate_device").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.outputStream.use { it.write(JSONObject().put("id", AuthManager.getId(this@MainActivity)).put("targetDeviceId", deviceId).toString().toByteArray(Charsets.UTF_8)) }
+                conn.responseCode
+            } catch (e: Exception) {}
+
+            // 3. مسح البيانات والتوجه لواجهة الدخول
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@MainActivity, reason, Toast.LENGTH_LONG).show()
+                AuthManager.logout(this@MainActivity)
+                val intent = Intent(this@MainActivity, LoginActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK }
+                startActivity(intent)
+                finish()
+            }
+        }
     }
 
     private fun checkInitialAuth() {
@@ -235,7 +326,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun handleFabAction() {
-        // 🌟 استدعاء مدير التحديثات بالاسم الصحيح 🌟
         if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) {
             if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this)
             UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!)
@@ -379,8 +469,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 delay(1000)
                 while (isActive) {
                     try {
-                        // 🌟 (تم حذف الإغلاق الإجباري القديم من هنا، صار كله بيد UpdateManager) 🌟
-                        
                         mainViewModel.testCurrentServerRealPing()
 
                         val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
@@ -491,9 +579,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
 
     private fun startV2RayCore() {
-        // 🌟 تشغيل رادار التحديثات الصامت (لسد ثغرة تشغيل التطبيق بالخلفية) 🌟
         UpdateManager.startSilentWatchdog(this)
-        
         if (SettingsManager.isVpnMode()) { 
             val intent = VpnService.prepare(this)
             if (intent == null) V2RayServiceManager.startVService(this) else requestVpnPermission.launch(intent) 
@@ -598,7 +684,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         super.onResume()
         if (mainViewModel.isRunning.value == true) TrafficMonitorHelper.startTrafficMonitor(this) else TrafficMonitorHelper.updateTrafficDisplay(this)
         VpnEngineHelper.startLiveUpdates(this, mainViewModel)
-        // 🌟 تحديث الاستدعاء إلى UpdateManager 🌟
         if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) 
         
         forceManualSync()
@@ -630,7 +715,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 } catch (e: Exception) {}
             }
         }
-        tabMediator?.detach(); VpnEngineHelper.cancelAllJobs(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs(); pingJob?.cancel(); activePingJob?.cancel(); super.onDestroy() 
+        tabMediator?.detach(); VpnEngineHelper.cancelAllJobs(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs(); pingJob?.cancel(); activePingJob?.cancel(); accountWatchdogJob?.cancel(); super.onDestroy() 
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean { menuInflater.inflate(R.menu.menu_main, menu); (menu.findItem(R.id.search_view)?.actionView as? SearchView)?.apply { setOnQueryTextListener(object : SearchView.OnQueryTextListener { override fun onQueryTextSubmit(q: String?) = false; override fun onQueryTextChange(t: String?) = false.also { mainViewModel.filterConfig(t.orEmpty()) } }) }; return super.onCreateOptionsMenu(menu) }
