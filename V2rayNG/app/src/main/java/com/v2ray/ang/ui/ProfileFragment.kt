@@ -8,7 +8,6 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.provider.Settings
@@ -22,7 +21,6 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.cardview.widget.CardView
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -45,6 +43,7 @@ class ProfileFragment : Fragment() {
 
     private val BASE_API_URL = "https://education.ashor.shop"
 
+    // تعريف العناصر المربوطة بملف الـ XML الجديد
     private lateinit var ivAvatar: ImageView
     private lateinit var etId: EditText
     private lateinit var etName: EditText
@@ -63,6 +62,7 @@ class ProfileFragment : Fragment() {
             val uri = result.data?.data ?: return@registerForActivityResult
             try {
                 val bitmap = MediaStore.Images.Media.getBitmap(requireActivity().contentResolver, uri)
+                // ضغط الصورة وتسريع الحفظ
                 val maxImageSize = 400f
                 val ratio = min(1f, min(maxImageSize / bitmap.width, maxImageSize / bitmap.height))
                 val width = (ratio * bitmap.width).roundToInt()
@@ -94,125 +94,43 @@ class ProfileFragment : Fragment() {
 
         myDeviceId = Settings.Secure.getString(requireActivity().contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
 
+        // 🌟 ربط جميع العناصر المحدثة في الـ XML 🌟
+        ivAvatar = view.findViewById(R.id.iv_profile_pic)
         etId = view.findViewById(R.id.et_profile_id)
         etName = view.findViewById(R.id.et_profile_name)
+        etUsername = view.findViewById(R.id.et_profile_username)
+        tvUsernameStatus = view.findViewById(R.id.tv_username_status)
         etPass = view.findViewById(R.id.et_profile_pass)
+        val etDevice = view.findViewById<EditText>(R.id.et_profile_device)
         btnSave = view.findViewById(R.id.btn_save_profile)
-        val btnLogout = view.findViewById<Button>(R.id.btn_logout)
-        ivAvatar = view.findViewById(R.id.iv_profile_pic)
-
-        // 🌟 إعادة بناء الواجهة بالكامل برمجياً لحمايتها من الـ Crash 🌟
-        val rootLayout = etId.parent as? ViewGroup ?: return
         
-        // 1. حاوية ذكية للصورة
-        val avatarIdx = rootLayout.indexOfChild(ivAvatar)
-        if (avatarIdx != -1) {
-            rootLayout.removeView(ivAvatar)
-            val centerWrapper = LinearLayout(requireContext()).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        // 🌟 تفعيل أزرار الكاميرا والنسخ والإدارة 🌟
+        view.findViewById<ImageView>(R.id.btn_change_avatar).setOnClickListener {
+            pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
+        }
+        view.findViewById<Button>(R.id.btn_copy_id).setOnClickListener { copyToClipboard("آيدي الحساب", etId.text.toString()) }
+        view.findViewById<Button>(R.id.btn_copy_device).setOnClickListener { copyToClipboard("آيدي الجهاز", myDeviceId) }
+        view.findViewById<Button>(R.id.btn_manage_devices).setOnClickListener { showDevicesDialog() }
+        
+        val btnLogout = view.findViewById<Button>(R.id.btn_logout)
+
+        // إعداد الفحص الفوري للمعرف
+        etUsername.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                checkUsernameLive(s.toString().trim().replace("@", ""))
             }
-            val card = CardView(requireContext()).apply {
-                layoutParams = LinearLayout.LayoutParams(250, 250).apply { setMargins(0, 30, 0, 30) }
-                radius = 125f
-                setCardBackgroundColor(Color.TRANSPARENT)
-                cardElevation = 0f
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
-                setOnClickListener { pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)) }
-            }
-            ivAvatar.layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            ivAvatar.scaleType = ImageView.ScaleType.FIT_XY
-            card.addView(ivAvatar)
-            centerWrapper.addView(card)
-            rootLayout.addView(centerWrapper, avatarIdx)
-        }
-
-        // 2. زر نسخ الايدي
-        val btnCopyId = MaterialButton(requireContext()).apply {
-            text = "نسخ آيدي الحساب 📋"
-            setBackgroundColor(Color.parseColor("#252529"))
-            setTextColor(Color.parseColor("#FF9800"))
-            textSize = 12f
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 5, 0, 30) }
-            setOnClickListener { copyToClipboard("آيدي الحساب", etId.text.toString()) }
-        }
-        rootLayout.addView(btnCopyId, rootLayout.indexOfChild(etId) + 1)
-
-        // 3. المعرف (Username)
-        val usernameWrapper = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 20, 0, 20) }
-        }
-        etUsername = EditText(requireContext()).apply {
-            hint = "المعرف (@) اختياري"
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.GRAY)
-            textSize = 16f
-            background = etName.background
-            setPadding(etName.paddingLeft, etName.paddingTop, etName.paddingRight, etName.paddingBottom)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    checkUsernameLive(s.toString().trim().replace("@", ""))
-                }
-                override fun afterTextChanged(s: Editable?) {}
-            })
-        }
-        tvUsernameStatus = TextView(requireContext()).apply {
-            textSize = 12f
-            setPadding(20, 10, 20, 0)
-            visibility = View.GONE
-        }
-        usernameWrapper.addView(etUsername)
-        usernameWrapper.addView(tvUsernameStatus)
-        rootLayout.addView(usernameWrapper, rootLayout.indexOfChild(etName) + 1)
-
-        // 4. آيدي الجهاز وزر النسخ
-        val deviceWrapper = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 30, 0, 30) }
-        }
-        val tvDeviceLabel = TextView(requireContext()).apply { text = "آيدي جهازك الحالي 📱:"; setTextColor(Color.GRAY); setPadding(10,10,10,5) }
-        val etDeviceDisplay = EditText(requireContext()).apply {
-            setText(myDeviceId)
-            isEnabled = false
-            setTextColor(Color.parseColor("#4CAF50"))
-            textSize = 14f
-            background = etId.background
-            setPadding(etId.paddingLeft, etId.paddingTop, etId.paddingRight, etId.paddingBottom)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-        val btnCopyDev = MaterialButton(requireContext()).apply {
-            text = "نسخ آيدي الجهاز 📋"
-            setBackgroundColor(Color.parseColor("#252529"))
-            setTextColor(Color.parseColor("#FF9800"))
-            textSize = 12f
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 5, 0, 0) }
-            setOnClickListener { copyToClipboard("آيدي الجهاز", myDeviceId) }
-        }
-        deviceWrapper.addView(tvDeviceLabel)
-        deviceWrapper.addView(etDeviceDisplay)
-        deviceWrapper.addView(btnCopyDev)
-        rootLayout.addView(deviceWrapper, rootLayout.indexOfChild(etPass) + 1)
-
-        // 5. زر إدارة الأجهزة النشطة
-        val btnManageDevices = MaterialButton(requireContext()).apply {
-            text = "📱 إدارة الأجهزة النشطة ومراقبة الجلسات"
-            setBackgroundColor(Color.parseColor("#9C27B0"))
-            setTextColor(Color.WHITE)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 30, 0, 30) }
-            setOnClickListener { showDevicesDialog() }
-        }
-        rootLayout.addView(btnManageDevices, rootLayout.indexOfChild(btnSave))
+            override fun afterTextChanged(s: Editable?) {}
+        })
 
         // ==========================================
-
+        // تهيئة البيانات والواجهة
+        // ==========================================
         val userId = AuthManager.getId(requireContext())
         val userRole = AuthManager.getRole(requireContext())
         
         etId.setText(userId)
+        etDevice.setText(myDeviceId)
         etName.setText(AuthManager.getName(requireContext()))
         etPass.setText(AuthManager.getPass(requireContext()))
         currentBase64Pfp = AuthManager.getPfp(requireContext())
@@ -220,11 +138,11 @@ class ProfileFragment : Fragment() {
         fetchUserDataFromServer(userId)
 
         if (userRole == "admin") {
-            view.findViewById<View>(R.id.btn_admin_dashboard)?.apply {
+            view.findViewById<ImageView>(R.id.btn_admin_dashboard).apply {
                 visibility = View.VISIBLE
                 setOnClickListener { startActivity(Intent(requireContext(), AdminDashboardActivity::class.java)) }
             }
-            view.findViewById<View>(R.id.btn_update_logs)?.apply {
+            view.findViewById<ImageView>(R.id.btn_update_logs).apply {
                 visibility = View.VISIBLE
                 setOnClickListener { startActivity(Intent(requireContext(), UpdateLogsActivity::class.java)) }
             }
@@ -232,6 +150,9 @@ class ProfileFragment : Fragment() {
 
         updateProfilePicture(currentBase64Pfp, AuthManager.getName(requireContext()), userId)
 
+        // ==========================================
+        // أزرار الحفظ والخروج
+        // ==========================================
         btnSave.setOnClickListener {
             val newName = etName.text.toString().trim()
             val newUsername = etUsername.text.toString().trim().replace("@", "")
@@ -309,7 +230,6 @@ class ProfileFragment : Fragment() {
 
     private fun checkUsernameLive(username: String) {
         checkUserJob?.cancel()
-        if (!::tvUsernameStatus.isInitialized) return
         if (username.isEmpty()) { tvUsernameStatus.visibility = View.GONE; return }
         if (username.length < 2) {
             tvUsernameStatus.visibility = View.VISIBLE
