@@ -2,8 +2,8 @@ package com.v2ray.ang.ui
 
 import android.content.Intent
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.util.Base64
 import android.view.Menu
 import android.view.MenuItem
@@ -58,6 +58,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import kotlin.math.max
 
 class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener, MainAdapterListener {
@@ -71,6 +72,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var activePingJob: Job? = null
     private var vpnStartTime: Long = 0L
 
+    // 🌟 وظيفة الفحص العالمي للطرد 🌟
     private var accountWatchdogJob: Job? = null 
 
     companion object { var lastReportedState: Boolean? = null }
@@ -86,6 +88,26 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun showLoadingDialog() { showLoading() }
     fun hideLoadingDialog() { hideLoading() }
 
+    // 🌟 دالة توليد Hardware ID ثابت كالصخر 🌟
+    private fun getUniqueHardwareId(): String {
+        try {
+            val devInfo = Build.BOARD + Build.BRAND + Build.DEVICE + Build.DISPLAY +
+                    Build.HARDWARE + Build.MANUFACTURER + Build.MODEL + Build.PRODUCT +
+                    Build.USER + Build.ID + Build.BOOTLOADER
+            val md = MessageDigest.getInstance("MD5")
+            val hash = md.digest(devInfo.toByteArray())
+            val hexString = StringBuilder()
+            for (byte in hash) {
+                val hex = Integer.toHexString(0xFF and byte.toInt())
+                if (hex.length == 1) hexString.append('0')
+                hexString.append(hex)
+            }
+            return hexString.toString().take(15).uppercase()
+        } catch (e: Exception) {
+            return "UNKNOWN_HW_ID"
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
@@ -97,13 +119,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         
         // 🌟 نظام الإنشاء الذكي والرادار المتسلسل (مقاوم لانقطاع النت) 🌟
         lifecycleScope.launch(Dispatchers.IO) {
-            // يبقى يحاول يسوي حساب كل 5 ثواني إذا ماكو نت
             while (!AuthManager.isLoggedIn(this@MainActivity)) {
                 val success = attemptInitialAuth()
                 if (success) break
-                delay(5000) // انتظر 5 ثواني وحاول مرة ثانية
+                delay(5000) 
             }
-            // من ينجح بإنشاء الحساب (أو إذا كان اكو حساب أصلاً)، يلا نشغل الرادار
             withContext(Dispatchers.Main) {
                 startAccountWatchdog()
             }
@@ -128,7 +148,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun startAccountWatchdog() {
         val userId = AuthManager.getId(this)
         if (userId.isEmpty()) return
-        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
 
         accountWatchdogJob?.cancel()
         accountWatchdogJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -159,14 +179,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         }
                     }
                 } catch (e: Exception) {}
-                delay(15000) // فحص كل 15 ثانية
+                delay(15000)
             }
         }
     }
 
     // 🌟 دالة الخروج الإجباري والتنظيف العميق 🌟
     private fun forceLogoutAndClean(reason: String) {
-        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
 
@@ -203,10 +223,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // 🌟 دالة إنشاء الحساب التلقائي (مقاومة لانقطاع الإنترنت) 🌟
+    // 🌟 دالة إنشاء الحساب التلقائي 🌟
     private suspend fun attemptInitialAuth(): Boolean {
         var isSuccess = false
-        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
         try {
             val conn = URL("$BASE_API_URL/auth/init").openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
@@ -215,7 +235,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             conn.readTimeout = 5000
             conn.doOutput = true
             
-            // إرسال آيدي الجهاز ليتم تسجيله فوراً
             val payload = JSONObject().apply { put("deviceId", deviceId) }
             conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
@@ -227,9 +246,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     isSuccess = true
                 }
             }
-        } catch (e: Exception) { 
-            // فشل بسبب عدم وجود إنترنت، سيرجع false ليحاول مرة أخرى بصمت
-        }
+        } catch (e: Exception) {}
         return isSuccess
     }
 
@@ -355,7 +372,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lifecycleScope.launch(Dispatchers.IO) {
                 val guid = MmkvManager.getSelectServer().orEmpty()
                 val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
-                val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+                val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
                 
                 if (idToTrack.isNotEmpty()) {
                     val userId = AuthManager.getId(this@MainActivity)
@@ -396,7 +413,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
-        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
         
         val isNowRunning = isRunning && !isLoading
 
@@ -547,7 +564,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val guid = MmkvManager.getSelectServer().orEmpty()
         if (guid.isNullOrEmpty()) { toast(R.string.title_file_chooser); return }
         
-        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
         
@@ -707,7 +724,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         if (lastReportedState == true && idToTrack.isNotEmpty()) {
             lastReportedState = false
-            val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+            val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
             @Suppress("OPT_IN_USAGE")
             GlobalScope.launch(Dispatchers.IO) {
                 try {
@@ -746,7 +763,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         if (mainViewModel.isRunning.value == true) {
             val idToTrack = V2rayCrypt.getLicenseId(this, oldGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: oldGuid
-            val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN_DEVICE"
+            val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
             
             toast("جاري التبديل للملف الجديد...")
             lifecycleScope.launch(Dispatchers.IO) {
