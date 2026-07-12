@@ -1,471 +1,816 @@
 package com.v2ray.ang.ui
 
-import android.app.Activity.RESULT_OK
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
+import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
-import android.provider.Settings
-import android.text.Editable
-import android.text.TextWatcher
 import android.util.Base64
-import android.view.Gravity
-import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.widget.*
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+import android.graphics.Color
+import android.content.res.ColorStateList
+import androidx.core.content.ContextCompat
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AlertDialog
-import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
-import androidx.fragment.app.Fragment
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.appcompat.widget.SearchView
+import androidx.cardview.widget.CardView
+import androidx.core.view.GravityCompat
+import androidx.core.view.isVisible
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.airbnb.lottie.LottieAnimationView
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.navigation.NavigationView
+import com.google.android.material.tabs.TabLayoutMediator
+import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
-import com.v2ray.ang.handler.AuthManager
-import com.v2ray.ang.util.AvatarGenerator 
-import kotlinx.coroutines.*
+import com.v2ray.ang.contracts.MainAdapterListener
+import com.v2ray.ang.databinding.ActivityMainBinding
+import com.v2ray.ang.dto.ProfileItem
+import com.v2ray.ang.enums.PermissionType
+import com.v2ray.ang.extension.toast
+import com.v2ray.ang.extension.toastSuccess
+import com.v2ray.ang.handler.*
+import com.v2ray.ang.util.Utils
+import com.v2ray.ang.viewmodel.MainViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
-import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlin.math.min
-import kotlin.math.roundToInt
+import java.security.MessageDigest
+import kotlin.math.max
 
-class ProfileFragment : Fragment() {
+class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelectedListener, MainAdapterListener {
+    private val binding by lazy { ActivityMainBinding.inflate(layoutInflater) }
+    val mainViewModel: MainViewModel by viewModels()
+    private lateinit var groupPagerAdapter: GroupPagerAdapter
+    private var tabMediator: TabLayoutMediator? = null 
+    private var screenWidth = 0
+    
+    private var pingJob: Job? = null
+    private var activePingJob: Job? = null
+    private var vpnStartTime: Long = 0L
+
+    // 🌟 وظيفة الفحص العالمي للطرد 🌟
+    private var accountWatchdogJob: Job? = null 
+
+    companion object { var lastReportedState: Boolean? = null }
 
     private val BASE_API_URL = "https://education.ashor.shop"
 
-    private lateinit var ivAvatar: ImageView
-    private lateinit var etId: EditText
-    private lateinit var etName: EditText
-    private lateinit var etUsername: EditText
-    private lateinit var tvUsernameStatus: TextView 
-    private lateinit var etPass: EditText
-    private lateinit var btnSave: Button
+    private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { if (it.resultCode == RESULT_OK) startV2RayCore() }
+    private val requestActivityLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { if (SettingsChangeManager.consumeRestartService() && mainViewModel.isRunning.value == true) restartV2Ray() }
     
-    private var swipeRefreshLayout: SwipeRefreshLayout? = null
-    
-    private var currentBase64Pfp: String = ""
-    private var myDeviceId: String = ""
-    private var activeDevicesList = JSONArray()
-    private var checkUserJob: Job? = null 
+    private val openEncryptedFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) ImportHelper.importEncryptedContentFromUri(this, mainViewModel, uri) }
+    private val openLocalFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) ImportHelper.readContentFromUri(this, mainViewModel, uri) }
 
-    private val pickImage = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK) {
-            val uri = result.data?.data ?: return@registerForActivityResult
-            try {
-                val bitmap = MediaStore.Images.Media.getBitmap(requireActivity().contentResolver, uri)
-                val maxImageSize = 400f
-                val ratio = min(1f, min(maxImageSize / bitmap.width, maxImageSize / bitmap.height))
-                val width = (ratio * bitmap.width).roundToInt()
-                val height = (ratio * bitmap.height).roundToInt()
-                
-                val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
-                val baos = ByteArrayOutputStream()
-                scaled.compress(Bitmap.CompressFormat.JPEG, 75, baos)
-                
-                currentBase64Pfp = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
-                updateProfilePicture(currentBase64Pfp, AuthManager.getName(requireContext()), AuthManager.getId(requireContext()))
-            } catch (e: Exception) {}
+    fun showLoadingDialog() { showLoading() }
+    fun hideLoadingDialog() { hideLoading() }
+
+    // 🌟 دالة توليد Hardware ID ثابت كالصخر 🌟
+    private fun getUniqueHardwareId(): String {
+        try {
+            val devInfo = Build.BOARD + Build.BRAND + Build.DEVICE + Build.DISPLAY +
+                    Build.HARDWARE + Build.MANUFACTURER + Build.MODEL + Build.PRODUCT +
+                    Build.USER + Build.ID + Build.BOOTLOADER
+            val md = MessageDigest.getInstance("MD5")
+            val hash = md.digest(devInfo.toByteArray())
+            val hexString = StringBuilder()
+            for (byte in hash) {
+                val hex = Integer.toHexString(0xFF and byte.toInt())
+                if (hex.length == 1) hexString.append('0')
+                hexString.append(hex)
+            }
+            return hexString.toString().take(15).uppercase()
+        } catch (e: Exception) {
+            return "UNKNOWN_HW_ID"
         }
     }
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        return inflater.inflate(R.layout.fragment_profile, container, false)
-    }
-
-    private fun showCustomSnackbar(message: String, colorHex: String, type: String = "info") {
-        view?.let { root ->
-            val snackbar = Snackbar.make(root, "", Snackbar.LENGTH_SHORT)
-            val snackbarLayout = snackbar.view as Snackbar.SnackbarLayout
-            snackbarLayout.setBackgroundColor(Color.TRANSPARENT)
-            snackbarLayout.setPadding(0, 0, 0, 0)
-
-            val customLayout = LinearLayout(requireContext()).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                setPadding(40, 30, 40, 30)
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor(colorHex))
-                    cornerRadius = 60f 
-                }
-                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(50, 0, 50, 50) 
-                }
-            }
-
-            val iconText = TextView(requireContext()).apply {
-                text = when (type) {
-                    "success" -> "✔"
-                    "error" -> "✖"
-                    "copy" -> "📄"
-                    else -> "ℹ"
-                }
-                setTextColor(Color.parseColor(colorHex))
-                textSize = 12f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    setColor(Color.WHITE)
-                    shape = GradientDrawable.OVAL
-                }
-                layoutParams = LinearLayout.LayoutParams(50, 50).apply { setMargins(0, 0, 20, 0) }
-            }
-            customLayout.addView(iconText)
-
-            val textView = TextView(requireContext()).apply {
-                text = message
-                setTextColor(Color.WHITE)
-                textSize = 14f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-            }
-            customLayout.addView(textView)
-
-            snackbarLayout.addView(customLayout, 0)
-            snackbar.show()
-        }
-    }
-
-    private fun copyToClipboard(label: String, text: String) {
-        val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("Copied Data", text)
-        clipboard.setPrimaryClip(clip)
-        showCustomSnackbar("تم نسخ $label", "#FF9800", "copy") 
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-
-        myDeviceId = Settings.Secure.getString(requireActivity().contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
-        val userId = AuthManager.getId(requireContext())
-        val userRole = AuthManager.getRole(requireContext())
-
-        // 🌟 إضافة ميزة السحب للتحديث (Pull-to-Refresh) 🌟
-        val rootLayout = view as? ViewGroup
-        var scrollView: ScrollView? = null
-        rootLayout?.let {
-            for (i in 0 until it.childCount) {
-                val child = it.getChildAt(i)
-                if (child is ScrollView) {
-                    scrollView = child
-                    break
-                }
-            }
-        }
-
-        scrollView?.let { sv ->
-            val parent = sv.parent as ViewGroup
-            val index = parent.indexOfChild(sv)
-            parent.removeView(sv)
-
-            swipeRefreshLayout = SwipeRefreshLayout(requireContext()).apply {
-                layoutParams = sv.layoutParams
-                setProgressBackgroundColorSchemeColor(Color.parseColor("#1A1A1D"))
-                setColorSchemeColors(Color.parseColor("#FF9800"), Color.parseColor("#4CAF50"), Color.parseColor("#2196F3"))
-                addView(sv)
-                setOnRefreshListener {
-                    fetchUserDataFromServer(userId, isSwipeRefresh = true)
-                }
-            }
-            parent.addView(swipeRefreshLayout, index)
-        }
-
-        ivAvatar = view.findViewById(R.id.iv_profile_pic)
-        etId = view.findViewById(R.id.et_profile_id)
-        etName = view.findViewById(R.id.et_profile_name)
-        etUsername = view.findViewById(R.id.et_profile_username)
-        tvUsernameStatus = view.findViewById(R.id.tv_username_status)
-        etPass = view.findViewById(R.id.et_profile_pass)
-        val etDevice = view.findViewById<EditText>(R.id.et_profile_device)
-        btnSave = view.findViewById(R.id.btn_save_profile)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+        super.onCreate(savedInstanceState)
         
-        view.findViewById<ImageView>(R.id.btn_change_avatar).setOnClickListener {
-            pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
-        }
-        view.findViewById<Button>(R.id.btn_copy_id).setOnClickListener { copyToClipboard("آيدي الحساب", etId.text.toString()) }
-        view.findViewById<Button>(R.id.btn_copy_device).setOnClickListener { copyToClipboard("آيدي الجهاز", myDeviceId) }
-        view.findViewById<Button>(R.id.btn_manage_devices).setOnClickListener { showDevicesDialog() }
+        if (AuthManager.hasLoggedOut(this)) { startActivity(Intent(this, LoginActivity::class.java)); finish(); return }
+
+        setContentView(binding.root)
+        lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
         
-        val btnLogout = view.findViewById<Button>(R.id.btn_logout)
-
-        etUsername.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                checkUsernameLive(s.toString().trim().replace("@", ""))
-            }
-            override fun afterTextChanged(s: Editable?) {}
-        })
-        
-        etId.setText(userId)
-        etDevice.setText(myDeviceId)
-        etName.setText(AuthManager.getName(requireContext()))
-        etPass.setText(AuthManager.getPass(requireContext()))
-        currentBase64Pfp = AuthManager.getPfp(requireContext())
-        
-        fetchUserDataFromServer(userId)
-
-        if (userRole == "admin") {
-            view.findViewById<ImageView>(R.id.btn_admin_dashboard).apply {
-                visibility = View.VISIBLE
-                setOnClickListener { startActivity(Intent(requireContext(), AdminDashboardActivity::class.java)) }
-            }
-            view.findViewById<ImageView>(R.id.btn_update_logs).apply {
-                visibility = View.VISIBLE
-                setOnClickListener { startActivity(Intent(requireContext(), UpdateLogsActivity::class.java)) }
-            }
-        }
-
-        updateProfilePicture(currentBase64Pfp, AuthManager.getName(requireContext()), userId)
-
-        btnSave.setOnClickListener {
-            val newName = etName.text.toString().trim()
-            val newUsername = etUsername.text.toString().trim().replace("@", "")
-            val newPass = etPass.text.toString().trim()
-            
-            if (newName.isEmpty() || newPass.isEmpty()) {
-                showCustomSnackbar("يرجى ملء الاسم وكلمة المرور", "#F44336", "error")
-                return@setOnClickListener
-            }
-            if (newUsername.isNotEmpty() && !newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
-                showCustomSnackbar("المعرف غير صالح! مسموح بالحروف والأرقام فقط", "#F44336", "error")
-                return@setOnClickListener
-            }
-            saveProfile(newName, newUsername, newPass, userRole)
-        }
-
-        btnLogout.setOnClickListener {
-            AlertDialog.Builder(requireContext()).setTitle("تسجيل خروج").setMessage("هل أنت متأكد من الخروج التام؟")
-                .setPositiveButton("نعم") { _, _ ->
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        try {
-                            val conn = URL("$BASE_API_URL/auth/terminate_device").openConnection() as HttpURLConnection
-                            conn.requestMethod = "POST"
-                            conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                            conn.outputStream.use { it.write(JSONObject().put("id", userId).put("targetDeviceId", myDeviceId).toString().toByteArray(Charsets.UTF_8)) }
-                            conn.responseCode
-                        } catch (e: Exception) {}
-                    }
-                    performLogout()
-                }.setNegativeButton("إلغاء", null).show()
-        }
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        checkUserJob?.cancel()
-    }
-
-    private fun performLogout(kickedMessage: String? = null) {
-        lifecycleScope.launch(Dispatchers.Main) {
-            if (kickedMessage != null) {
-                Toast.makeText(requireContext(), kickedMessage, Toast.LENGTH_LONG).show()
-            }
-            AuthManager.logout(requireContext())
-            val intent = Intent(requireActivity(), LoginActivity::class.java).apply { 
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK 
-            }
-            startActivity(intent)
-            requireActivity().finish()
-        }
-    }
-
-    private fun saveProfile(name: String, username: String, pass: String, role: String) {
-        btnSave.isEnabled = false
-        btnSave.text = "جاري الحفظ..."
+        // 🌟 نظام الإنشاء الذكي والرادار المتسلسل (مقاوم لانقطاع النت) 🌟
         lifecycleScope.launch(Dispatchers.IO) {
+            while (!AuthManager.isLoggedIn(this@MainActivity)) {
+                val success = attemptInitialAuth()
+                if (success) break
+                delay(5000) 
+            }
+            withContext(Dispatchers.Main) {
+                startAccountWatchdog()
+            }
+        }
+
+        ActiveStatsHelper.reportUpdateSuccess(this)
+        UpdateManager.startBackgroundUpdateCheck(this) 
+
+        groupPagerAdapter = GroupPagerAdapter(this, emptyList())
+        binding.viewPager.adapter = groupPagerAdapter
+        binding.viewPager.isUserInputEnabled = true
+
+        setupScreenLayoutsSafe()
+        setupUIInteractionsSafe()
+        setupGroupTab()
+        setupViewModel()
+        mainViewModel.reloadServerList()
+        checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
+    }
+
+    // 🌟 رادار فحص الحساب والطرد الفوري 🌟
+    private fun startAccountWatchdog() {
+        val userId = AuthManager.getId(this)
+        if (userId.isEmpty()) return
+        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+
+        accountWatchdogJob?.cancel()
+        accountWatchdogJob = lifecycleScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                try {
+                    val conn = URL("$BASE_API_URL/auth/get_user?id=$userId").openConnection() as HttpURLConnection
+                    conn.connectTimeout = 5000
+                    conn.readTimeout = 5000
+                    if (conn.responseCode == 200) {
+                        val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                        val obj = JSONObject(resp)
+                        if (obj.getBoolean("success")) {
+                            val serverDevices = obj.optJSONArray("devices") ?: JSONArray()
+                            var isDeviceAuthorized = false
+                            for (i in 0 until serverDevices.length()) {
+                                if (serverDevices.getString(i) == deviceId) {
+                                    isDeviceAuthorized = true
+                                    break
+                                }
+                            }
+                            if (!isDeviceAuthorized) {
+                                forceLogoutAndClean("تم إنهاء جلستك من جهاز آخر أو من الإدارة! 🚫")
+                                break
+                            }
+                        } else {
+                            forceLogoutAndClean("تم حذف حسابك من قبل الإدارة! 🚫")
+                            break
+                        }
+                    }
+                } catch (e: Exception) {}
+                delay(15000)
+            }
+        }
+    }
+
+    // 🌟 دالة الخروج الإجباري والتنظيف العميق 🌟
+    private fun forceLogoutAndClean(reason: String) {
+        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+        val guid = MmkvManager.getSelectServer().orEmpty()
+        val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (mainViewModel.isRunning.value == true) {
+                try {
+                    val payload = JSONObject().put("guid", idToTrack).put("deviceId", deviceId).put("userId", "").put("disconnect", true)
+                    val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                    conn.responseCode
+                } catch (e: Exception) {}
+                withContext(Dispatchers.Main) { V2RayServiceManager.stopVService(this@MainActivity) }
+            }
+
             try {
-                val conn = URL("$BASE_API_URL/auth/update").openConnection() as HttpURLConnection
+                val conn = URL("$BASE_API_URL/auth/terminate_device").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
-                val payload = JSONObject().apply {
-                    put("id", AuthManager.getId(requireContext()))
-                    put("currentPassword", AuthManager.getPass(requireContext()))
-                    put("newName", name)
-                    put("password", pass)
-                    put("newPfp", currentBase64Pfp)
-                    put("username", username)
-                }
-                conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-                
-                if (conn.responseCode == 200) {
-                    val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                    if (obj.getBoolean("success")) {
-                        AuthManager.saveUser(requireContext(), AuthManager.getId(requireContext()), name, pass, role, currentBase64Pfp)
-                        withContext(Dispatchers.Main) {
-                            showCustomSnackbar("تم حفظ التعديلات السحابية بنجاح!", "#4CAF50", "success") 
-                            updateProfilePicture(currentBase64Pfp, name, AuthManager.getId(requireContext()))
-                            btnSave.isEnabled = true
-                            btnSave.text = "حفظ التعديلات السحابية"
-                        }
-                    } else {
-                        withContext(Dispatchers.Main) { showCustomSnackbar(obj.optString("message", "فشل الحفظ"), "#F44336", "error"); btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" }
-                    }
-                }
-            } catch (e: Exception) { 
-                withContext(Dispatchers.Main) { showCustomSnackbar("خطأ في الاتصال بالإنترنت", "#F44336", "error"); btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" } 
+                conn.outputStream.use { it.write(JSONObject().put("id", AuthManager.getId(this@MainActivity)).put("targetDeviceId", deviceId).toString().toByteArray(Charsets.UTF_8)) }
+                conn.responseCode
+            } catch (e: Exception) {}
+
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@MainActivity, reason, Toast.LENGTH_LONG).show()
+                AuthManager.logout(this@MainActivity)
+                val intent = Intent(this@MainActivity, LoginActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK }
+                startActivity(intent)
+                finish()
             }
         }
     }
 
-    private fun checkUsernameLive(username: String) {
-        checkUserJob?.cancel()
-        if (!::tvUsernameStatus.isInitialized) return
-        if (username.isEmpty()) { tvUsernameStatus.visibility = View.GONE; return }
-        if (username.length < 2) {
-            tvUsernameStatus.visibility = View.VISIBLE
-            tvUsernameStatus.text = "❌ المعرف قصير جداً"
-            tvUsernameStatus.setTextColor(Color.RED)
+    // 🌟 دالة إنشاء الحساب التلقائي 🌟
+    private suspend fun attemptInitialAuth(): Boolean {
+        var isSuccess = false
+        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+        try {
+            val conn = URL("$BASE_API_URL/auth/init").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            conn.doOutput = true
+            
+            val payload = JSONObject().apply { put("deviceId", deviceId) }
+            conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+
+            if (conn.responseCode == 200) {
+                val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
+                if (obj.getBoolean("success")) {
+                    AuthManager.saveUser(this@MainActivity, obj.getString("id"), obj.getString("name"), obj.getString("password"), "user", "")
+                    withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "تم إنشاء الحساب التلقائي بنجاح!", Toast.LENGTH_SHORT).show() }
+                    isSuccess = true
+                }
+            }
+        } catch (e: Exception) {}
+        return isSuccess
+    }
+
+    private fun setupScreenLayoutsSafe() {
+        try {
+            screenWidth = resources.displayMetrics.widthPixels
+            val settingsWrapper = binding.root.findViewById<View>(R.id.settings_wrapper)
+            settingsWrapper?.layoutParams?.width = screenWidth
+            
+            val updatesWrapper = FrameLayout(this).apply { 
+                id = View.generateViewId()
+                layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) 
+            }
+            
+            val profileWrapper = FrameLayout(this).apply { 
+                id = View.generateViewId()
+                layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) 
+            }
+            
+            val scrollContainer = settingsWrapper?.parent as? LinearLayout
+            if (scrollContainer != null) {
+                scrollContainer.orientation = LinearLayout.HORIZONTAL
+                scrollContainer.addView(updatesWrapper, 1)
+                scrollContainer.addView(profileWrapper, 2)
+                
+                supportFragmentManager.beginTransaction()
+                    .replace(R.id.settings_fragment_container, SettingsActivity.SettingsFragment())
+                    .replace(updatesWrapper.id, UpdatesFragment())
+                    .replace(profileWrapper.id, ProfileFragment())
+                    .commitAllowingStateLoss()
+            }
+            
+            binding.homeContentContainer.layoutParams.width = screenWidth
+            
+            val greenScreen = binding.root.findViewById<View>(R.id.green_screen_container)
+            greenScreen?.layoutParams?.width = screenWidth
+            
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
+    private fun setupUIInteractionsSafe() {
+        try {
+            binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)?.setOnClickListener { handleFabAction() }
+            binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)?.let { it.setOnClickListener { SpeedTestHelper.runSpeedTest(this, mainViewModel.isRunning.value == true) } }
+            binding.root.findViewById<CardView>(R.id.card_traffic_meter)?.setOnClickListener { TrafficMonitorHelper.showTrafficDetailsDialog(this, mainViewModel.isRunning.value == true) }
+            
+            val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
+            binding.mainScrollView.setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_UP) {
+                    val scrollX = binding.mainScrollView.scrollX
+                    val page = if (screenWidth > 0) ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 4) else 0
+                    binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(page * screenWidth, 0) }
+                    when (page) { 
+                        0 -> bottomNav?.selectedItemId = R.id.nav_settings
+                        1 -> bottomNav?.selectedItemId = R.id.nav_updates
+                        2 -> bottomNav?.selectedItemId = R.id.nav_profile
+                        3 -> bottomNav?.selectedItemId = R.id.nav_servers
+                        4 -> bottomNav?.selectedItemId = R.id.nav_home 
+                    }
+                    return@setOnTouchListener true
+                }
+                false
+            }
+
+            bottomNav?.setOnItemSelectedListener { item -> 
+                when (item.itemId) { 
+                    R.id.nav_settings -> binding.mainScrollView.smoothScrollTo(0, 0)
+                    R.id.nav_updates -> binding.mainScrollView.smoothScrollTo(screenWidth, 0)
+                    R.id.nav_profile -> binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
+                    R.id.nav_servers -> binding.mainScrollView.smoothScrollTo(screenWidth * 3, 0)
+                    R.id.nav_home -> binding.mainScrollView.smoothScrollTo(screenWidth * 4, 0) 
+                }
+                true 
+            }
+            
+            binding.mainScrollView.post { binding.mainScrollView.scrollTo(screenWidth * 4, 0) }
+            setupToolbar(binding.toolbar, false, "اشور لود")
+            
+            val toggle = ActionBarDrawerToggle(this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
+            
+            toggle.isDrawerIndicatorEnabled = false 
+            binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED) 
+            
+            binding.drawerLayout.addDrawerListener(toggle)
+            toggle.syncState()
+            binding.navView.setNavigationItemSelectedListener(this)
+            
+            binding.layoutTest.setOnClickListener { 
+                if (mainViewModel.isRunning.value == true) { 
+                    setTestState(getString(R.string.connection_test_testing))
+                    mainViewModel.testCurrentServerRealPing() 
+                } else { toast(R.string.connection_not_connected) }
+            }
+            
+            onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (binding.drawerLayout.isDrawerOpen(GravityCompat.START)) binding.drawerLayout.closeDrawer(GravityCompat.START)
+                    else {
+                        if (binding.mainScrollView.scrollX != screenWidth * 4) { binding.mainScrollView.smoothScrollTo(screenWidth * 4, 0); bottomNav?.selectedItemId = R.id.nav_home } 
+                        else { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
+                    }
+                }
+            })
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
+    private fun handleFabAction() {
+        if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) {
+            if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this)
+            UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!)
+            return
+        }
+        
+        if (mainViewModel.isRunning.value == true) {
+            val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
+            val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
+            
+            binding.fab.setImageResource(R.drawable.ic_fab_check)
+            btnGreenConnect?.text = "جاري قطع الاتصال..."
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
+            lottieEngine?.playAnimation()
+
+            lifecycleScope.launch(Dispatchers.IO) {
+                val guid = MmkvManager.getSelectServer().orEmpty()
+                val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
+                val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+                
+                if (idToTrack.isNotEmpty()) {
+                    val userId = AuthManager.getId(this@MainActivity)
+                    val payload = JSONObject()
+                        .put("guid", idToTrack)
+                        .put("deviceId", deviceId)
+                        .put("userId", userId)
+                        .put("disconnect", true)
+                    
+                    try {
+                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.responseCode
+                    } catch (e: Exception) {}
+
+                    lastReportedState = false
+                    val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
+                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
+                }
+                
+                delay(1200) 
+                
+                withContext(Dispatchers.Main) {
+                    mainViewModel.reloadServerList()
+                    V2RayServiceManager.stopVService(this@MainActivity) 
+                }
+            }
+        } else {
+            startV2Ray()
+        }
+    }
+
+    private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
+        val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
+        val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
+        val guid = MmkvManager.getSelectServer().orEmpty()
+        val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
+        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+        
+        val isNowRunning = isRunning && !isLoading
+
+        if (lastReportedState != isNowRunning && guid.isNotEmpty()) {
+            if (isNowRunning && !isLoading) {
+                lastReportedState = true
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val userId = AuthManager.getId(this@MainActivity)
+                        val payload = JSONObject()
+                            .put("guid", idToTrack)
+                            .put("deviceId", deviceId)
+                            .put("userId", userId)
+                            .put("name", if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول")
+                            .put("pfp", if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else "")
+                        
+                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.responseCode
+                    } catch (e: Exception) {}
+
+                    delay(1000) 
+                    val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
+                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, updatedData.third)
+                    withContext(Dispatchers.Main) { mainViewModel.reloadServerList() }
+                }
+            }
+        }
+
+        if (isLoading) {
+            binding.fab.setImageResource(R.drawable.ic_fab_check)
+            btnGreenConnect?.text = "جاري تشغيل المحرك..."
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
+            binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f)
+            binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f)
+            lottieEngine?.playAnimation()
             return
         }
 
-        tvUsernameStatus.visibility = View.VISIBLE
-        tvUsernameStatus.text = "⏳ فحص المعرف..."
-        tvUsernameStatus.setTextColor(Color.parseColor("#FF9800"))
+        if (isRunning) {
+            if (vpnStartTime == 0L) vpnStartTime = System.currentTimeMillis()
+            binding.fab.setImageResource(R.drawable.ic_stop_24dp)
+            binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
+            binding.fab.contentDescription = getString(R.string.action_stop_service)
+            setTestState(getString(R.string.connection_connected))
+            binding.layoutTest.isFocusable = true
+            btnGreenConnect?.text = "إيقاف المحرك"
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#D32F2F"))
+            lottieEngine?.playAnimation()
+            TrafficMonitorHelper.startTrafficMonitor(this)
 
-        checkUserJob = lifecycleScope.launch(Dispatchers.IO) {
-            delay(500)
-            try {
-                val conn = URL("$BASE_API_URL/auth/check_username?username=$username&id=${AuthManager.getId(requireContext())}").openConnection() as HttpURLConnection
-                if (conn.responseCode == 200) {
-                    val available = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText()).getBoolean("available")
-                    withContext(Dispatchers.Main) {
-                        tvUsernameStatus.text = if (available) "✅ المعرف متاح" else "❌ المعرف محجوز"
-                        tvUsernameStatus.setTextColor(if (available) Color.GREEN else Color.RED)
-                    }
+            activePingJob?.cancel()
+            activePingJob = lifecycleScope.launch(Dispatchers.IO) {
+                while (isActive) {
+                    try {
+                        val userId = AuthManager.getId(this@MainActivity)
+                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        val payload = JSONObject()
+                            .put("guid", idToTrack)
+                            .put("deviceId", deviceId)
+                            .put("userId", userId)
+                            .put("name", if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول الهوية")
+                            .put("pfp", if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else "")
+                            .put("disconnect", false)
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.responseCode
+                    } catch (e: Exception) {}
+                    
+                    delay(30000L) 
                 }
-            } catch (e: Exception) {}
-        }
-    }
-
-    private fun showDevicesDialog() {
-        val scroll = ScrollView(requireContext())
-        val layout = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL; setPadding(40,40,40,40); setBackgroundColor(Color.parseColor("#141417")) }
-        scroll.addView(layout)
-
-        val tvTitle = TextView(requireContext()).apply { text = "📱 الأجهزة النشطة لحسابك"; setTextColor(Color.parseColor("#9C27B0")); textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER; setPadding(0,0,0,30) }
-        layout.addView(tvTitle)
-
-        val dialog = AlertDialog.Builder(requireContext()).setView(scroll).setPositiveButton("إغلاق", null).show()
-
-        fun renderDevices() {
-            val childCount = layout.childCount
-            if (childCount > 1) layout.removeViews(1, childCount - 1)
-
-            if (activeDevicesList.length() == 0) {
-                layout.addView(TextView(requireContext()).apply { text = "لا توجد أجهزة مسجلة"; setTextColor(Color.WHITE); gravity = Gravity.CENTER })
-                return
             }
 
-            for (i in 0 until activeDevicesList.length()) {
-                val devId = activeDevicesList.getString(i)
-                val isCurrent = (devId == myDeviceId)
+            pingJob?.cancel()
+            pingJob = lifecycleScope.launch {
+                delay(1000)
+                while (isActive) {
+                    try {
+                        mainViewModel.testCurrentServerRealPing()
 
-                val row = LinearLayout(requireContext()).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,0,15) } }
-                val info = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
-                
-                info.addView(TextView(requireContext()).apply { text = if (isCurrent) "💻 جهازك الحالي" else "📱 جهاز مرتبط"; setTextColor(if(isCurrent) Color.parseColor("#4CAF50") else Color.WHITE); setTypeface(null, android.graphics.Typeface.BOLD) })
-                info.addView(TextView(requireContext()).apply { text = "ID: $devId"; setTextColor(Color.GRAY); textSize = 12f })
-                row.addView(info)
-
-                if (!isCurrent) {
-                    val btnTerminate = MaterialButton(requireContext()).apply {
-                        text = "طرد ❌"
-                        setBackgroundColor(Color.RED)
-                        textSize = 10f
-                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(10, 0, 0, 0) }
-                        setOnClickListener {
-                            lifecycleScope.launch(Dispatchers.IO) {
-                                try {
-                                    val conn = URL("$BASE_API_URL/auth/terminate_device").openConnection() as HttpURLConnection
-                                    conn.requestMethod = "POST"
-                                    conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                                    conn.outputStream.use { it.write(JSONObject().put("id", AuthManager.getId(requireContext())).put("targetDeviceId", devId).toString().toByteArray()) }
-                                    if (conn.responseCode == 200) {
-                                        val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                                        if (obj.getBoolean("success")) {
-                                            activeDevicesList = obj.getJSONArray("devices")
-                                            withContext(Dispatchers.Main) { renderDevices(); showCustomSnackbar("تم طرد الجهاز بنجاح!", "#4CAF50", "success") }
-                                        }
-                                    }
-                                } catch(e: Exception){} 
+                        val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
+                        if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
+                            withContext(Dispatchers.IO) {
+                                if (idToTrack.isNotEmpty()) {
+                                    val userId = AuthManager.getId(this@MainActivity)
+                                    val payload = JSONObject()
+                                        .put("guid", idToTrack)
+                                        .put("deviceId", deviceId)
+                                        .put("userId", userId)
+                                        .put("disconnect", true)
+                                    try {
+                                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                                        conn.requestMethod = "POST"
+                                        conn.setRequestProperty("Content-Type", "application/json")
+                                        conn.doOutput = true
+                                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                                        conn.responseCode
+                                    } catch (e: Exception) {}
+                                    
+                                    val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
+                                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
+                                    lastReportedState = false
+                                }
+                                delay(1000) 
                             }
+                            
+                            withContext(Dispatchers.Main) {
+                                V2RayServiceManager.stopVService(this@MainActivity)
+                                AlertDialog.Builder(this@MainActivity).setTitle("انتهى الاشتراك").setMessage("تم إيقاف المحرك لانتهاء مدة الصلاحية أو إيقافه من قبل الإدارة.").setPositiveButton("حسناً", null).setCancelable(false).show()
+                                mainViewModel.reloadServerList()
+                            }
+                            break 
                         }
-                    }
-                    row.addView(btnTerminate)
+                    } catch (e: Exception) {}
+                    delay(5000) 
                 }
-                layout.addView(row)
             }
+        } else {
+            vpnStartTime = 0L 
+            pingJob?.cancel()
+            activePingJob?.cancel() 
+            TrafficMonitorHelper.stopTrafficMonitor()
+            binding.fab.setImageResource(R.drawable.ic_play_24dp)
+            binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
+            binding.fab.contentDescription = getString(R.string.tasker_start_service)
+            setTestState(getString(R.string.connection_not_connected))
+            binding.layoutTest.isFocusable = false
+            btnGreenConnect?.text = "تشغيل المحرك"
+            btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
+            lottieEngine?.cancelAnimation()
+            lottieEngine?.progress = 0f
+            binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f)
+            binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f)
+            binding.root.findViewById<TextView>(R.id.tv_green_ping)?.text = "--- ms"
+            val btnTest = binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)
+            btnTest?.isEnabled = true
+            btnTest?.text = "قياس سرعة الإنترنت"
+            btnTest?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#2196F3"))
         }
-        renderDevices()
     }
 
-    private fun updateProfilePicture(base64Str: String, name: String, userId: String) {
-        val bitmap = try {
-            val cleanStr = if (base64Str.contains(",")) base64Str.substringAfter(",") else base64Str
-            val b = Base64.decode(cleanStr.replace("\\s+".toRegex(), ""), Base64.DEFAULT)
-            BitmapFactory.decodeByteArray(b, 0, b.size)
-        } catch (e: Exception) { null } ?: AvatarGenerator.generateAvatar(name, userId)
+    private fun startV2Ray() { 
+        val guid = MmkvManager.getSelectServer().orEmpty()
+        if (guid.isNullOrEmpty()) { toast(R.string.title_file_chooser); return }
         
-        if (bitmap != null) {
-            val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
-            ivAvatar.setImageDrawable(circularDrawable)
-        }
-    }
+        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+        val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
+        val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
+        
+        binding.fab.setImageResource(R.drawable.ic_fab_check)
+        btnGreenConnect?.text = "جاري الفحص والتشغيل..."
+        btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
+        lottieEngine?.playAnimation()
 
-    private fun fetchUserDataFromServer(userId: String, isSwipeRefresh: Boolean = false) {
         lifecycleScope.launch(Dispatchers.IO) {
+            var isBanned = false
             try {
-                val conn = URL("$BASE_API_URL/auth/get_user?id=$userId").openConnection() as HttpURLConnection
+                val conn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
                 if (conn.responseCode == 200) {
-                    val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                    if (obj.getBoolean("success")) {
-                        val serverDevices = obj.optJSONArray("devices") ?: JSONArray()
-                        
-                        // 🌟 التحقق: هل جهازي انطرد؟ 🌟
-                        var isDeviceAuthorized = false
-                        for (i in 0 until serverDevices.length()) {
-                            if (serverDevices.getString(i) == myDeviceId) {
-                                isDeviceAuthorized = true
-                                break
+                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                    if (resp.startsWith("{")) {
+                        val jsonResponse = JSONObject(resp)
+                        if (jsonResponse.optBoolean("banned", false)) {
+                            isBanned = true
+                            val banMsg = jsonResponse.optString("message", "تم حظرك من هذا الملف من قبل الإدارة 🚫")
+                            withContext(Dispatchers.Main) {
+                                binding.fab.setImageResource(R.drawable.ic_play_24dp)
+                                binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this@MainActivity, R.color.color_fab_inactive))
+                                btnGreenConnect?.text = "تشغيل المحرك"
+                                btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
+                                lottieEngine?.cancelAnimation()
+                                lottieEngine?.progress = 0f
+                                Toast.makeText(this@MainActivity, banMsg, Toast.LENGTH_LONG).show()
                             }
-                        }
-                        
-                        if (!isDeviceAuthorized) {
-                            performLogout("تم إنهاء جلستك من جهاز آخر أو من الإدارة! 🚫")
-                            return@launch
-                        }
-
-                        withContext(Dispatchers.Main) {
-                            etName.setText(obj.getString("name"))
-                            etPass.setText(obj.getString("password"))
-                            etUsername.setText(obj.optString("username", ""))
-                            activeDevicesList = serverDevices
-                            currentBase64Pfp = obj.optString("pfp", currentBase64Pfp)
-                            updateProfilePicture(currentBase64Pfp, obj.getString("name"), userId)
-                            if (isSwipeRefresh) showCustomSnackbar("تم تحديث البيانات بنجاح ✔", "#4CAF50", "success")
                         }
                     }
                 }
-            } catch (e: Exception) {
-                if (isSwipeRefresh) withContext(Dispatchers.Main) { showCustomSnackbar("فشل التحديث، تأكد من الإنترنت!", "#F44336", "error") }
-            } finally {
-                if (isSwipeRefresh) {
-                    withContext(Dispatchers.Main) { swipeRefreshLayout?.isRefreshing = false }
-                }
+            } catch (e: Exception) {} 
+            
+            if (!isBanned) {
+                withContext(Dispatchers.Main) { startV2RayCore() }
             }
         }
     }
+
+    private fun startV2RayCore() {
+        UpdateManager.startSilentWatchdog(this)
+        if (SettingsManager.isVpnMode()) { 
+            val intent = VpnService.prepare(this)
+            if (intent == null) V2RayServiceManager.startVService(this) else requestVpnPermission.launch(intent) 
+        } else {
+            V2RayServiceManager.startVService(this)
+        }
+    }
+    
+    fun restartV2Ray() { if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this); lifecycleScope.launch { delay(500); startV2RayCore() } }
+
+    fun forceManualSync() {
+        showLoadingDialog()
+        lifecycleScope.launch(Dispatchers.IO) {
+            val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
+            val licenseIds = guids.map { V2rayCrypt.getLicenseId(this@MainActivity, it).takeIf { l -> l.isNotEmpty() && l != "LEGACY" } ?: it }
+            
+            val batchResults = CloudflareAPI.checkAllLiveConfigs(licenseIds)
+            
+            for (guid in guids) {
+                val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { l -> l.isNotEmpty() && l != "LEGACY" } ?: guid
+                val data = batchResults[licenseId]
+                if (data != null) {
+                    if (data.first >= 0L) {
+                        V2rayCrypt.saveExpiryTime(this@MainActivity, guid, data.first)
+                    }
+                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, data.second)
+                }
+            }
+            withContext(Dispatchers.Main) { 
+                mainViewModel.reloadServerList()
+                hideLoadingDialog()
+            }
+        }
+    }
+
+    private fun setupViewModel() { 
+        mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }
+        mainViewModel.isRunning.observe(this) { isRunning -> applyRunningState(false, isRunning) }
+        mainViewModel.startListenBroadcast()
+        mainViewModel.initAssets(assets) 
+    }
+    
+    private fun setupGroupTab() { 
+        try {
+            val groups = mainViewModel.getSubscriptions(this)
+            groupPagerAdapter.update(groups)
+            
+            tabMediator?.detach()
+            tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position -> 
+                val item = groupPagerAdapter.groups.getOrNull(position)
+                tab.text = item?.remarks
+                tab.tag = item?.id
+            }.also { it.attach() }
+            
+            val index = groups.indexOfFirst { it.id == mainViewModel.subscriptionId }
+            binding.viewPager.setCurrentItem(if (index >= 0) index else max(0, groups.size - 1), false)
+            binding.tabGroup.isVisible = groups.size > 1 
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
+    private fun setTestState(content: String?) {
+        val tvTestState = binding.root.findViewById<TextView>(R.id.tv_test_state)
+        val gaugePing = binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)
+        val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
+        
+        tvTestState?.text = content ?: ""
+        
+        if (content.isNullOrEmpty()) {
+            gaugePing?.setPing(0f)
+            tvGreenPing?.text = "--- ms"
+            return
+        }
+        
+        try {
+            val normalizedContent = content.replace("٠", "0").replace("١", "1").replace("٢", "2").replace("٣", "3").replace("٤", "4").replace("٥", "5").replace("٦", "6").replace("٧", "7").replace("٨", "8").replace("٩", "9")
+            
+            if (normalizedContent.contains("ms", ignoreCase = true) || normalizedContent.contains("م.ث")) {
+                val match = Regex("(\\d+)\\s*(ms|م\\.ث)", RegexOption.IGNORE_CASE).find(normalizedContent)
+                if (match != null) { 
+                    val pingValue = match.groupValues[1].toFloat()
+                    gaugePing?.setPing(pingValue) 
+                    tvGreenPing?.text = "${pingValue.toInt()} ms" 
+                } 
+                else Regex("(\\d+)").find(normalizedContent)?.let { 
+                    gaugePing?.setPing(it.value.toFloat()) 
+                    tvGreenPing?.text = "${it.value} ms" 
+                }
+            } else if (normalizedContent.contains("Timeout", ignoreCase = true) || normalizedContent.contains("Failed", ignoreCase = true) || normalizedContent.contains("فشل", ignoreCase = true)) { 
+                gaugePing?.setPing(500f) 
+                tvGreenPing?.text = "Timeout" 
+            } 
+            else if (normalizedContent == getString(R.string.connection_connected)) { 
+                gaugePing?.setPing(0f)
+                tvGreenPing?.text = "متصل..." 
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override fun onResume() { 
+        super.onResume()
+        if (mainViewModel.isRunning.value == true) TrafficMonitorHelper.startTrafficMonitor(this) else TrafficMonitorHelper.updateTrafficDisplay(this)
+        VpnEngineHelper.startLiveUpdates(this, mainViewModel)
+        if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) 
+        
+        forceManualSync()
+    }
+
+    override fun onPause() { super.onPause(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs() }
+    
+    override fun onDestroy() { 
+        val guid = MmkvManager.getSelectServer().orEmpty()
+        val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
+        if (lastReportedState == true && idToTrack.isNotEmpty()) {
+            lastReportedState = false
+            val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+            @Suppress("OPT_IN_USAGE")
+            GlobalScope.launch(Dispatchers.IO) {
+                try {
+                    val userId = AuthManager.getId(this@MainActivity)
+                    val payload = JSONObject()
+                        .put("guid", idToTrack)
+                        .put("deviceId", deviceId)
+                        .put("userId", userId)
+                        .put("disconnect", true)
+                    val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                    conn.responseCode
+                } catch (e: Exception) {}
+            }
+        }
+        tabMediator?.detach(); VpnEngineHelper.cancelAllJobs(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs(); pingJob?.cancel(); activePingJob?.cancel(); accountWatchdogJob?.cancel(); super.onDestroy() 
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean { menuInflater.inflate(R.menu.menu_main, menu); (menu.findItem(R.id.search_view)?.actionView as? SearchView)?.apply { setOnQueryTextListener(object : SearchView.OnQueryTextListener { override fun onQueryTextSubmit(q: String?) = false; override fun onQueryTextChange(t: String?) = false.also { mainViewModel.filterConfig(t.orEmpty()) } }) }; return super.onCreateOptionsMenu(menu) }
+    override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) { R.id.import_qrcode -> { ImportHelper.showAddBottomSheet(this, mainViewModel, { openLocalFileLauncher.launch(arrayOf("*/*")) }, { openEncryptedFileLauncher.launch(arrayOf("*/*")) }); true } else -> super.onOptionsItemSelected(item) }
+    override fun onNavigationItemSelected(item: MenuItem): Boolean { binding.drawerLayout.closeDrawer(GravityCompat.START); return true }
+    
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
+    private fun handleIntent(intent: Intent?) { if (intent?.action == Intent.ACTION_VIEW) intent.data?.let { ImportHelper.importEncryptedContentFromUri(this, mainViewModel, it) } }
+
+    fun openSubscribersPanel(parentGuid: String) { startActivity(Intent(this, SubscribersActivity::class.java).putExtra("parentGuid", parentGuid)) }
+    fun showExtendLicenseDialog(guid: String) { AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
+    fun replaceAndSyncConfigFromClipboard(guid: String) { AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
+
+    override fun onSelectServer(guid: String) { 
+        val oldGuid = MmkvManager.getSelectServer().orEmpty()
+        if (oldGuid == guid) return
+
+        if (mainViewModel.isRunning.value == true) {
+            val idToTrack = V2rayCrypt.getLicenseId(this, oldGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: oldGuid
+            val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+            
+            toast("جاري التبديل للملف الجديد...")
+            lifecycleScope.launch(Dispatchers.IO) {
+                
+                if (idToTrack.isNotEmpty()) {
+                    try {
+                        val userId = AuthManager.getId(this@MainActivity)
+                        val payload = JSONObject()
+                            .put("guid", idToTrack)
+                            .put("deviceId", deviceId)
+                            .put("userId", userId)
+                            .put("disconnect", true)
+                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.responseCode
+                    } catch (e: Exception) {}
+
+                    val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, oldGuid)
+                    V2rayCrypt.saveActiveCount(this@MainActivity, oldGuid, max(0, prevCount - 1))
+                    lastReportedState = false
+                }
+                
+                delay(1000) 
+                
+                withContext(Dispatchers.Main) {
+                    V2RayServiceManager.stopVService(this@MainActivity)
+                    MmkvManager.setSelectServer(guid)
+                    groupPagerAdapter.notifyDataSetChanged()
+                }
+                
+                delay(800) 
+                
+                withContext(Dispatchers.Main) {
+                    startV2RayCore()
+                }
+            }
+        } else {
+            MmkvManager.setSelectServer(guid)
+            toast(R.string.toast_success)
+            groupPagerAdapter.notifyDataSetChanged()
+        }
+    }
+    
+    override fun onEdit(guid: String, pos: Int, p: ProfileItem) { if (!V2rayCrypt.isProtected(this, guid) || V2rayCrypt.isAdmin(this, guid)) startActivity(Intent(this, ServerActivity::class.java).putExtra("guid", guid)) else toast("هذا السيرفر محمي") }
+    override fun onRemove(guid: String, pos: Int) { AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm).setPositiveButton(android.R.string.ok) { _, _ -> mainViewModel.removeServer(guid) }.setNegativeButton(android.R.string.cancel, null).show() }
+    override fun onShare(guid: String, p: ProfileItem, pos: Int, isMore: Boolean) {} override fun onEdit(guid: String, pos: Int) {} override fun onShare(url: String) {} override fun onRefreshData() {}
 }
