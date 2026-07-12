@@ -1,10 +1,11 @@
 package com.v2ray.ang.ui
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -26,6 +27,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 class LoginActivity : AppCompatActivity() {
 
@@ -36,8 +38,8 @@ class LoginActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
 
-        // 🌟 استخراج آيدي الجهاز فوراً لإرساله للسيرفر 🌟
-        myDeviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+        // 🌟 استخراج آيدي الهاردوير الثابت (مستحيل يتغير) 🌟
+        myDeviceId = getUniqueHardwareId(this)
 
         UpdateManager.startBackgroundUpdateCheck(this)
 
@@ -73,7 +75,7 @@ class LoginActivity : AppCompatActivity() {
                     conn.setRequestProperty("Content-Type", "application/json")
                     conn.doOutput = true
                     
-                    // 🌟 إرسال آيدي الجهاز ليتم تسجيله كجهاز مرتبط 🌟
+                    // إرسال آيدي الهاردوير الثابت ليتم تسجيله
                     val payload = JSONObject().apply { put("deviceId", myDeviceId) }
                     conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
@@ -135,7 +137,7 @@ class LoginActivity : AppCompatActivity() {
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
                 
-                // 🌟 إرسال آيدي الجهاز ليتم التحقق منه وتسجيله 🌟
+                // إرسال آيدي الهاردوير الثابت للتحقق
                 val payload = JSONObject().apply { 
                     put("id", id)
                     put("password", pass)
@@ -150,7 +152,6 @@ class LoginActivity : AppCompatActivity() {
                         AuthManager.saveUser(this@LoginActivity, id, obj.getString("name"), pass, obj.getString("role"), obj.optString("pfp", ""))
                         isSuccess = true
                     } else {
-                        // 🌟 استقبال وتمرير رسالة الخطأ الدقيقة من السيرفر (مثل: الباسورد خطأ) 🌟
                         message = obj.optString("message", "خطأ في تسجيل الدخول ❌")
                     }
                 } else {
@@ -173,7 +174,7 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 دالة الإشعارات الأنيقة والحديثة (VIP Snackbar) 🌟
+    // 🌟 دالة الإشعارات الأنيقة والحديثة 🌟
     private fun showCustomSnackbar(message: String, colorHex: String) {
         val rootView = findViewById<View>(android.R.id.content)
         val snackbar = Snackbar.make(rootView, "", Snackbar.LENGTH_SHORT)
@@ -199,5 +200,28 @@ class LoginActivity : AppCompatActivity() {
 
         snackbarLayout.addView(customView, 0)
         snackbar.show()
+    }
+
+    // 🌟 دالة توليد Hardware ID ثابت كالصخر ومستحيل يتغير 🌟
+    private fun getUniqueHardwareId(context: Context): String {
+        try {
+            val devInfo = Build.BOARD + Build.BRAND + Build.DEVICE + Build.DISPLAY +
+                    Build.HARDWARE + Build.MANUFACTURER + Build.MODEL + Build.PRODUCT +
+                    Build.USER + Build.ID + Build.BOOTLOADER
+            
+            val md = MessageDigest.getInstance("MD5")
+            val hash = md.digest(devInfo.toByteArray())
+            val hexString = StringBuilder()
+            for (byte in hash) {
+                val hex = Integer.toHexString(0xFF and byte.toInt())
+                if (hex.length == 1) {
+                    hexString.append('0')
+                }
+                hexString.append(hex)
+            }
+            return hexString.toString().take(15).toUpperCase() // يولد آيدي مثل: A9C8B7F6D5E4A3
+        } catch (e: Exception) {
+            return "UNKNOWN_HW_ID"
+        }
     }
 }
