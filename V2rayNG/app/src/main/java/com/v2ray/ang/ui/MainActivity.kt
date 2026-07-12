@@ -71,7 +71,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var activePingJob: Job? = null
     private var vpnStartTime: Long = 0L
 
-    // 🌟 وظيفة الفحص العالمي للطرد 🌟
     private var accountWatchdogJob: Job? = null 
 
     companion object { var lastReportedState: Boolean? = null }
@@ -96,13 +95,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         setContentView(binding.root)
         lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
         
-        checkInitialAuth()
-        ActiveStatsHelper.reportUpdateSuccess(this)
-        
-        UpdateManager.startBackgroundUpdateCheck(this) 
+        // 🌟 نظام الإنشاء الذكي والرادار المتسلسل (مقاوم لانقطاع النت) 🌟
+        lifecycleScope.launch(Dispatchers.IO) {
+            // يبقى يحاول يسوي حساب كل 5 ثواني إذا ماكو نت
+            while (!AuthManager.isLoggedIn(this@MainActivity)) {
+                val success = attemptInitialAuth()
+                if (success) break
+                delay(5000) // انتظر 5 ثواني وحاول مرة ثانية
+            }
+            // من ينجح بإنشاء الحساب (أو إذا كان اكو حساب أصلاً)، يلا نشغل الرادار
+            withContext(Dispatchers.Main) {
+                startAccountWatchdog()
+            }
+        }
 
-        // 🌟 تفعيل الرادار الخفي لفحص الحساب 🌟
-        startAccountWatchdog()
+        ActiveStatsHelper.reportUpdateSuccess(this)
+        UpdateManager.startBackgroundUpdateCheck(this) 
 
         groupPagerAdapter = GroupPagerAdapter(this, emptyList())
         binding.viewPager.adapter = groupPagerAdapter
@@ -116,7 +124,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
-    // 🌟 رادار فحص الحساب والطرد الفوري (يعمل حتى بالخلفية) 🌟
+    // 🌟 رادار فحص الحساب والطرد الفوري 🌟
     private fun startAccountWatchdog() {
         val userId = AuthManager.getId(this)
         if (userId.isEmpty()) return
@@ -141,31 +149,28 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                     break
                                 }
                             }
-                            // إذا الجهاز انطرد، نفذ الخروج الفوري ومسح البيانات
                             if (!isDeviceAuthorized) {
                                 forceLogoutAndClean("تم إنهاء جلستك من جهاز آخر أو من الإدارة! 🚫")
                                 break
                             }
                         } else {
-                            // إذا الحساب انحذف بالكامل
                             forceLogoutAndClean("تم حذف حسابك من قبل الإدارة! 🚫")
                             break
                         }
                     }
                 } catch (e: Exception) {}
-                delay(15000) // يفحص كل 15 ثانية بالخلفية
+                delay(15000) // فحص كل 15 ثانية
             }
         }
     }
 
-    // 🌟 دالة الخروج الإجباري والتنظيف (حتى تصير مجهول الهوية) 🌟
+    // 🌟 دالة الخروج الإجباري والتنظيف العميق 🌟
     private fun forceLogoutAndClean(reason: String) {
         val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
 
         lifecycleScope.launch(Dispatchers.IO) {
-            // 1. إيقاف الـ VPN إذا كان شغال حتى ينفصل اسمك عن الملف
             if (mainViewModel.isRunning.value == true) {
                 try {
                     val payload = JSONObject().put("guid", idToTrack).put("deviceId", deviceId).put("userId", "").put("disconnect", true)
@@ -179,7 +184,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 withContext(Dispatchers.Main) { V2RayServiceManager.stopVService(this@MainActivity) }
             }
 
-            // 2. إخبار السيرفر بإنهاء الجلسة
             try {
                 val conn = URL("$BASE_API_URL/auth/terminate_device").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
@@ -189,7 +193,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 conn.responseCode
             } catch (e: Exception) {}
 
-            // 3. مسح البيانات والتوجه لواجهة الدخول
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@MainActivity, reason, Toast.LENGTH_LONG).show()
                 AuthManager.logout(this@MainActivity)
@@ -200,26 +203,34 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    private fun checkInitialAuth() {
-        if (!AuthManager.isLoggedIn(this)) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    val conn = URL("$BASE_API_URL/auth/init").openConnection() as HttpURLConnection
-                    conn.requestMethod = "POST"
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    conn.doOutput = true
-                    conn.outputStream.use { it.write("{}".toByteArray()) }
+    // 🌟 دالة إنشاء الحساب التلقائي (مقاومة لانقطاع الإنترنت) 🌟
+    private suspend fun attemptInitialAuth(): Boolean {
+        var isSuccess = false
+        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+        try {
+            val conn = URL("$BASE_API_URL/auth/init").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            conn.doOutput = true
+            
+            // إرسال آيدي الجهاز ليتم تسجيله فوراً
+            val payload = JSONObject().apply { put("deviceId", deviceId) }
+            conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
-                    if (conn.responseCode == 200) {
-                        val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                        if (obj.getBoolean("success")) {
-                            AuthManager.saveUser(this@MainActivity, obj.getString("id"), obj.getString("name"), obj.getString("password"), "user", "")
-                            withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "تم إنشاء الحساب التلقائي بنجاح!", Toast.LENGTH_SHORT).show() }
-                        }
-                    }
-                } catch (e: Exception) { e.printStackTrace() }
+            if (conn.responseCode == 200) {
+                val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
+                if (obj.getBoolean("success")) {
+                    AuthManager.saveUser(this@MainActivity, obj.getString("id"), obj.getString("name"), obj.getString("password"), "user", "")
+                    withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "تم إنشاء الحساب التلقائي بنجاح!", Toast.LENGTH_SHORT).show() }
+                    isSuccess = true
+                }
             }
+        } catch (e: Exception) { 
+            // فشل بسبب عدم وجود إنترنت، سيرجع false ليحاول مرة أخرى بصمت
         }
+        return isSuccess
     }
 
     private fun setupScreenLayoutsSafe() {
