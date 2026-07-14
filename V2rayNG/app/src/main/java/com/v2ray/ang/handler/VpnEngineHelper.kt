@@ -1,8 +1,9 @@
 package com.v2ray.ang.handler
 
+import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
-import android.provider.Settings
+import android.os.Build
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
@@ -20,6 +21,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 object VpnEngineHelper {
     var vpnStartTime: Long = 0L
@@ -30,13 +32,34 @@ object VpnEngineHelper {
     // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
     private const val BASE_API_URL = "https://education.ashor.shop"
 
+    // 🌟 دالة توليد Hardware ID الموحدة لضمان عدم الطرد 🌟
+    private fun getUniqueHardwareId(): String {
+        try {
+            val devInfo = Build.BOARD + Build.BRAND + Build.DEVICE + Build.DISPLAY +
+                    Build.HARDWARE + Build.MANUFACTURER + Build.MODEL + Build.PRODUCT +
+                    Build.USER + Build.ID + Build.BOOTLOADER
+            val md = MessageDigest.getInstance("MD5")
+            val hash = md.digest(devInfo.toByteArray())
+            val hexString = StringBuilder()
+            for (byte in hash) {
+                val hex = Integer.toHexString(0xFF and byte.toInt())
+                if (hex.length == 1) hexString.append('0')
+                hexString.append(hex)
+            }
+            return hexString.toString().take(15).uppercase()
+        } catch (e: Exception) {
+            return "UNKNOWN_HW_ID"
+        }
+    }
+
     fun applyRunningState(activity: MainActivity, mainViewModel: MainViewModel, isLoading: Boolean, isRunning: Boolean) {
         val lottie = activity.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnConnect = activity.findViewById<MaterialButton>(R.id.btn_green_connect)
         val fab = activity.findViewById<FloatingActionButton>(R.id.fab)
         
         val guid = MmkvManager.getSelectServer().orEmpty()
-        val deviceId = Settings.Secure.getString(activity.contentResolver, Settings.Secure.ANDROID_ID) ?: "UNKNOWN"
+        // 🌟 استخدام الهاردوير آيدي الموحد بدلاً من الآيدي القديم 🌟
+        val deviceId = getUniqueHardwareId()
 
         if (isLoading) {
             fab?.setImageResource(R.drawable.ic_fab_check)
