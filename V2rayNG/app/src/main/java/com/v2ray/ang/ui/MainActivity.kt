@@ -616,7 +616,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
     
-    fun restartV2Ray() { if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this); lifecycleScope.launch { delay(500); startV2RayCore() } }
+    fun restartV2Ray() { 
+        if (mainViewModel.isRunning.value == true) V2RayServiceManager.stopVService(this)
+        lifecycleScope.launch { delay(500); startV2RayCore() } 
+    }
 
     fun forceManualSync() {
         showLoadingDialog()
@@ -717,7 +720,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         forceManualSync()
     }
 
-    override fun onPause() { super.onPause(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs() }
+    override fun onPause() { 
+        super.onPause()
+        TrafficMonitorHelper.stopTrafficMonitor()
+        SpeedTestHelper.cancelJobs() 
+    }
     
     override fun onDestroy() { 
         val guid = MmkvManager.getSelectServer().orEmpty()
@@ -743,19 +750,60 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 } catch (e: Exception) {}
             }
         }
-        tabMediator?.detach(); VpnEngineHelper.cancelAllJobs(); TrafficMonitorHelper.stopTrafficMonitor(); SpeedTestHelper.cancelJobs(); pingJob?.cancel(); activePingJob?.cancel(); accountWatchdogJob?.cancel(); super.onDestroy() 
+        tabMediator?.detach()
+        VpnEngineHelper.cancelAllJobs()
+        TrafficMonitorHelper.stopTrafficMonitor()
+        SpeedTestHelper.cancelJobs()
+        pingJob?.cancel()
+        activePingJob?.cancel()
+        accountWatchdogJob?.cancel()
+        super.onDestroy() 
     }
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean { menuInflater.inflate(R.menu.menu_main, menu); (menu.findItem(R.id.search_view)?.actionView as? SearchView)?.apply { setOnQueryTextListener(object : SearchView.OnQueryTextListener { override fun onQueryTextSubmit(q: String?) = false; override fun onQueryTextChange(t: String?) = false.also { mainViewModel.filterConfig(t.orEmpty()) } }) }; return super.onCreateOptionsMenu(menu) }
-    override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) { R.id.import_qrcode -> { ImportHelper.showAddBottomSheet(this, mainViewModel, { openLocalFileLauncher.launch(arrayOf("*/*")) }, { openEncryptedFileLauncher.launch(arrayOf("*/*")) }); true } else -> super.onOptionsItemSelected(item) }
-    override fun onNavigationItemSelected(item: MenuItem): Boolean { binding.drawerLayout.closeDrawer(GravityCompat.START); return true }
+    override fun onCreateOptionsMenu(menu: Menu): Boolean { 
+        menuInflater.inflate(R.menu.menu_main, menu)
+        (menu.findItem(R.id.search_view)?.actionView as? SearchView)?.apply { 
+            setOnQueryTextListener(object : SearchView.OnQueryTextListener { 
+                override fun onQueryTextSubmit(q: String?) = false
+                override fun onQueryTextChange(t: String?) = false.also { mainViewModel.filterConfig(t.orEmpty()) } 
+            }) 
+        }
+        return super.onCreateOptionsMenu(menu) 
+    }
     
-    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
-    private fun handleIntent(intent: Intent?) { if (intent?.action == Intent.ACTION_VIEW) intent.data?.let { ImportHelper.importEncryptedContentFromUri(this, mainViewModel, it) } }
+    override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) { 
+        R.id.import_qrcode -> { 
+            ImportHelper.showAddBottomSheet(this, mainViewModel, { openLocalFileLauncher.launch(arrayOf("*/*")) }, { openEncryptedFileLauncher.launch(arrayOf("*/*")) })
+            true 
+        } 
+        else -> super.onOptionsItemSelected(item) 
+    }
+    
+    override fun onNavigationItemSelected(item: MenuItem): Boolean { 
+        binding.drawerLayout.closeDrawer(GravityCompat.START)
+        return true 
+    }
+    
+    override fun onNewIntent(intent: Intent) { 
+        super.onNewIntent(intent)
+        handleIntent(intent) 
+    }
+    
+    private fun handleIntent(intent: Intent?) { 
+        if (intent?.action == Intent.ACTION_VIEW) intent.data?.let { ImportHelper.importEncryptedContentFromUri(this, mainViewModel, it) } 
+    }
 
-    fun openSubscribersPanel(parentGuid: String) { startActivity(Intent(this, SubscribersActivity::class.java).putExtra("parentGuid", parentGuid)) }
-    fun showExtendLicenseDialog(guid: String) { AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
-    fun replaceAndSyncConfigFromClipboard(guid: String) { AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
+    fun openSubscribersPanel(parentGuid: String) { 
+        startActivity(Intent(this, SubscribersActivity::class.java).putExtra("parentGuid", parentGuid)) 
+    }
+    
+    fun showExtendLicenseDialog(guid: String) { 
+        AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) 
+    }
+    
+    fun replaceAndSyncConfigFromClipboard(guid: String) { 
+        AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) 
+    }
 
     override fun onSelectServer(guid: String) { 
         val oldGuid = MmkvManager.getSelectServer().orEmpty()
@@ -810,7 +858,23 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
     
-    override fun onEdit(guid: String, pos: Int, p: ProfileItem) { if (!V2rayCrypt.isProtected(this, guid) || V2rayCrypt.isAdmin(this, guid)) startActivity(Intent(this, ServerActivity::class.java).putExtra("guid", guid)) else toast("هذا السيرفر محمي") }
-    override fun onRemove(guid: String, pos: Int) { AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm).setPositiveButton(android.R.string.ok) { _, _ -> mainViewModel.removeServer(guid) }.setNegativeButton(android.R.string.cancel, null).show() }
-    override fun onShare(guid: String, p: ProfileItem, pos: Int, isMore: Boolean) {} override fun onEdit(guid: String, pos: Int) {} override fun onShare(url: String) {} override fun onRefreshData() {}
+    override fun onEdit(guid: String, pos: Int, p: ProfileItem) { 
+        if (!V2rayCrypt.isProtected(this, guid) || V2rayCrypt.isAdmin(this, guid)) {
+            startActivity(Intent(this, ServerActivity::class.java).putExtra("guid", guid)) 
+        } else {
+            toast("هذا السيرفر محمي") 
+        }
+    }
+    
+    override fun onRemove(guid: String, pos: Int) { 
+        AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm)
+            .setPositiveButton(android.R.string.ok) { _, _ -> mainViewModel.removeServer(guid) }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show() 
+    }
+    
+    override fun onShare(guid: String, p: ProfileItem, pos: Int, isMore: Boolean) {} 
+    override fun onEdit(guid: String, pos: Int) {} 
+    override fun onShare(url: String) {} 
+    override fun onRefreshData() {}
 }
