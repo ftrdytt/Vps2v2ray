@@ -25,6 +25,7 @@
             android:orientation="vertical"
             android:gravity="center_horizontal">
 
+            <!-- أزرار الأدمن (مخفية للعامة) -->
             <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -56,33 +57,43 @@
                     app:tint="#4CAF50"
                     android:visibility="gone" />
 
+                <!-- 🌟 قسم الصورة الشخصية وإضافة القصة (تم تحديثه) 🌟 -->
                 <FrameLayout
-                    android:layout_width="140dp"
-                    android:layout_height="140dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
                     android:layout_gravity="center">
 
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:background="@drawable/ic_circle"
-                        android:backgroundTint="#FF9800"
-                        android:alpha="0.2"/>
+                    <!-- هذا الإطار ستتغير حدوده للأزرق برمجياً في حال وجود قصة -->
+                    <FrameLayout
+                        android:id="@+id/layout_avatar_container"
+                        android:layout_width="140dp"
+                        android:layout_height="140dp">
 
-                    <androidx.cardview.widget.CardView
-                        android:layout_width="128dp"
-                        android:layout_height="128dp"
-                        android:layout_gravity="center"
-                        app:cardCornerRadius="64dp"
-                        app:cardBackgroundColor="#1A1A1D"
-                        app:cardElevation="0dp">
-                        <ImageView
-                            android:id="@+id/iv_profile_pic"
+                        <View
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
-                            android:scaleType="centerCrop"
-                            android:src="@drawable/ic_stat_name" />
-                    </androidx.cardview.widget.CardView>
+                            android:background="@drawable/ic_circle"
+                            android:backgroundTint="#FF9800"
+                            android:alpha="0.2"/>
 
+                        <androidx.cardview.widget.CardView
+                            android:layout_width="128dp"
+                            android:layout_height="128dp"
+                            android:layout_gravity="center"
+                            app:cardCornerRadius="64dp"
+                            app:cardBackgroundColor="#1A1A1D"
+                            app:cardElevation="0dp">
+                            
+                            <ImageView
+                                android:id="@+id/iv_profile_pic"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:scaleType="centerCrop"
+                                android:src="@drawable/ic_stat_name" />
+                        </androidx.cardview.widget.CardView>
+                    </FrameLayout>
+
+                    <!-- زر تغيير الصورة الأساسي (البرتقالي) -->
                     <androidx.cardview.widget.CardView
                         android:layout_width="36dp"
                         android:layout_height="36dp"
@@ -98,6 +109,27 @@
                             android:src="@android:drawable/ic_menu_camera"
                             app:tint="#FFFFFF"/>
                     </androidx.cardview.widget.CardView>
+
+                    <!-- 🌟 زر إضافة قصة جديدة (+) 🌟 -->
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:layout_gravity="bottom|start"
+                        android:layout_margin="10dp"
+                        app:cardCornerRadius="16dp"
+                        app:cardBackgroundColor="#2196F3"
+                        app:cardElevation="4dp">
+                        <ImageView
+                            android:id="@+id/btn_add_story"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:layout_margin="2dp"
+                            android:src="@android:drawable/ic_input_add"
+                            app:tint="#FFFFFF"
+                            android:background="@drawable/ic_circle"
+                            android:backgroundTint="#0A0A0C"/>
+                    </androidx.cardview.widget.CardView>
+
                 </FrameLayout>
             </FrameLayout>
 
@@ -107,7 +139,56 @@
                 android:text="اضغط على الصورة لتغييرها"
                 android:textColor="#80FFFFFF"
                 android:textSize="12sp"
-                android:layout_marginBottom="32dp"/>
+                android:layout_marginBottom="16dp"/>
+
+            <!-- 🌟 إحصائيات المتابعين (الجديدة) 🌟 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_marginBottom="24dp">
+                
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:layout_marginEnd="40dp">
+                    <TextView
+                        android:id="@+id/tv_followers_count"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="المتابعون\n0"
+                        android:textAlignment="center"
+                        android:textColor="#FFFFFF"
+                        android:textStyle="bold"
+                        android:textSize="16sp"/>
+                </LinearLayout>
+
+                <View
+                    android:layout_width="1dp"
+                    android:layout_height="30dp"
+                    android:background="#33FFFFFF"/>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:layout_marginStart="40dp">
+                    <TextView
+                        android:id="@+id/tv_following_count"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="أتابع\n0"
+                        android:textAlignment="center"
+                        android:textColor="#FFFFFF"
+                        android:textStyle="bold"
+                        android:textSize="16sp"/>
+                </LinearLayout>
+            </LinearLayout>
+            <!-- 🌟 نهاية إحصائيات المتابعين 🌟 -->
 
             <LinearLayout
                 android:layout_width="match_parent"
