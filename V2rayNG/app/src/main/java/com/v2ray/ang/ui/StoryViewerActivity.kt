@@ -76,12 +76,12 @@ class StoryViewerActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.btn_react_fire).setOnClickListener { reactToStory("🔥") }
         findViewById<TextView>(R.id.btn_react_laugh).setOnClickListener { reactToStory("😂") }
 
-        // فتح التعليقات
+        // 🌟 فتح نافذة التعليقات (Bottom Sheet) 🌟
         findViewById<LinearLayout>(R.id.btn_open_comments).setOnClickListener {
             if (storiesArray.length() > 0) {
                 val currentStoryId = storiesArray.getJSONObject(currentIndex).getString("id")
-                // سيتم استدعاء الـ Bottom Sheet من هنا في الخطوة القادمة!
-                Toast.makeText(this, "سيتم فتح التعليقات قريباً!", Toast.LENGTH_SHORT).show()
+                val bottomSheet = CommentsBottomSheet.newInstance(currentStoryId, myUserId)
+                bottomSheet.show(supportFragmentManager, "CommentsBottomSheet")
             }
         }
 
