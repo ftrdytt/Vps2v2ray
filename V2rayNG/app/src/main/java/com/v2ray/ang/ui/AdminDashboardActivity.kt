@@ -27,6 +27,8 @@ import com.google.android.material.snackbar.Snackbar
 import com.v2ray.ang.R
 import com.v2ray.ang.util.AvatarGenerator
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -52,6 +54,7 @@ class AdminDashboardActivity : AppCompatActivity() {
     private var allUsersArray = JSONArray()
     private var activeUsersArray = JSONArray()
     private var searchQuery = ""
+    private var checkUserJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -138,6 +141,11 @@ class AdminDashboardActivity : AppCompatActivity() {
         fetchAllUsers()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        checkUserJob?.cancel()
+    }
+
     private fun showCustomSnackbar(message: String, colorHex: String) {
         val rootView = findViewById<View>(android.R.id.content)
         val snackbar = Snackbar.make(rootView, "", Snackbar.LENGTH_SHORT)
@@ -208,8 +216,25 @@ class AdminDashboardActivity : AppCompatActivity() {
 
     private fun renderAllUsers() {
         usersContainer.removeAllViews()
+        
+        // 🌟 فصل الإدمن عن المستخدمين لعكس القائمة 🌟
+        val admins = mutableListOf<JSONObject>()
+        val regularUsers = mutableListOf<JSONObject>()
+
         for (i in 0 until allUsersArray.length()) {
             val u = allUsersArray.getJSONObject(i)
+            if (u.optBoolean("isAdmin", false)) {
+                admins.add(u)
+            } else {
+                regularUsers.add(u)
+            }
+        }
+
+        // 🌟 عكس المستخدمين ليكون الأحدث في الأعلى 🌟
+        regularUsers.reverse()
+        val sortedUsers = admins + regularUsers
+
+        for (u in sortedUsers) {
             val id = u.getString("id")
             val name = u.getString("name")
             val username = u.optString("username", "")
@@ -454,16 +479,67 @@ class AdminDashboardActivity : AppCompatActivity() {
         container.addView(card)
     }
 
+    // 🌟 فحص المعرف المباشر أثناء التعديل (التحقق المرن المحدث للوحة الأدمن) 🌟
+    private fun checkUsernameLiveAdmin(username: String, currentId: String, tvStatus: TextView) {
+        checkUserJob?.cancel()
+        if (username.isEmpty()) { tvStatus.visibility = View.GONE; return }
+        
+        if (username.length > 40) {
+            tvStatus.visibility = View.VISIBLE
+            tvStatus.text = "❌ المعرف يجب أن يكون أقل من 40 حرفاً"
+            tvStatus.setTextColor(Color.RED)
+            return
+        }
+        
+        if (!username.matches(Regex("^[a-zA-Z0-9_.]+$"))) {
+            tvStatus.visibility = View.VISIBLE
+            tvStatus.text = "❌ مسموح بالحروف الإنجليزية والأرقام فقط"
+            tvStatus.setTextColor(Color.RED)
+            return
+        }
+
+        tvStatus.visibility = View.VISIBLE
+        tvStatus.text = "⏳ فحص المعرف..."
+        tvStatus.setTextColor(Color.parseColor("#FF9800"))
+
+        checkUserJob = lifecycleScope.launch(Dispatchers.IO) {
+            delay(500)
+            try {
+                val conn = URL("$BASE_API_URL/auth/check_username?username=$username&id=$currentId").openConnection() as HttpURLConnection
+                if (conn.responseCode == 200) {
+                    val available = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText()).getBoolean("available")
+                    withContext(Dispatchers.Main) {
+                        tvStatus.text = if (available) "✅ المعرف متاح" else "❌ المعرف مستخدم"
+                        tvStatus.setTextColor(if (available) Color.GREEN else Color.RED)
+                    }
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
     private fun showEditDialog(id: String, oldName: String, oldPass: String, oldUsername: String, isAdmin: Boolean) {
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 40, 50, 40) }
         val etName = EditText(this).apply { hint = "الاسم الجديد"; setText(oldName.replace(" (أدمن)", "")); setTextColor(Color.BLACK) }
         
         val etUsername = EditText(this).apply { hint = "المعرف (@) اختياري"; setText(oldUsername); setTextColor(Color.BLACK) }
-        if (isAdmin) etUsername.visibility = View.GONE
+        val tvStatus = TextView(this).apply { visibility = View.GONE; textSize = 12f; setPadding(10, 5, 0, 10) }
+        
+        if (isAdmin) {
+            etUsername.visibility = View.GONE
+            tvStatus.visibility = View.GONE
+        } else {
+            etUsername.addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    val currentText = s.toString().trim().replace("@", "")
+                    checkUsernameLiveAdmin(currentText, id, tvStatus)
+                }
+                override fun afterTextChanged(s: Editable?) {}
+            })
+        }
         
         val etPass = EditText(this).apply { hint = "الرمز الجديد"; setText(oldPass); setTextColor(Color.BLACK) }
         
-        // 🌟 حقل الآيدي الجديد (يمكن للأدمن تغييره للمستخدمين، ولكن لا يمكن تغييره لحسابات الأدمن) 🌟
         val etNewId = EditText(this).apply { hint = "تغيير الآيدي (ID)"; setText(id); setTextColor(Color.parseColor("#FF9800")); setTypeface(null, android.graphics.Typeface.BOLD) }
         if (isAdmin) {
             etNewId.isEnabled = false
@@ -471,7 +547,10 @@ class AdminDashboardActivity : AppCompatActivity() {
         }
 
         layout.addView(etName)
-        if (!isAdmin) layout.addView(etUsername)
+        if (!isAdmin) { 
+            layout.addView(etUsername)
+            layout.addView(tvStatus)
+        }
         layout.addView(etPass)
         layout.addView(etNewId)
 
@@ -480,10 +559,17 @@ class AdminDashboardActivity : AppCompatActivity() {
                 val newUsername = etUsername.text.toString().trim().replace("@", "")
                 val newId = etNewId.text.toString().trim()
 
-                if (newUsername.isNotEmpty() && !newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
-                    showCustomSnackbar("المعرف غير صالح!", "#F44336")
-                    return@setPositiveButton
+                if (!isAdmin && newUsername.isNotEmpty()) {
+                    if (newUsername.length > 40) {
+                        showCustomSnackbar("المعرف يجب ألا يتجاوز 40 حرفاً", "#F44336")
+                        return@setPositiveButton
+                    }
+                    if (!newUsername.matches(Regex("^[a-zA-Z0-9_.]+$"))) {
+                        showCustomSnackbar("المعرف غير صالح!", "#F44336")
+                        return@setPositiveButton
+                    }
                 }
+                
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
                         val conn = URL("$BASE_API_URL/admin/force_update").openConnection() as HttpURLConnection
