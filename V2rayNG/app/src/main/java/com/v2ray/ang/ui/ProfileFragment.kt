@@ -82,7 +82,7 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    // 🌟 دالة توليد Hardware ID الموحدة لضمان عدم الطرد 🌟
+    // 🌟 دالة توليد Hardware ID 🌟
     private fun getUniqueHardwareId(): String {
         try {
             val devInfo = Build.BOARD + Build.BRAND + Build.DEVICE + Build.DISPLAY +
@@ -210,10 +210,10 @@ class ProfileFragment : Fragment() {
         val etDevice = view.findViewById<EditText>(R.id.et_profile_device)
         btnSave = view.findViewById(R.id.btn_save_profile)
 
-        // 🌟 فتح قفل تعديل الآيدي للأدمن فقط 🌟
+        // فتح قفل تعديل الآيدي للأدمن فقط
         if (userRole == "admin") {
             etId.isEnabled = true
-            etId.setTextColor(Color.parseColor("#FF9800")) // تمييز اللون ليعرف الأدمن أنه قابل للتعديل
+            etId.setTextColor(Color.parseColor("#FF9800"))
         } else {
             etId.isEnabled = false
         }
@@ -260,16 +260,24 @@ class ProfileFragment : Fragment() {
             val newName = etName.text.toString().trim()
             val newUsername = etUsername.text.toString().trim().replace("@", "")
             val newPass = etPass.text.toString().trim()
-            val newId = etId.text.toString().trim() // قراءة الآيدي الجديد في حال تم تعديله
+            val newId = etId.text.toString().trim() 
             
             if (newName.isEmpty() || newPass.isEmpty() || newId.isEmpty()) {
                 showCustomSnackbar("يرجى ملء كافة الحقول الأساسية", "#F44336", "error")
                 return@setOnClickListener
             }
-            if (newUsername.isNotEmpty() && !newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
-                showCustomSnackbar("المعرف غير صالح! مسموح بالحروف الإنجليزية والأرقام فقط", "#F44336", "error")
-                return@setOnClickListener
+            
+            if (newUsername.isNotEmpty()) {
+                if (newUsername.length !in 2..40) {
+                    showCustomSnackbar("المعرف يجب أن يكون بين 2 و 40 حرفاً/رقماً", "#F44336", "error")
+                    return@setOnClickListener
+                }
+                if (!newUsername.matches(Regex("^[a-zA-Z0-9_.]+$"))) {
+                    showCustomSnackbar("مسموح بالحروف الإنجليزية والأرقام فقط", "#F44336", "error")
+                    return@setOnClickListener
+                }
             }
+            
             saveProfile(newName, newUsername, newPass, userRole, newId)
         }
 
@@ -309,7 +317,6 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    // 🌟 دالة الحفظ المحدثة لتشمل قراءة وتغيير الآيدي ورسائل الخطأ الدقيقة 🌟
     private fun saveProfile(name: String, username: String, pass: String, role: String, newId: String) {
         btnSave.isEnabled = false
         btnSave.text = "جاري الحفظ..."
@@ -328,7 +335,7 @@ class ProfileFragment : Fragment() {
                     put("password", pass)
                     put("newPfp", currentBase64Pfp)
                     put("username", username)
-                    put("newId", newId) // إرسال الآيدي الجديد للسيرفر
+                    put("newId", newId) 
                 }
                 conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                 
@@ -337,7 +344,7 @@ class ProfileFragment : Fragment() {
                 val obj = JSONObject(responseText)
                 
                 if (obj.optBoolean("success", false)) {
-                    val savedId = obj.optString("newId", oldId) // استلام الآيدي المحدث (في حال نجاح التغيير)
+                    val savedId = obj.optString("newId", oldId)
                     AuthManager.saveUser(requireContext(), savedId, name, pass, role, currentBase64Pfp)
                     withContext(Dispatchers.Main) {
                         etId.setText(savedId)
@@ -369,8 +376,20 @@ class ProfileFragment : Fragment() {
         if (!::tvUsernameStatus.isInitialized) return
         if (username.isEmpty()) { tvUsernameStatus.visibility = View.GONE; return }
         
-        // 🌟 فحص فوري لمنع كتابة حروف عربية أو مسافات 🌟
-        if (!username.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
+        // 🌟 فحص فوري ومحسن لليوزر 🌟
+        if (username.length < 2) {
+            tvUsernameStatus.visibility = View.VISIBLE
+            tvUsernameStatus.text = "❌ المعرف يجب أن يكون حرفين على الأقل"
+            tvUsernameStatus.setTextColor(Color.RED)
+            return
+        }
+        if (username.length > 40) {
+            tvUsernameStatus.visibility = View.VISIBLE
+            tvUsernameStatus.text = "❌ المعرف يجب ألا يتجاوز 40 حرفاً/رقماً"
+            tvUsernameStatus.setTextColor(Color.RED)
+            return
+        }
+        if (!username.matches(Regex("^[a-zA-Z0-9_.]+$"))) {
             tvUsernameStatus.visibility = View.VISIBLE
             tvUsernameStatus.text = "❌ مسموح بالحروف الإنجليزية والأرقام فقط"
             tvUsernameStatus.setTextColor(Color.RED)
@@ -382,7 +401,7 @@ class ProfileFragment : Fragment() {
         tvUsernameStatus.setTextColor(Color.parseColor("#FF9800"))
 
         checkUserJob = lifecycleScope.launch(Dispatchers.IO) {
-            delay(500)
+            delay(500) // لتجنب إرسال طلبات كثيرة أثناء الكتابة
             try {
                 val conn = URL("$BASE_API_URL/auth/check_username?username=$username&id=${AuthManager.getId(requireContext())}").openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
@@ -481,8 +500,8 @@ class ProfileFragment : Fragment() {
                         val serverDevices = obj.optJSONArray("devices") ?: JSONArray()
                         
                         var isDeviceAuthorized = false
-                        // إذا كان أدمن أساسي (مثل 1, 2, 3) تخطى فحص الأجهزة
-                        if (AuthManager.getRole(requireContext()) == "admin" && serverDevices.length() == 0) {
+                        // 🌟 إعفاء تام للأدمن من الطرد وحرية الدخول من أي جهاز 🌟
+                        if (AuthManager.getRole(requireContext()) == "admin") {
                             isDeviceAuthorized = true
                         } else {
                             for (i in 0 until serverDevices.length()) {
