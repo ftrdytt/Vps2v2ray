@@ -80,6 +80,21 @@
                 android:resource="@xml/shortcuts" />
         </activity>
         
+        <!-- 🌟 الواجهات الاجتماعية الجديدة 🌟 -->
+        <activity
+            android:name=".ui.StoryUploadActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".ui.StoryViewerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".ui.UserProfileActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <!-- 🌟 نهاية الواجهات الجديدة 🌟 -->
+
         <activity
             android:name=".ui.ServerActivity"
             android:exported="false"
