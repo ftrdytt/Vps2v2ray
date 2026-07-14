@@ -55,7 +55,7 @@ class ProfileFragment : Fragment() {
     private lateinit var etPass: EditText
     private lateinit var btnSave: Button
     
-    // 🌟 عناصر التواصل الاجتماعي الجديدة 🌟
+    // 🌟 عناصر التواصل الاجتماعي 🌟
     private var tvFollowersCount: TextView? = null
     private var tvFollowingCount: TextView? = null
     private var btnAddStory: ImageView? = null
@@ -214,7 +214,6 @@ class ProfileFragment : Fragment() {
         val etDevice = view.findViewById<EditText>(R.id.et_profile_device)
         btnSave = view.findViewById(R.id.btn_save_profile)
         
-        // 🌟 استدعاء العناصر الاجتماعية (سنقوم بإنشائها في ملف الـ XML لاحقاً) 🌟
         tvFollowersCount = view.findViewById(R.id.tv_followers_count)
         tvFollowingCount = view.findViewById(R.id.tv_following_count)
         btnAddStory = view.findViewById(R.id.btn_add_story)
@@ -231,11 +230,9 @@ class ProfileFragment : Fragment() {
             pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
         }
         
-        // 🌟 زر إضافة قصة 🌟
+        // 🌟 تفعيل زر إضافة قصة (يفتح واجهة StoryUploadActivity) 🌟
         btnAddStory?.setOnClickListener {
-            // سيتم تفعيل هذا بعد إنشاء StoryUploadActivity
-            // startActivity(Intent(requireContext(), StoryUploadActivity::class.java))
-            Toast.makeText(requireContext(), "سيتم تفعيل رفع القصة قريباً", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(requireContext(), StoryUploadActivity::class.java))
         }
 
         view.findViewById<Button>(R.id.btn_copy_id).setOnClickListener { copyToClipboard("آيدي الحساب", etId.text.toString()) }
@@ -487,7 +484,7 @@ class ProfileFragment : Fragment() {
         renderDevices()
     }
 
-    // 🌟 إضافة الدائرة الزرقاء (Blue Ring) للقصة النشطة 🌟
+    // 🌟 تفعيل مشاهدة القصة عند النقر على الدائرة الزرقاء 🌟
     private fun updateProfilePicture(base64Str: String, name: String, userId: String, hasActiveStory: Boolean) {
         val bitmap = try {
             val cleanStr = if (base64Str.contains(",")) base64Str.substringAfter(",") else base64Str
@@ -508,8 +505,9 @@ class ProfileFragment : Fragment() {
                     }
                     it.setPadding(8, 8, 8, 8)
                     it.setOnClickListener {
-                        // سيتم تفعيله لاحقاً عند إنشاء StoryViewerActivity
-                        Toast.makeText(requireContext(), "فتح القصة الخاصة بك...", Toast.LENGTH_SHORT).show()
+                        val intent = Intent(requireContext(), StoryViewerActivity::class.java)
+                        intent.putExtra("targetUserId", userId)
+                        startActivity(intent)
                     }
                 } else {
                     it.background = null
@@ -555,7 +553,6 @@ class ProfileFragment : Fragment() {
                             etPass.setText(obj.getString("password"))
                             etUsername.setText(obj.optString("username", ""))
                             
-                            // 🌟 عرض المتابعين 🌟
                             tvFollowersCount?.text = "المتابعون\n$followers"
                             tvFollowingCount?.text = "أتابع\n$following"
                             
