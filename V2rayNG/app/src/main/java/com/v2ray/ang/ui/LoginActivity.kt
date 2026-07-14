@@ -18,7 +18,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AuthManager
-import com.v2ray.ang.handler.UpdateManager 
+import com.v2ray.ang.handler.UpdateManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -219,7 +219,7 @@ class LoginActivity : AppCompatActivity() {
                 }
                 hexString.append(hex)
             }
-            return hexString.toString().take(15).toUpperCase() // يولد آيدي مثل: A9C8B7F6D5E4A3
+            return hexString.toString().take(15).uppercase() // 🌟 تم تعديل toUpperCase() إلى uppercase() هنا 🌟
         } catch (e: Exception) {
             return "UNKNOWN_HW_ID"
         }
