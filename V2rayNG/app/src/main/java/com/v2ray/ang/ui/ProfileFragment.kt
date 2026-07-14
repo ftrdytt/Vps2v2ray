@@ -55,8 +55,13 @@ class ProfileFragment : Fragment() {
     private lateinit var etPass: EditText
     private lateinit var btnSave: Button
     
-    private var swipeRefreshLayout: SwipeRefreshLayout? = null
+    // 🌟 عناصر التواصل الاجتماعي الجديدة 🌟
+    private var tvFollowersCount: TextView? = null
+    private var tvFollowingCount: TextView? = null
+    private var btnAddStory: ImageView? = null
+    private var layoutAvatarContainer: FrameLayout? = null
     
+    private var swipeRefreshLayout: SwipeRefreshLayout? = null
     private var currentBase64Pfp: String = ""
     private var myDeviceId: String = ""
     private var activeDevicesList = JSONArray()
@@ -77,12 +82,11 @@ class ProfileFragment : Fragment() {
                 scaled.compress(Bitmap.CompressFormat.JPEG, 75, baos)
                 
                 currentBase64Pfp = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
-                updateProfilePicture(currentBase64Pfp, AuthManager.getName(requireContext()), AuthManager.getId(requireContext()))
+                updateProfilePicture(currentBase64Pfp, AuthManager.getName(requireContext()), AuthManager.getId(requireContext()), false)
             } catch (e: Exception) {}
         }
     }
 
-    // 🌟 دالة توليد Hardware ID 🌟
     private fun getUniqueHardwareId(): String {
         try {
             val devInfo = Build.BOARD + Build.BRAND + Build.DEVICE + Build.DISPLAY +
@@ -209,8 +213,13 @@ class ProfileFragment : Fragment() {
         etPass = view.findViewById(R.id.et_profile_pass)
         val etDevice = view.findViewById<EditText>(R.id.et_profile_device)
         btnSave = view.findViewById(R.id.btn_save_profile)
+        
+        // 🌟 استدعاء العناصر الاجتماعية (سنقوم بإنشائها في ملف الـ XML لاحقاً) 🌟
+        tvFollowersCount = view.findViewById(R.id.tv_followers_count)
+        tvFollowingCount = view.findViewById(R.id.tv_following_count)
+        btnAddStory = view.findViewById(R.id.btn_add_story)
+        layoutAvatarContainer = view.findViewById(R.id.layout_avatar_container)
 
-        // فتح قفل تعديل الآيدي للأدمن فقط
         if (userRole == "admin") {
             etId.isEnabled = true
             etId.setTextColor(Color.parseColor("#FF9800"))
@@ -221,6 +230,14 @@ class ProfileFragment : Fragment() {
         view.findViewById<ImageView>(R.id.btn_change_avatar).setOnClickListener {
             pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
         }
+        
+        // 🌟 زر إضافة قصة 🌟
+        btnAddStory?.setOnClickListener {
+            // سيتم تفعيل هذا بعد إنشاء StoryUploadActivity
+            // startActivity(Intent(requireContext(), StoryUploadActivity::class.java))
+            Toast.makeText(requireContext(), "سيتم تفعيل رفع القصة قريباً", Toast.LENGTH_SHORT).show()
+        }
+
         view.findViewById<Button>(R.id.btn_copy_id).setOnClickListener { copyToClipboard("آيدي الحساب", etId.text.toString()) }
         view.findViewById<Button>(R.id.btn_copy_device).setOnClickListener { copyToClipboard("آيدي الجهاز", myDeviceId) }
         view.findViewById<Button>(R.id.btn_manage_devices).setOnClickListener { showDevicesDialog() }
@@ -254,7 +271,7 @@ class ProfileFragment : Fragment() {
             }
         }
 
-        updateProfilePicture(currentBase64Pfp, AuthManager.getName(requireContext()), userId)
+        updateProfilePicture(currentBase64Pfp, AuthManager.getName(requireContext()), userId, false)
 
         btnSave.setOnClickListener {
             val newName = etName.text.toString().trim()
@@ -349,7 +366,7 @@ class ProfileFragment : Fragment() {
                     withContext(Dispatchers.Main) {
                         etId.setText(savedId)
                         showCustomSnackbar("تم حفظ التعديلات بنجاح!", "#4CAF50", "success") 
-                        updateProfilePicture(currentBase64Pfp, name, savedId)
+                        updateProfilePicture(currentBase64Pfp, name, savedId, false)
                         btnSave.isEnabled = true
                         btnSave.text = "حفظ التعديلات السحابية"
                     }
@@ -376,16 +393,9 @@ class ProfileFragment : Fragment() {
         if (!::tvUsernameStatus.isInitialized) return
         if (username.isEmpty()) { tvUsernameStatus.visibility = View.GONE; return }
         
-        // 🌟 فحص فوري ومحسن لليوزر 🌟
-        if (username.length < 2) {
+        if (username.length !in 2..40) {
             tvUsernameStatus.visibility = View.VISIBLE
-            tvUsernameStatus.text = "❌ المعرف يجب أن يكون حرفين على الأقل"
-            tvUsernameStatus.setTextColor(Color.RED)
-            return
-        }
-        if (username.length > 40) {
-            tvUsernameStatus.visibility = View.VISIBLE
-            tvUsernameStatus.text = "❌ المعرف يجب ألا يتجاوز 40 حرفاً/رقماً"
+            tvUsernameStatus.text = "❌ المعرف يجب أن يكون بين 2 و 40 حرفاً/رقماً"
             tvUsernameStatus.setTextColor(Color.RED)
             return
         }
@@ -401,7 +411,7 @@ class ProfileFragment : Fragment() {
         tvUsernameStatus.setTextColor(Color.parseColor("#FF9800"))
 
         checkUserJob = lifecycleScope.launch(Dispatchers.IO) {
-            delay(500) // لتجنب إرسال طلبات كثيرة أثناء الكتابة
+            delay(500)
             try {
                 val conn = URL("$BASE_API_URL/auth/check_username?username=$username&id=${AuthManager.getId(requireContext())}").openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
@@ -477,7 +487,8 @@ class ProfileFragment : Fragment() {
         renderDevices()
     }
 
-    private fun updateProfilePicture(base64Str: String, name: String, userId: String) {
+    // 🌟 إضافة الدائرة الزرقاء (Blue Ring) للقصة النشطة 🌟
+    private fun updateProfilePicture(base64Str: String, name: String, userId: String, hasActiveStory: Boolean) {
         val bitmap = try {
             val cleanStr = if (base64Str.contains(",")) base64Str.substringAfter(",") else base64Str
             val b = Base64.decode(cleanStr.replace("\\s+".toRegex(), ""), Base64.DEFAULT)
@@ -487,6 +498,25 @@ class ProfileFragment : Fragment() {
         if (bitmap != null) {
             val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
             ivAvatar.setImageDrawable(circularDrawable)
+            
+            layoutAvatarContainer?.let {
+                if (hasActiveStory) {
+                    it.background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setStroke(8, Color.parseColor("#2196F3")) // لون القصة النشطة الأزرق
+                        setColor(Color.TRANSPARENT)
+                    }
+                    it.setPadding(8, 8, 8, 8)
+                    it.setOnClickListener {
+                        // سيتم تفعيله لاحقاً عند إنشاء StoryViewerActivity
+                        Toast.makeText(requireContext(), "فتح القصة الخاصة بك...", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    it.background = null
+                    it.setPadding(0, 0, 0, 0)
+                    it.setOnClickListener(null)
+                }
+            }
         }
     }
 
@@ -500,7 +530,6 @@ class ProfileFragment : Fragment() {
                         val serverDevices = obj.optJSONArray("devices") ?: JSONArray()
                         
                         var isDeviceAuthorized = false
-                        // 🌟 إعفاء تام للأدمن من الطرد وحرية الدخول من أي جهاز 🌟
                         if (AuthManager.getRole(requireContext()) == "admin") {
                             isDeviceAuthorized = true
                         } else {
@@ -517,13 +546,22 @@ class ProfileFragment : Fragment() {
                             return@launch
                         }
 
+                        val followers = obj.optInt("followersCount", 0)
+                        val following = obj.optInt("followingCount", 0)
+                        val hasActiveStory = obj.optBoolean("hasActiveStory", false)
+
                         withContext(Dispatchers.Main) {
                             etName.setText(obj.getString("name"))
                             etPass.setText(obj.getString("password"))
                             etUsername.setText(obj.optString("username", ""))
+                            
+                            // 🌟 عرض المتابعين 🌟
+                            tvFollowersCount?.text = "المتابعون\n$followers"
+                            tvFollowingCount?.text = "أتابع\n$following"
+                            
                             activeDevicesList = serverDevices
                             currentBase64Pfp = obj.optString("pfp", currentBase64Pfp)
-                            updateProfilePicture(currentBase64Pfp, obj.getString("name"), userId)
+                            updateProfilePicture(currentBase64Pfp, obj.getString("name"), userId, hasActiveStory)
                             if (isSwipeRefresh) showCustomSnackbar("تم تحديث البيانات بنجاح ✔", "#4CAF50", "success")
                         }
                     }
