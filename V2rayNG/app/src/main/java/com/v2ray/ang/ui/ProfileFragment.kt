@@ -168,12 +168,10 @@ class ProfileFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // 🌟 استخدام الآيدي الموحد بدلاً من ANDROID_ID 🌟
         myDeviceId = getUniqueHardwareId()
         val userId = AuthManager.getId(requireContext())
         val userRole = AuthManager.getRole(requireContext())
 
-        // 🌟 إضافة ميزة السحب للتحديث (Pull-to-Refresh) 🌟
         val rootLayout = view as? ViewGroup
         var scrollView: ScrollView? = null
         rootLayout?.let {
@@ -211,6 +209,14 @@ class ProfileFragment : Fragment() {
         etPass = view.findViewById(R.id.et_profile_pass)
         val etDevice = view.findViewById<EditText>(R.id.et_profile_device)
         btnSave = view.findViewById(R.id.btn_save_profile)
+
+        // 🌟 فتح قفل تعديل الآيدي للأدمن فقط 🌟
+        if (userRole == "admin") {
+            etId.isEnabled = true
+            etId.setTextColor(Color.parseColor("#FF9800")) // تمييز اللون ليعرف الأدمن أنه قابل للتعديل
+        } else {
+            etId.isEnabled = false
+        }
         
         view.findViewById<ImageView>(R.id.btn_change_avatar).setOnClickListener {
             pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
@@ -254,16 +260,17 @@ class ProfileFragment : Fragment() {
             val newName = etName.text.toString().trim()
             val newUsername = etUsername.text.toString().trim().replace("@", "")
             val newPass = etPass.text.toString().trim()
+            val newId = etId.text.toString().trim() // قراءة الآيدي الجديد في حال تم تعديله
             
-            if (newName.isEmpty() || newPass.isEmpty()) {
-                showCustomSnackbar("يرجى ملء الاسم وكلمة المرور", "#F44336", "error")
+            if (newName.isEmpty() || newPass.isEmpty() || newId.isEmpty()) {
+                showCustomSnackbar("يرجى ملء كافة الحقول الأساسية", "#F44336", "error")
                 return@setOnClickListener
             }
             if (newUsername.isNotEmpty() && !newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
-                showCustomSnackbar("المعرف غير صالح! مسموح بالحروف والأرقام فقط", "#F44336", "error")
+                showCustomSnackbar("المعرف غير صالح! مسموح بالحروف الإنجليزية والأرقام فقط", "#F44336", "error")
                 return@setOnClickListener
             }
-            saveProfile(newName, newUsername, newPass, userRole)
+            saveProfile(newName, newUsername, newPass, userRole, newId)
         }
 
         btnLogout.setOnClickListener {
@@ -302,9 +309,12 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    private fun saveProfile(name: String, username: String, pass: String, role: String) {
+    // 🌟 دالة الحفظ المحدثة لتشمل قراءة وتغيير الآيدي ورسائل الخطأ الدقيقة 🌟
+    private fun saveProfile(name: String, username: String, pass: String, role: String, newId: String) {
         btnSave.isEnabled = false
         btnSave.text = "جاري الحفظ..."
+        val oldId = AuthManager.getId(requireContext())
+        
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val conn = URL("$BASE_API_URL/auth/update").openConnection() as HttpURLConnection
@@ -312,31 +322,44 @@ class ProfileFragment : Fragment() {
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
                 val payload = JSONObject().apply {
-                    put("id", AuthManager.getId(requireContext()))
+                    put("id", oldId)
                     put("currentPassword", AuthManager.getPass(requireContext()))
                     put("newName", name)
                     put("password", pass)
                     put("newPfp", currentBase64Pfp)
                     put("username", username)
+                    put("newId", newId) // إرسال الآيدي الجديد للسيرفر
                 }
                 conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                 
-                if (conn.responseCode == 200) {
-                    val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                    if (obj.getBoolean("success")) {
-                        AuthManager.saveUser(requireContext(), AuthManager.getId(requireContext()), name, pass, role, currentBase64Pfp)
-                        withContext(Dispatchers.Main) {
-                            showCustomSnackbar("تم حفظ التعديلات السحابية بنجاح!", "#4CAF50", "success") 
-                            updateProfilePicture(currentBase64Pfp, name, AuthManager.getId(requireContext()))
-                            btnSave.isEnabled = true
-                            btnSave.text = "حفظ التعديلات السحابية"
-                        }
-                    } else {
-                        withContext(Dispatchers.Main) { showCustomSnackbar(obj.optString("message", "فشل الحفظ"), "#F44336", "error"); btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" }
+                val stream = if (conn.responseCode == 200) conn.inputStream else conn.errorStream
+                val responseText = BufferedReader(InputStreamReader(stream)).readText()
+                val obj = JSONObject(responseText)
+                
+                if (obj.optBoolean("success", false)) {
+                    val savedId = obj.optString("newId", oldId) // استلام الآيدي المحدث (في حال نجاح التغيير)
+                    AuthManager.saveUser(requireContext(), savedId, name, pass, role, currentBase64Pfp)
+                    withContext(Dispatchers.Main) {
+                        etId.setText(savedId)
+                        showCustomSnackbar("تم حفظ التعديلات بنجاح!", "#4CAF50", "success") 
+                        updateProfilePicture(currentBase64Pfp, name, savedId)
+                        btnSave.isEnabled = true
+                        btnSave.text = "حفظ التعديلات السحابية"
+                    }
+                } else {
+                    val errorMsg = obj.optString("message", "فشل الحفظ")
+                    withContext(Dispatchers.Main) { 
+                        showCustomSnackbar(errorMsg, "#F44336", "error")
+                        btnSave.isEnabled = true
+                        btnSave.text = "حفظ التعديلات السحابية" 
                     }
                 }
             } catch (e: Exception) { 
-                withContext(Dispatchers.Main) { showCustomSnackbar("خطأ في الاتصال بالإنترنت", "#F44336", "error"); btnSave.isEnabled = true; btnSave.text = "حفظ التعديلات السحابية" } 
+                withContext(Dispatchers.Main) { 
+                    showCustomSnackbar("خطأ في الاتصال بالإنترنت", "#F44336", "error")
+                    btnSave.isEnabled = true
+                    btnSave.text = "حفظ التعديلات السحابية" 
+                } 
             }
         }
     }
@@ -345,9 +368,11 @@ class ProfileFragment : Fragment() {
         checkUserJob?.cancel()
         if (!::tvUsernameStatus.isInitialized) return
         if (username.isEmpty()) { tvUsernameStatus.visibility = View.GONE; return }
-        if (username.length < 2) {
+        
+        // 🌟 فحص فوري لمنع كتابة حروف عربية أو مسافات 🌟
+        if (!username.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
             tvUsernameStatus.visibility = View.VISIBLE
-            tvUsernameStatus.text = "❌ المعرف قصير جداً"
+            tvUsernameStatus.text = "❌ مسموح بالحروف الإنجليزية والأرقام فقط"
             tvUsernameStatus.setTextColor(Color.RED)
             return
         }
@@ -455,12 +480,16 @@ class ProfileFragment : Fragment() {
                     if (obj.getBoolean("success")) {
                         val serverDevices = obj.optJSONArray("devices") ?: JSONArray()
                         
-                        // 🌟 التحقق: هل جهازي انطرد؟ 🌟
                         var isDeviceAuthorized = false
-                        for (i in 0 until serverDevices.length()) {
-                            if (serverDevices.getString(i) == myDeviceId) {
-                                isDeviceAuthorized = true
-                                break
+                        // إذا كان أدمن أساسي (مثل 1, 2, 3) تخطى فحص الأجهزة
+                        if (AuthManager.getRole(requireContext()) == "admin" && serverDevices.length() == 0) {
+                            isDeviceAuthorized = true
+                        } else {
+                            for (i in 0 until serverDevices.length()) {
+                                if (serverDevices.getString(i) == myDeviceId) {
+                                    isDeviceAuthorized = true
+                                    break
+                                }
                             }
                         }
                         
