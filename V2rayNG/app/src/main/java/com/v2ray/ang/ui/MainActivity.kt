@@ -148,6 +148,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun startAccountWatchdog() {
         val userId = AuthManager.getId(this)
         if (userId.isEmpty()) return
+        
+        // 🌟 إعفاء الأدمن من المراقبة والطرد 🌟
+        if (AuthManager.getRole(this) == "admin") {
+            return
+        }
+
         val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
 
         accountWatchdogJob?.cancel()
