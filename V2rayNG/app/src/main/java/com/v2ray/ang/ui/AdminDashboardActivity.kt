@@ -138,7 +138,6 @@ class AdminDashboardActivity : AppCompatActivity() {
         fetchAllUsers()
     }
 
-    // 🌟 دالة الإشعار الحديث (Custom Snackbar) 🌟
     private fun showCustomSnackbar(message: String, colorHex: String) {
         val rootView = findViewById<View>(android.R.id.content)
         val snackbar = Snackbar.make(rootView, "", Snackbar.LENGTH_SHORT)
@@ -215,6 +214,7 @@ class AdminDashboardActivity : AppCompatActivity() {
             val name = u.getString("name")
             val username = u.optString("username", "")
             val devicesArray = u.optJSONArray("devices")
+            val isAdmin = u.optBoolean("isAdmin", false)
             
             var match = name.contains(searchQuery, true) || id.contains(searchQuery, true) || username.contains(searchQuery, true)
             if (!match && devicesArray != null) {
@@ -226,7 +226,7 @@ class AdminDashboardActivity : AppCompatActivity() {
 
             addUserCard(
                 usersContainer, id, name, u.getString("password"), u.optString("pfp", ""),
-                u.optBoolean("banned", false), username, devicesArray
+                u.optBoolean("banned", false), username, devicesArray, isAdmin
             )
         }
     }
@@ -342,7 +342,7 @@ class AdminDashboardActivity : AppCompatActivity() {
                     val bannedList = allUsersCache.values.filter { it.optBoolean("banned", false) }
                     withContext(Dispatchers.Main) {
                         if (bannedList.isEmpty()) scrollContent.addView(TextView(this@AdminDashboardActivity).apply { text = "لا يوجد محظورين"; setTextColor(Color.WHITE) })
-                        bannedList.forEach { u -> addUserCard(scrollContent, u.getString("id"), u.getString("name"), u.getString("password"), u.optString("pfp", ""), true, u.optString("username", ""), u.optJSONArray("devices")) }
+                        bannedList.forEach { u -> addUserCard(scrollContent, u.getString("id"), u.getString("name"), u.getString("password"), u.optString("pfp", ""), true, u.optString("username", ""), u.optJSONArray("devices"), u.optBoolean("isAdmin", false)) }
                     }
                 } else {
                     val url = URL("$BASE_API_URL/admin/get_stats?type=$type")
@@ -376,13 +376,13 @@ class AdminDashboardActivity : AppCompatActivity() {
         for (i in 0 until idsArray.length()) {
             val id = idsArray.getString(i)
             val u = allUsersCache[id]
-            if (u != null) addUserCard(scrollContent, id, u.getString("name"), u.getString("password"), u.optString("pfp", ""), u.optBoolean("banned", false), u.optString("username", ""), u.optJSONArray("devices"))
+            if (u != null) addUserCard(scrollContent, id, u.getString("name"), u.getString("password"), u.optString("pfp", ""), u.optBoolean("banned", false), u.optString("username", ""), u.optJSONArray("devices"), u.optBoolean("isAdmin", false))
             else scrollContent.addView(TextView(this).apply { text = "ID: $id (محذوف من النظام)"; setTextColor(Color.GRAY) })
         }
         AlertDialog.Builder(this).setView(dialogView).setPositiveButton("رجوع", null).show()
     }
 
-    private fun addUserCard(container: LinearLayout, id: String, name: String, pass: String, pfp: String, isBanned: Boolean, username: String, devicesArray: JSONArray?) {
+    private fun addUserCard(container: LinearLayout, id: String, name: String, pass: String, pfp: String, isBanned: Boolean, username: String, devicesArray: JSONArray?, isAdmin: Boolean) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
 
         val topLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -400,7 +400,7 @@ class AdminDashboardActivity : AppCompatActivity() {
         avatarCard.addView(ivAvatar)
         
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
-        infoLayout.addView(TextView(this).apply { text = "الاسم: $name"; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
+        infoLayout.addView(TextView(this).apply { text = "الاسم: $name"; setTextColor(if (isAdmin) Color.parseColor("#FFD700") else Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
         
         if (username.isNotEmpty()) {
             infoLayout.addView(TextView(this).apply { text = "المعرف: @$username"; setTextColor(Color.parseColor("#2196F3")); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD) })
@@ -414,18 +414,20 @@ class AdminDashboardActivity : AppCompatActivity() {
 
         infoLayout.addView(TextView(this).apply { text = "الرمز: $pass"; setTextColor(Color.parseColor("#80FFFFFF")); textSize = 14f })
         
-        if (devicesArray != null && devicesArray.length() > 0) {
-            infoLayout.addView(TextView(this).apply { text = "الأجهزة المسجلة (${devicesArray.length()}):"; setTextColor(Color.parseColor("#9C27B0")); textSize = 12f; setPadding(0, 15, 0, 10) })
-            for (j in 0 until devicesArray.length()) {
-                val devId = devicesArray.getString(j)
-                val devLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, 10) }
-                devLayout.addView(TextView(this).apply { text = "📱 $devId"; setTextColor(Color.LTGRAY); textSize = 12f; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
-                val btnCopyDev = TextView(this).apply { text = "📋 نسخ"; setTextColor(Color.LTGRAY); textSize = 10f; setPadding(20,10,20,10); background = GradientDrawable().apply { setColor(Color.parseColor("#252529")); cornerRadius = 15f }; setOnClickListener { copyToClipboard("آيدي الجهاز", devId) } }
-                devLayout.addView(btnCopyDev)
-                infoLayout.addView(devLayout)
+        if (!isAdmin) {
+            if (devicesArray != null && devicesArray.length() > 0) {
+                infoLayout.addView(TextView(this).apply { text = "الأجهزة المسجلة (${devicesArray.length()}):"; setTextColor(Color.parseColor("#9C27B0")); textSize = 12f; setPadding(0, 15, 0, 10) })
+                for (j in 0 until devicesArray.length()) {
+                    val devId = devicesArray.getString(j)
+                    val devLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, 10) }
+                    devLayout.addView(TextView(this).apply { text = "📱 $devId"; setTextColor(Color.LTGRAY); textSize = 12f; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
+                    val btnCopyDev = TextView(this).apply { text = "📋 نسخ"; setTextColor(Color.LTGRAY); textSize = 10f; setPadding(20,10,20,10); background = GradientDrawable().apply { setColor(Color.parseColor("#252529")); cornerRadius = 15f }; setOnClickListener { copyToClipboard("آيدي الجهاز", devId) } }
+                    devLayout.addView(btnCopyDev)
+                    infoLayout.addView(devLayout)
+                }
+            } else {
+                infoLayout.addView(TextView(this).apply { text = "لا توجد أجهزة مرتبطة"; setTextColor(Color.GRAY); textSize = 12f; setPadding(0, 10, 0, 5) })
             }
-        } else {
-            infoLayout.addView(TextView(this).apply { text = "لا توجد أجهزة مرتبطة"; setTextColor(Color.GRAY); textSize = 12f; setPadding(0, 10, 0, 5) })
         }
         
         if (isBanned) { infoLayout.addView(TextView(this).apply { text = "🚫 محظور"; setTextColor(Color.RED); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD); setPadding(0,10,0,0) }) }
@@ -433,29 +435,51 @@ class AdminDashboardActivity : AppCompatActivity() {
         topLayout.addView(avatarCard); topLayout.addView(infoLayout); card.addView(topLayout)
 
         val btnLayout1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 20 } }
-        val btnEdit = MaterialButton(this).apply { text = "تعديل"; setBackgroundColor(Color.parseColor("#2196F3")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, 10, 0) }; setOnClickListener { showEditDialog(id, name, pass, username) } }
+        val btnEdit = MaterialButton(this).apply { text = "تعديل"; setBackgroundColor(Color.parseColor("#2196F3")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, 10, 0) }; setOnClickListener { showEditDialog(id, name, pass, username, isAdmin) } }
         val btnUnbind = MaterialButton(this).apply { text = "مسح الأجهزة"; setBackgroundColor(Color.parseColor("#9C27B0")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { unbindDevice(id) } }
-        btnLayout1.addView(btnEdit); btnLayout1.addView(btnUnbind)
+        btnLayout1.addView(btnEdit)
+        if (!isAdmin) btnLayout1.addView(btnUnbind)
 
         val btnLayout2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 10 } }
         val btnBan = MaterialButton(this).apply { text = if(isBanned) "فك الحظر" else "حظر"; setBackgroundColor(Color.parseColor("#FF9800")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, 10, 0) }; setOnClickListener { toggleBanUser(id, !isBanned) } }
         val btnDelete = MaterialButton(this).apply { text = "حذف"; setBackgroundColor(Color.RED); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); setOnClickListener { showDeleteConfirmDialog(id) } }
-        btnLayout2.addView(btnBan); btnLayout2.addView(btnDelete)
-
-        card.addView(btnLayout1); card.addView(btnLayout2)
+        
+        if (!isAdmin) {
+            btnLayout2.addView(btnBan); btnLayout2.addView(btnDelete)
+            card.addView(btnLayout1); card.addView(btnLayout2)
+        } else {
+            card.addView(btnLayout1)
+        }
+        
         container.addView(card)
     }
 
-    private fun showEditDialog(id: String, oldName: String, oldPass: String, oldUsername: String) {
+    private fun showEditDialog(id: String, oldName: String, oldPass: String, oldUsername: String, isAdmin: Boolean) {
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 40, 50, 40) }
-        val etName = EditText(this).apply { hint = "الاسم الجديد"; setText(oldName); setTextColor(Color.BLACK) }
+        val etName = EditText(this).apply { hint = "الاسم الجديد"; setText(oldName.replace(" (أدمن)", "")); setTextColor(Color.BLACK) }
+        
         val etUsername = EditText(this).apply { hint = "المعرف (@) اختياري"; setText(oldUsername); setTextColor(Color.BLACK) }
+        if (isAdmin) etUsername.visibility = View.GONE
+        
         val etPass = EditText(this).apply { hint = "الرمز الجديد"; setText(oldPass); setTextColor(Color.BLACK) }
-        layout.addView(etName); layout.addView(etUsername); layout.addView(etPass)
+        
+        // 🌟 حقل الآيدي الجديد (يمكن للأدمن تغييره للمستخدمين، ولكن لا يمكن تغييره لحسابات الأدمن) 🌟
+        val etNewId = EditText(this).apply { hint = "تغيير الآيدي (ID)"; setText(id); setTextColor(Color.parseColor("#FF9800")); setTypeface(null, android.graphics.Typeface.BOLD) }
+        if (isAdmin) {
+            etNewId.isEnabled = false
+            etNewId.setTextColor(Color.GRAY)
+        }
+
+        layout.addView(etName)
+        if (!isAdmin) layout.addView(etUsername)
+        layout.addView(etPass)
+        layout.addView(etNewId)
 
         AlertDialog.Builder(this).setTitle("تعديل بيانات $id").setView(layout)
             .setPositiveButton("حفظ") { _, _ ->
                 val newUsername = etUsername.text.toString().trim().replace("@", "")
+                val newId = etNewId.text.toString().trim()
+
                 if (newUsername.isNotEmpty() && !newUsername.matches(Regex("^[a-zA-Z0-9_.]{2,}\$"))) {
                     showCustomSnackbar("المعرف غير صالح!", "#F44336")
                     return@setPositiveButton
@@ -465,9 +489,31 @@ class AdminDashboardActivity : AppCompatActivity() {
                         val conn = URL("$BASE_API_URL/admin/force_update").openConnection() as HttpURLConnection
                         conn.requestMethod = "POST"
                         conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                        val payload = JSONObject().apply { put("id", id); put("name", etName.text.toString()); put("password", etPass.text.toString()); put("username", newUsername) }
+                        val payload = JSONObject().apply { 
+                            put("id", id)
+                            put("name", etName.text.toString())
+                            put("password", etPass.text.toString())
+                            if (!isAdmin) put("username", newUsername)
+                            if (!isAdmin && newId.isNotEmpty() && newId != id) put("newId", newId) 
+                        }
                         conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-                        if (conn.responseCode == 200) fetchAllUsers()
+                        
+                        val responseCode = conn.responseCode
+                        val stream = if (responseCode == 200) conn.inputStream else conn.errorStream
+                        val responseText = BufferedReader(InputStreamReader(stream)).readText()
+                        
+                        if (responseCode == 200) {
+                            val obj = JSONObject(responseText)
+                            if (obj.optBoolean("success", false)) {
+                                withContext(Dispatchers.Main) { showCustomSnackbar("تم التعديل بنجاح ✔", "#4CAF50") }
+                                fetchAllUsers()
+                            } else {
+                                val errorMsg = obj.optString("message", "فشل التعديل")
+                                withContext(Dispatchers.Main) { showCustomSnackbar(errorMsg, "#F44336") }
+                            }
+                        } else {
+                            withContext(Dispatchers.Main) { showCustomSnackbar("خطأ في السيرفر", "#F44336") }
+                        }
                     } catch (e: Exception) {}
                 }
             }.setNegativeButton("إلغاء", null).show()
