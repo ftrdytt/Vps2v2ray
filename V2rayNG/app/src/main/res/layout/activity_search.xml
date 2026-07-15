@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#0A0A0C">
+
+    <!-- شريط البحث العلوي -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#141417"
+        android:padding="12dp"
+        android:elevation="4dp">
+
+        <ImageView
+            android:id="@+id/btn_back_search"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:padding="4dp"
+            android:src="?attr/homeAsUpIndicator"
+            app:tint="#FFFFFF"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            app:boxBackgroundColor="#252529"
+            app:boxCornerRadiusTopStart="12dp"
+            app:boxCornerRadiusTopEnd="12dp"
+            app:boxCornerRadiusBottomStart="12dp"
+            app:boxCornerRadiusBottomEnd="12dp"
+            app:boxStrokeWidth="0dp"
+            app:endIconMode="clear_text"
+            app:endIconTint="#888888">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_search_query"
+                android:layout_width="match_parent"
+                android:layout_height="45dp"
+                android:hint="ابحث عن اسم أو معرف أو آيدي..."
+                android:textColorHint="#888888"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:padding="0dp"
+                android:inputType="text"
+                android:imeOptions="actionSearch"
+                android:maxLines="1" />
+        </com.google.android.material.textfield.TextInputLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- قائمة النتائج -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rv_search_results"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingTop="8dp"
+            android:paddingBottom="20dp" />
+
+        <!-- نص الحالة (اكتب للبحث / لا توجد نتائج) -->
+        <TextView
+            android:id="@+id/tv_search_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="اكتب شيئاً للبحث 🔍"
+            android:textColor="#888888"
+            android:textSize="16sp" />
+
+        <!-- مؤشر التحميل -->
+        <ProgressBar
+            android:id="@+id/pb_search_loading"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:indeterminateTint="#2196F3"
+            android:visibility="gone" />
+    </FrameLayout>
+</LinearLayout>
