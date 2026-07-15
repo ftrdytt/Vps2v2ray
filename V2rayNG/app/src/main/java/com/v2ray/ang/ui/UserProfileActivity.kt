@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Base64
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -72,11 +73,18 @@ class UserProfileActivity : AppCompatActivity() {
         tvFollowingCount = findViewById(R.id.tv_following_count)
         btnFollow = findViewById(R.id.btn_follow_user)
 
-        // إخفاء زر المتابعة إذا كان الحساب هو حسابي الشخصي
+        // إعداد زر المتابعة مع الأنيميشن
         if (targetUserId == myUserId) {
             btnFollow.visibility = View.GONE
         } else {
-            btnFollow.setOnClickListener { toggleFollow() }
+            btnFollow.setOnClickListener { view ->
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                // تأثير ضغطة احترافي
+                view.animate().scaleX(0.9f).scaleY(0.9f).setDuration(100).withEndAction {
+                    view.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start()
+                    toggleFollow()
+                }.start()
+            }
             checkFollowStatus()
         }
         
@@ -95,6 +103,12 @@ class UserProfileActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
+        fetchUserData()
+    }
+
+    // لضمان تحديث الصفحة إذا رجع المستخدم من شاشة النشر أو القصص
+    override fun onResume() {
+        super.onResume()
         fetchUserData()
     }
 
@@ -209,6 +223,7 @@ class UserProfileActivity : AppCompatActivity() {
             val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
             ivUserPfp.setImageDrawable(circularDrawable)
 
+            // إعداد إطار القصة وإجراءات الضغط على الصورة
             if (hasStory) {
                 layoutAvatarContainer.background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
@@ -216,6 +231,7 @@ class UserProfileActivity : AppCompatActivity() {
                     setColor(Color.TRANSPARENT)
                 }
                 layoutAvatarContainer.setPadding(8, 8, 8, 8)
+                
                 layoutAvatarContainer.setOnClickListener {
                     val intent = Intent(this, StoryViewerActivity::class.java)
                     intent.putExtra("targetUserId", targetUserId)
@@ -224,7 +240,16 @@ class UserProfileActivity : AppCompatActivity() {
             } else {
                 layoutAvatarContainer.background = null
                 layoutAvatarContainer.setPadding(0, 0, 0, 0)
-                layoutAvatarContainer.setOnClickListener(null)
+                
+                // 🌟 إضافة مهمة جداً: إذا كان حسابي وليس لدي قصة، بضغطي على صورتي تفتح شاشة نشر قصة! 🌟
+                if (targetUserId == myUserId) {
+                    layoutAvatarContainer.setOnClickListener {
+                        val intent = Intent(this, StoryUploadActivity::class.java)
+                        startActivity(intent)
+                    }
+                } else {
+                    layoutAvatarContainer.setOnClickListener(null)
+                }
             }
         }
     }
