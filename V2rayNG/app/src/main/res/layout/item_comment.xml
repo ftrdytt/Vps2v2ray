@@ -5,11 +5,14 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:padding="12dp">
+    android:layoutDirection="rtl"
+    android:padding="16dp">
 
+    <!-- صورة الملف الشخصي الدائرية -->
     <androidx.cardview.widget.CardView
         android:layout_width="40dp"
         android:layout_height="40dp"
+        android:layout_marginEnd="10dp"
         app:cardCornerRadius="20dp"
         app:cardBackgroundColor="#252529"
         app:cardElevation="0dp">
@@ -24,82 +27,139 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:orientation="vertical"
-        android:layout_marginStart="12dp">
+        android:orientation="vertical">
 
+        <!-- فقاعة التعليق (الخلفية الرمادية الأنيقة مثل فيسبوك) -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/bg_comment_bubble"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="10dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/tv_comment_name"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <!-- علامة التوثيق (تظهر للأدمن) -->
+                <ImageView
+                    android:id="@+id/iv_verified"
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:layout_marginStart="4dp"
+                    android:src="@android:drawable/checkbox_on_background"
+                    app:tint="#1DA1F2"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_comment_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="#E0E0E0"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- أزرار التفاعل (الوقت، إعجاب، رد) بستايل أفقي مثل انستغرام -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
+            android:layout_marginTop="4dp"
+            android:layout_marginStart="12dp"
             android:gravity="center_vertical">
+
             <TextView
-                android:id="@+id/tv_comment_name"
+                android:id="@+id/tv_comment_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#80FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-            
-            <ImageView
-                android:id="@+id/iv_verified"
-                android:layout_width="14dp"
-                android:layout_height="14dp"
-                android:layout_marginStart="4dp"
-                android:src="@android:drawable/checkbox_on_background"
-                app:tint="#FFD700"
-                android:visibility="gone"/>
-        </LinearLayout>
+                android:textSize="12sp" />
 
-        <TextView
-            android:id="@+id/tv_comment_text"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#FFFFFF"
-            android:textSize="15sp"
-            android:layout_marginTop="2dp" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=" • "
+                android:textColor="#80FFFFFF"
+                android:textSize="12sp" />
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginTop="6dp">
+            <!-- زر اللايك المدمج بجانب كلمة "رد" -->
+            <LinearLayout
+                android:id="@+id/btn_like_comment"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="إعجاب"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=" • "
+                android:textColor="#80FFFFFF"
+                android:textSize="12sp" />
+
             <TextView
                 android:id="@+id/tv_comment_reply"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="رد"
-                android:textColor="#80FFFFFF"
+                android:textColor="#B3FFFFFF"
                 android:textSize="12sp"
-                android:textStyle="bold"/>
-            <TextView
-                android:id="@+id/tv_comment_time"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
-                android:textColor="#50FFFFFF"
-                android:textSize="12sp"/>
+                android:textStyle="bold"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true" />
         </LinearLayout>
     </LinearLayout>
 
+    <!-- أيقونة القلب الصغيرة التي تظهر في الزاوية عند الإعجاب -->
     <LinearLayout
-        android:id="@+id/btn_like_comment"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center"
-        android:layout_marginStart="8dp">
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="12dp">
+
         <ImageView
             android:id="@+id/iv_like_icon"
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:src="@android:drawable/btn_star"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@android:drawable/ic_btn_speak_now"
             app:tint="#80FFFFFF" />
+
         <TextView
             android:id="@+id/tv_like_count"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
             android:text="0"
             android:textColor="#80FFFFFF"
-            android:textSize="12sp"/>
+            android:textSize="11sp" />
     </LinearLayout>
+
 </LinearLayout>
