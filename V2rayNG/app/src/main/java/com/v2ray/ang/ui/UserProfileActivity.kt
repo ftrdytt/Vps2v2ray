@@ -79,6 +79,21 @@ class UserProfileActivity : AppCompatActivity() {
             btnFollow.setOnClickListener { toggleFollow() }
             checkFollowStatus()
         }
+        
+        // 🌟 تفعيل الضغط على أرقام المتابعين لفتح القوائم 🌟
+        tvFollowersCount.setOnClickListener {
+            val intent = Intent(this, ConnectionsActivity::class.java)
+            intent.putExtra("targetUserId", targetUserId)
+            intent.putExtra("type", "followers")
+            startActivity(intent)
+        }
+
+        tvFollowingCount.setOnClickListener {
+            val intent = Intent(this, ConnectionsActivity::class.java)
+            intent.putExtra("targetUserId", targetUserId)
+            intent.putExtra("type", "following")
+            startActivity(intent)
+        }
 
         fetchUserData()
     }
