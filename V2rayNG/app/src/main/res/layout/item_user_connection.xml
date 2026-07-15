@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
+    android:layoutDirection="rtl"
     android:padding="12dp"
     android:gravity="center_vertical"
     android:background="?attr/selectableItemBackground">
@@ -12,7 +14,9 @@
     <FrameLayout
         android:id="@+id/layout_item_avatar_container"
         android:layout_width="60dp"
-        android:layout_height="60dp">
+        android:layout_height="60dp"
+        android:clipChildren="false"
+        android:clipToPadding="false">
 
         <ImageView
             android:id="@+id/iv_item_pfp"
@@ -20,6 +24,20 @@
             android:layout_height="match_parent"
             android:layout_margin="3dp"
             android:scaleType="centerCrop" />
+
+        <!-- أيقونة التفاعل (الريأكت) تظهر فوق صورة المشاهد مثل انستغرام -->
+        <TextView
+            android:id="@+id/tv_item_reaction"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_gravity="bottom|end"
+            android:gravity="center"
+            android:background="@drawable/bg_comment_bubble"
+            android:textSize="14sp"
+            android:elevation="3dp"
+            android:visibility="gone"
+            tools:text="❤️"
+            tools:visibility="visible"/>
     </FrameLayout>
 
     <!-- الاسم والمعرف -->
