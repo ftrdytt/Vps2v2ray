@@ -3,6 +3,7 @@ package com.v2ray.ang.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -241,6 +242,11 @@ class AdminDashboardActivity : AppCompatActivity() {
             val devicesArray = u.optJSONArray("devices")
             val isAdmin = u.optBoolean("isAdmin", false)
             
+            // بيانات السوشيال المضافة
+            val hasActiveStory = u.optBoolean("hasActiveStory", false)
+            val followersCount = u.optInt("followersCount", 0)
+            val followingCount = u.optInt("followingCount", 0)
+            
             var match = name.contains(searchQuery, true) || id.contains(searchQuery, true) || username.contains(searchQuery, true)
             if (!match && devicesArray != null) {
                 for (j in 0 until devicesArray.length()) {
@@ -251,7 +257,8 @@ class AdminDashboardActivity : AppCompatActivity() {
 
             addUserCard(
                 usersContainer, id, name, u.getString("password"), u.optString("pfp", ""),
-                u.optBoolean("banned", false), username, devicesArray, isAdmin
+                u.optBoolean("banned", false), username, devicesArray, isAdmin,
+                hasActiveStory, followersCount, followingCount
             )
         }
     }
@@ -367,7 +374,7 @@ class AdminDashboardActivity : AppCompatActivity() {
                     val bannedList = allUsersCache.values.filter { it.optBoolean("banned", false) }
                     withContext(Dispatchers.Main) {
                         if (bannedList.isEmpty()) scrollContent.addView(TextView(this@AdminDashboardActivity).apply { text = "لا يوجد محظورين"; setTextColor(Color.WHITE) })
-                        bannedList.forEach { u -> addUserCard(scrollContent, u.getString("id"), u.getString("name"), u.getString("password"), u.optString("pfp", ""), true, u.optString("username", ""), u.optJSONArray("devices"), u.optBoolean("isAdmin", false)) }
+                        bannedList.forEach { u -> addUserCard(scrollContent, u.getString("id"), u.getString("name"), u.getString("password"), u.optString("pfp", ""), true, u.optString("username", ""), u.optJSONArray("devices"), u.optBoolean("isAdmin", false), u.optBoolean("hasActiveStory", false), u.optInt("followersCount", 0), u.optInt("followingCount", 0)) }
                     }
                 } else {
                     val url = URL("$BASE_API_URL/admin/get_stats?type=$type")
@@ -401,35 +408,61 @@ class AdminDashboardActivity : AppCompatActivity() {
         for (i in 0 until idsArray.length()) {
             val id = idsArray.getString(i)
             val u = allUsersCache[id]
-            if (u != null) addUserCard(scrollContent, id, u.getString("name"), u.getString("password"), u.optString("pfp", ""), u.optBoolean("banned", false), u.optString("username", ""), u.optJSONArray("devices"), u.optBoolean("isAdmin", false))
+            if (u != null) addUserCard(scrollContent, id, u.getString("name"), u.getString("password"), u.optString("pfp", ""), u.optBoolean("banned", false), u.optString("username", ""), u.optJSONArray("devices"), u.optBoolean("isAdmin", false), u.optBoolean("hasActiveStory", false), u.optInt("followersCount", 0), u.optInt("followingCount", 0))
             else scrollContent.addView(TextView(this).apply { text = "ID: $id (محذوف من النظام)"; setTextColor(Color.GRAY) })
         }
         AlertDialog.Builder(this).setView(dialogView).setPositiveButton("رجوع", null).show()
     }
 
-    private fun addUserCard(container: LinearLayout, id: String, name: String, pass: String, pfp: String, isBanned: Boolean, username: String, devicesArray: JSONArray?, isAdmin: Boolean) {
+    // 🌟 تم تحديث هذه الدالة لإضافة التفاعلات والدائرة الزرقاء الخاصة بالقصص 🌟
+    private fun addUserCard(container: LinearLayout, id: String, name: String, pass: String, pfp: String, isBanned: Boolean, username: String, devicesArray: JSONArray?, isAdmin: Boolean, hasActiveStory: Boolean, followersCount: Int, followingCount: Int) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
 
         val topLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         
+        // حاوية الصورة لرسم إطار القصة (الدائرة الزرقاء)
+        val avatarWrapper = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(140, 140).apply { setMargins(0, 0, 30, 0) }
+            if (hasActiveStory) {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setStroke(6, Color.parseColor("#1877F2")) // لون فيسبوك الأزرق
+                }
+                setPadding(8, 8, 8, 8) // مسافة بين الإطار والصورة
+            }
+        }
+        
         val avatarCard = CardView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(130, 130).apply { setMargins(0, 0, 30, 0) }
-            radius = 65f
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            radius = 100f // لجعلها دائرية بالكامل
             setCardBackgroundColor(Color.TRANSPARENT)
             cardElevation = 0f
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
         }
+        
         val ivAvatar = ImageView(this).apply { layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT); scaleType = ImageView.ScaleType.CENTER_CROP }
         val bitmap = getSafeBitmap(pfp) ?: AvatarGenerator.generateAvatar(name, id)
         ivAvatar.setImageBitmap(bitmap)
         avatarCard.addView(ivAvatar)
+        avatarWrapper.addView(avatarCard)
         
         val infoLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
-        infoLayout.addView(TextView(this).apply { text = "الاسم: $name"; setTextColor(if (isAdmin) Color.parseColor("#FFD700") else Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }) 
+        
+        val tvName = TextView(this).apply { text = "الاسم: $name"; setTextColor(if (isAdmin) Color.parseColor("#FFD700") else Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) }
+        infoLayout.addView(tvName) 
         
         if (username.isNotEmpty()) {
             infoLayout.addView(TextView(this).apply { text = "المعرف: @$username"; setTextColor(Color.parseColor("#2196F3")); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD) })
         }
+        
+        // إضافة عداد السوشيال ميديا (المتابعون - يتابع)
+        val statsLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 5, 0, 5) }
+        statsLayout.addView(TextView(this).apply { 
+            text = "المتابعون: $followersCount | يتابع: $followingCount"
+            setTextColor(Color.LTGRAY)
+            textSize = 12f 
+        })
+        infoLayout.addView(statsLayout)
         
         val idLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0,5,0,5) }
         idLayout.addView(TextView(this).apply { text = "ID: $id"; setTextColor(Color.parseColor("#FF9800")); textSize = 14f; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
@@ -457,7 +490,16 @@ class AdminDashboardActivity : AppCompatActivity() {
         
         if (isBanned) { infoLayout.addView(TextView(this).apply { text = "🚫 محظور"; setTextColor(Color.RED); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD); setPadding(0,10,0,0) }) }
 
-        topLayout.addView(avatarCard); topLayout.addView(infoLayout); card.addView(topLayout)
+        topLayout.addView(avatarWrapper); topLayout.addView(infoLayout); card.addView(topLayout)
+
+        // 🌟 جعل الصورة والاسم ينقلان المسؤول إلى صفحة ملف المستخدم 🌟
+        val clickToProfile = View.OnClickListener {
+            val intent = Intent(this@AdminDashboardActivity, UserProfileActivity::class.java)
+            intent.putExtra("targetUserId", id)
+            startActivity(intent)
+        }
+        avatarWrapper.setOnClickListener(clickToProfile)
+        tvName.setOnClickListener(clickToProfile)
 
         val btnLayout1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 20 } }
         val btnEdit = MaterialButton(this).apply { text = "تعديل"; setBackgroundColor(Color.parseColor("#2196F3")); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, 10, 0) }; setOnClickListener { showEditDialog(id, name, pass, username, isAdmin) } }
@@ -479,7 +521,6 @@ class AdminDashboardActivity : AppCompatActivity() {
         container.addView(card)
     }
 
-    // 🌟 فحص المعرف المباشر أثناء التعديل (التحقق المرن المحدث للوحة الأدمن) 🌟
     private fun checkUsernameLiveAdmin(username: String, currentId: String, tvStatus: TextView) {
         checkUserJob?.cancel()
         if (username.isEmpty()) { tvStatus.visibility = View.GONE; return }
