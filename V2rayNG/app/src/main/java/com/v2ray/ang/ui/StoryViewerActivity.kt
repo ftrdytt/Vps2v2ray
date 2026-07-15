@@ -1,17 +1,25 @@
 package com.v2ray.ang.ui
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Base64
+import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AuthManager
@@ -33,6 +41,7 @@ class StoryViewerActivity : AppCompatActivity() {
 
     private var storiesArray = JSONArray()
     private var currentIndex = 0
+    private var currentViewsArray: JSONArray? = null // مصفوفة المشاهدات الحالية
 
     // 🌟 عناصر الواجهة 🌟
     private lateinit var ivStoryImage: ImageView
@@ -110,19 +119,52 @@ class StoryViewerActivity : AppCompatActivity() {
         // التعليقات
         findViewById<LinearLayout>(R.id.btn_open_comments).setOnClickListener {
             if (storiesArray.length() > 0) {
-                pauseStory() // إيقاف القصة عند فتح التعليقات
+                pauseStory()
                 val currentStoryId = storiesArray.getJSONObject(currentIndex).getString("id")
-                val bottomSheet = CommentsBottomSheet.newInstance(currentStoryId, myUserId)
+                // استخدمت الكلاس الخاص بك
+                val bottomSheet = Class.forName("com.v2ray.ang.ui.CommentsBottomSheet")
+                    .getMethod("newInstance", String::class.java, String::class.java)
+                    .invoke(null, currentStoryId, myUserId) as BottomSheetDialogFragment
                 bottomSheet.show(supportFragmentManager, "CommentsBottomSheet")
             }
         }
+
+        // فتح قائمة المشاهدات
+        val openViewsListener = View.OnClickListener { openViewersSheet() }
+        tvViews.setOnClickListener(openViewsListener)
+        (tvViews.parent as? View)?.setOnClickListener(openViewsListener)
+
+        // فتح الملف الشخصي عند الضغط على الصورة أو الاسم
+        val profileClickListener = View.OnClickListener {
+            pauseStory()
+            val intent = Intent(this, UserProfileActivity::class.java)
+            intent.putExtra("targetUserId", targetUserId)
+            startActivity(intent)
+            finish()
+        }
+        ivPfp.setOnClickListener(profileClickListener)
+        tvName.setOnClickListener(profileClickListener)
 
         // المتابعة
         btnFollow.setOnClickListener { toggleFollow() }
     }
 
+    private fun openViewersSheet() {
+        if (currentViewsArray == null || currentViewsArray!!.length() == 0) return
+        pauseStory()
+        val userIds = ArrayList<String>()
+        for (i in 0 until currentViewsArray!!.length()) {
+            userIds.add(currentViewsArray!!.getString(i))
+        }
+        
+        val bottomSheet = StoryViewersBottomSheet()
+        bottomSheet.userIds = userIds
+        bottomSheet.myUserId = myUserId
+        bottomSheet.onDismissAction = { resumeStory() }
+        bottomSheet.show(supportFragmentManager, "StoryViewersBottomSheet")
+    }
+
     private fun setupTouchListener() {
-        // إعداد حساس التكبير والتصغير
         scaleGestureDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 scaleFactor *= detector.scaleFactor
@@ -132,7 +174,6 @@ class StoryViewerActivity : AppCompatActivity() {
                 return true
             }
             override fun onScaleEnd(detector: ScaleGestureDetector) {
-                // العودة للحجم الطبيعي عند الإفلات
                 storyContentContainer.animate().scaleX(1.0f).scaleY(1.0f).setDuration(200).start()
                 scaleFactor = 1.0f
             }
@@ -152,7 +193,7 @@ class StoryViewerActivity : AppCompatActivity() {
                     resumeStory()
                     if (!scaleGestureDetector.isInProgress) {
                         val touchDuration = System.currentTimeMillis() - touchDownTime
-                        if (touchDuration < 200) { // نقرة سريعة للتقليب
+                        if (touchDuration < 200) {
                             if (event.x < resources.displayMetrics.widthPixels / 3) {
                                 showPreviousStory()
                             } else {
@@ -232,7 +273,6 @@ class StoryViewerActivity : AppCompatActivity() {
                 }
                 max = 100
                 progress = 0
-                // يمكنك تخصيص شكل التقدم هنا أو استخدام الافتراضي
                 progressTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
             }
             layoutProgressBars.addView(pb)
@@ -245,7 +285,6 @@ class StoryViewerActivity : AppCompatActivity() {
         storyJob?.cancel()
         currentIndex = index
         
-        // ضبط أشرطة التقدم
         for (i in 0 until index) progressAnimators[i].progress = 100
         for (i in index until storiesArray.length()) progressAnimators[i].progress = 0
 
@@ -254,14 +293,13 @@ class StoryViewerActivity : AppCompatActivity() {
         val text = story.optString("text", "")
         val storyId = story.getString("id")
         val timestamp = story.optLong("timestamp", System.currentTimeMillis())
-        val viewsArray = story.optJSONArray("views")
+        
+        currentViewsArray = story.optJSONArray("views") // حفظ المشاهدات للنافذة
 
-        // التحديثات النصية
         tvCommentsCount.text = story.optInt("commentsCount", 0).toString()
-        tvViews.text = (viewsArray?.length() ?: 0).toString()
+        tvViews.text = (currentViewsArray?.length() ?: 0).toString()
         tvTime.text = getTimeAgo(timestamp)
 
-        // التحكم بظهور أزرار المتابعة والحذف
         if (targetUserId == myUserId || myRole == "admin") {
             btnFollow.visibility = View.GONE
             btnOptions.visibility = View.VISIBLE
@@ -275,7 +313,6 @@ class StoryViewerActivity : AppCompatActivity() {
             checkFollowStatus()
         }
 
-        // عرض المحتوى
         if (imageBase64.isNotEmpty()) {
             val bitmap = getSafeBitmap(imageBase64)
             if (bitmap != null) {
@@ -333,8 +370,6 @@ class StoryViewerActivity : AppCompatActivity() {
             displayStory(currentIndex)
         }
     }
-
-    // 🌟 الدوال الخدمية (مشاهدات، حذف، تفاعل، ومتابعة) 🌟
 
     private fun recordStoryView(storyId: String) {
         lifecycleScope.launch(Dispatchers.IO) {
@@ -519,12 +554,154 @@ class StoryViewerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        storyJob?.cancel() // إيقاف المؤقت عند الخروج
+        storyJob?.cancel()
     }
     
-    // استئناف القصة إذا تم إغلاق التعليقات والعودة للنشاط
     override fun onResume() {
         super.onResume()
         if (isPaused) resumeStory()
+    }
+}
+
+// =======================================================
+// 🌟 قائمة المشاهدات (BottomSheet) مدمجة لتعمل بدون XML جديد 🌟
+// =======================================================
+class StoryViewersBottomSheet : BottomSheetDialogFragment() {
+    var userIds: List<String> = listOf()
+    var myUserId: String = ""
+    var onDismissAction: (() -> Unit)? = null
+
+    override fun onDismiss(dialog: android.content.DialogInterface) {
+        super.onDismiss(dialog)
+        onDismissAction?.invoke()
+    }
+
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        val context = requireContext()
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#0A0A0C"))
+            setPadding(0, 40, 0, 0)
+        }
+
+        val title = TextView(context).apply {
+            text = "المشاهدات (${userIds.size})"
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 40)
+        }
+        layout.addView(title)
+
+        val recyclerView = RecyclerView(context).apply {
+            layoutManager = LinearLayoutManager(context)
+            adapter = ViewersAdapter(userIds)
+        }
+        layout.addView(recyclerView)
+        return layout
+    }
+
+    inner class ViewersAdapter(private val ids: List<String>) : RecyclerView.Adapter<ViewersAdapter.ViewHolder>() {
+        inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val layoutAvatarContainer: FrameLayout = view.findViewById(R.id.layout_item_avatar_container)
+            val ivPfp: ImageView = view.findViewById(R.id.iv_item_pfp)
+            val tvName: TextView = view.findViewById(R.id.tv_item_name)
+            val tvUsername: TextView = view.findViewById(R.id.tv_item_username)
+            val btnFollow: MaterialButton = view.findViewById(R.id.btn_item_follow)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_user_connection, parent, false)
+            return ViewHolder(view)
+        }
+
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+            val id = ids[position]
+            holder.tvName.text = "جاري التحميل..."
+            holder.tvUsername.text = "ID: $id"
+            holder.btnFollow.visibility = View.GONE
+
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val conn = URL("https://education.ashor.shop/auth/get_user?id=$id").openConnection() as HttpURLConnection
+                    if (conn.responseCode == 200) {
+                        val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                        val obj = JSONObject(resp)
+                        if (obj.getBoolean("success")) {
+                            val name = obj.getString("name")
+                            val pfp = obj.optString("pfp", "")
+                            val hasActiveStory = obj.getBoolean("hasActiveStory")
+                            
+                            val followConn = URL("https://education.ashor.shop/social/check_follow?followerId=$myUserId&targetId=$id").openConnection() as HttpURLConnection
+                            var isFollowing = false
+                            if (followConn.responseCode == 200) {
+                                isFollowing = JSONObject(BufferedReader(InputStreamReader(followConn.inputStream)).readText()).optBoolean("isFollowing", false)
+                            }
+
+                            withContext(Dispatchers.Main) {
+                                holder.tvName.text = name
+                                val b = Base64.decode(if (pfp.contains(",")) pfp.substringAfter(",") else pfp, Base64.DEFAULT)
+                                val bitmap = try { BitmapFactory.decodeByteArray(b, 0, b.size) } catch(e:Exception){null} ?: AvatarGenerator.generateAvatar(name, id)
+                                holder.ivPfp.setImageDrawable(RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true })
+
+                                if (hasActiveStory) {
+                                    holder.layoutAvatarContainer.background = GradientDrawable().apply {
+                                        shape = GradientDrawable.OVAL
+                                        setStroke(6, Color.parseColor("#2196F3"))
+                                        setColor(Color.TRANSPARENT)
+                                    }
+                                    holder.layoutAvatarContainer.setPadding(6, 6, 6, 6)
+                                } else {
+                                    holder.layoutAvatarContainer.background = null
+                                    holder.layoutAvatarContainer.setPadding(0, 0, 0, 0)
+                                }
+
+                                if (id != myUserId) {
+                                    holder.btnFollow.visibility = View.VISIBLE
+                                    updateFollowBtn(holder.btnFollow, isFollowing)
+                                    holder.btnFollow.setOnClickListener { toggleFollow(id, holder.btnFollow, isFollowing) }
+                                }
+
+                                holder.itemView.setOnClickListener {
+                                    dismiss()
+                                    val intent = Intent(context, if (hasActiveStory) StoryViewerActivity::class.java else UserProfileActivity::class.java)
+                                    intent.putExtra("targetUserId", id)
+                                    context?.startActivity(intent)
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {}
+            }
+        }
+        override fun getItemCount(): Int = ids.size
+
+        private fun updateFollowBtn(btn: MaterialButton, isFollowing: Boolean) {
+            if (isFollowing) {
+                btn.text = "متابَع ✔"
+                btn.setBackgroundColor(Color.parseColor("#33FFFFFF"))
+                btn.setTextColor(Color.WHITE)
+            } else {
+                btn.text = "متابعة"
+                btn.setBackgroundColor(Color.parseColor("#2196F3"))
+                btn.setTextColor(Color.WHITE)
+            }
+        }
+        private fun toggleFollow(id: String, btn: MaterialButton, currentStatus: Boolean) {
+            btn.isEnabled = false
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val conn = URL("https://education.ashor.shop/social/follow").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    conn.outputStream.use { it.write(JSONObject().put("followerId", myUserId).put("targetId", id).toString().toByteArray()) }
+                    if (conn.responseCode == 200) {
+                        val isNowFollowing = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText()).getBoolean("isFollowing")
+                        withContext(Dispatchers.Main) { updateFollowBtn(btn, isNowFollowing); btn.isEnabled = true }
+                    }
+                } catch (e: Exception) { withContext(Dispatchers.Main) { btn.isEnabled = true } }
+            }
+        }
     }
 }
