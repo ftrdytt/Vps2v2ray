@@ -1,6 +1,7 @@
 package com.v2ray.ang.ui
 
 import android.app.Dialog
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Bundle
@@ -138,7 +139,9 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
                             commentsList.clear()
                             commentsList.addAll(organizedList)
                             adapter.notifyDataSetChanged()
-                            rvComments.scrollToPosition(commentsList.size - 1)
+                            if(commentsList.isNotEmpty()) {
+                                rvComments.scrollToPosition(commentsList.size - 1)
+                            }
                         }
                     }
                 }
@@ -215,7 +218,7 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val c = commentsList[position]
             
-            // إضافة مسافة بادئة للردود (Nested)
+            // إضافة مسافة بادئة للردود (Nested) لتظهر وكأنها متداخلة
             val isReply = c.parentId != "null" && c.parentId.isNotEmpty()
             holder.rootLayout.setPadding(if (isReply) 120 else 24, 16, 24, 16)
 
@@ -256,7 +259,7 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
                 etInput.requestFocus()
             }
 
-            // فتح ملف الشخص
+            // 🌟 فتح ملف الشخص الآخر عند النقر على اسمه أو صورته (هنا تم حل نقص الـ Intent) 🌟
             val clickToProfile = View.OnClickListener {
                 val intent = Intent(requireContext(), UserProfileActivity::class.java)
                 intent.putExtra("targetUserId", c.userId)
@@ -267,5 +270,9 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
         }
     }
 
-    data class CommentModel(val id: String, val userId: String, val name: String, val pfp: String, val isVerified: Boolean, val text: String, val timestamp: Long, val parentId: String, val likes: MutableList<String>)
+    data class CommentModel(
+        val id: String, val userId: String, val name: String, val pfp: String, 
+        val isVerified: Boolean, val text: String, val timestamp: Long, 
+        val parentId: String, val likes: MutableList<String>
+    )
 }
