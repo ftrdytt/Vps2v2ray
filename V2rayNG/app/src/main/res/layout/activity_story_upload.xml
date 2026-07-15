@@ -39,8 +39,9 @@
                     app:cardBackgroundColor="#1A1A1D"
                     android:layout_marginBottom="20dp">
 
+                    <!-- تم تغيير الـ ID هنا ليتوافق مع كود الكوتلن الجديد ليتم التقاطه كصورة واحدة -->
                     <FrameLayout
-                        android:id="@+id/preview_container"
+                        android:id="@+id/story_capture_frame"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent">
 
@@ -60,20 +61,21 @@
                             android:background="#44000000"
                             android:visibility="gone"/>
 
-                        <!-- نص المعاينة الحية -->
+                        <!-- نص المعاينة الحية (قابل للتحريك والتكبير باللمس) -->
                         <TextView
                             android:id="@+id/tv_preview_text"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_gravity="center"
                             android:gravity="center"
                             android:padding="24dp"
                             android:textColor="#FFFFFF"
                             android:textSize="26sp"
                             android:textStyle="bold"
                             android:shadowColor="#000000"
-                            android:shadowDx="1"
-                            android:shadowDy="1"
-                            android:shadowRadius="5"/>
+                            android:shadowDx="2"
+                            android:shadowDy="2"
+                            android:shadowRadius="8"/>
                     </FrameLayout>
                 </androidx.cardview.widget.CardView>
 
