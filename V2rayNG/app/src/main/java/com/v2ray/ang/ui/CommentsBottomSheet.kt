@@ -1,14 +1,19 @@
 package com.v2ray.ang.ui
 
 import android.app.Dialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Base64
+import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
@@ -60,9 +65,18 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
         }
     }
 
+    // 🌟 جعل النافذة تفتح بكامل الشاشة وتدعم الكيبورد بشكل صحيح 🌟
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val dialog = super.onCreateDialog(savedInstanceState) as BottomSheetDialog
-        dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
+        dialog.setOnShowListener {
+            val bottomSheet = dialog.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)
+            bottomSheet?.let {
+                val behavior = BottomSheetBehavior.from(it)
+                behavior.state = BottomSheetBehavior.STATE_EXPANDED
+                behavior.skipCollapsed = true
+            }
+        }
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         return dialog
     }
 
@@ -84,11 +98,11 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
         adapter = CommentsAdapter()
         rvComments.layoutManager = LinearLayoutManager(requireContext())
         rvComments.adapter = adapter
+        // إزالة الأنيميشن الافتراضي المزعج عند تحديث عنصر واحد
+        rvComments.itemAnimator = null 
 
         tvReplyingTo.setOnClickListener {
-            replyingToCommentId = null
-            tvReplyingTo.visibility = View.GONE
-            etInput.hint = "إضافة تعليق..."
+            cancelReply()
         }
 
         btnSend.setOnClickListener {
@@ -99,6 +113,13 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
         }
 
         fetchComments()
+    }
+
+    private fun cancelReply() {
+        replyingToCommentId = null
+        replyingToName = null
+        tvReplyingTo.visibility = View.GONE
+        etInput.hint = "إضافة تعليق..."
     }
 
     private fun fetchComments() {
@@ -127,12 +148,13 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
                             )
                         }
 
-                        // تنظيم القائمة: التعليق ثم الردود الخاصة به تحته مباشرة
+                        // 🌟 تنظيم القائمة (التعليق الأساسي وتحته الردود الخاصة به) 🌟
                         val organizedList = mutableListOf<CommentModel>()
-                        val parents = rawList.filter { it.parentId == "null" || it.parentId.isEmpty() }
+                        val parents = rawList.filter { it.parentId == "null" || it.parentId.isEmpty() }.sortedBy { it.timestamp }
                         for (p in parents) {
                             organizedList.add(p)
-                            organizedList.addAll(rawList.filter { it.parentId == p.id })
+                            val replies = rawList.filter { it.parentId == p.id }.sortedBy { it.timestamp }
+                            organizedList.addAll(replies)
                         }
 
                         withContext(Dispatchers.Main) {
@@ -152,10 +174,7 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
     private fun sendComment(text: String) {
         etInput.setText("")
         val parentId = replyingToCommentId
-        
-        replyingToCommentId = null
-        tvReplyingTo.visibility = View.GONE
-        etInput.hint = "إضافة تعليق..."
+        cancelReply()
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -172,7 +191,7 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
                 conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                 
                 if (conn.responseCode == 200) {
-                    fetchComments() // جلب التعليقات مجدداً بعد الإرسال
+                    fetchComments() 
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { Toast.makeText(requireContext(), "فشل الإرسال", Toast.LENGTH_SHORT).show() }
@@ -198,6 +217,9 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
         }
     }
 
+    // 🌟 دالة مساعدة لتحويل الأرقام إلى DP لتناسب جميع الشاشات 🌟
+    private fun Int.dpToPx(): Int = (this * resources.displayMetrics.density).toInt()
+
     inner class CommentsAdapter : RecyclerView.Adapter<CommentsAdapter.VH>() {
         inner class VH(v: View) : RecyclerView.ViewHolder(v) {
             val rootLayout: View = v.findViewById(R.id.layout_root)
@@ -218,9 +240,12 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val c = commentsList[position]
             
-            // إضافة مسافة بادئة للردود (Nested) لتظهر وكأنها متداخلة
+            // 🌟 تصميم ستايل فيسبوك: إضافة إزاحة للردود لتظهر بشكل متداخل 🌟
             val isReply = c.parentId != "null" && c.parentId.isNotEmpty()
-            holder.rootLayout.setPadding(if (isReply) 120 else 24, 16, 24, 16)
+            val paddingStartEnd = if (isReply) 56.dpToPx() else 16.dpToPx()
+            
+            // بما أن التطبيق عربي (RTL)، الإزاحة ستكون من اليمين
+            holder.rootLayout.setPadding(16.dpToPx(), 8.dpToPx(), paddingStartEnd, 8.dpToPx())
 
             holder.tvName.text = c.name
             holder.tvText.text = c.text
@@ -232,9 +257,15 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
             holder.tvTime.text = if (hours > 0) "${hours}h" else if (mins > 0) "${mins}m" else "الآن"
 
             val isLikedByMe = c.likes.contains(myUserId)
-            holder.ivLikeIcon.setColorFilter(if (isLikedByMe) Color.RED else Color.parseColor("#80FFFFFF"))
-            holder.tvLikeCount.text = c.likes.size.toString()
-            holder.tvLikeCount.setTextColor(if (isLikedByMe) Color.RED else Color.parseColor("#80FFFFFF"))
+            holder.ivLikeIcon.setColorFilter(if (isLikedByMe) Color.parseColor("#E0245E") else Color.parseColor("#80FFFFFF"))
+            
+            if (c.likes.isEmpty()) {
+                holder.tvLikeCount.visibility = View.GONE
+            } else {
+                holder.tvLikeCount.visibility = View.VISIBLE
+                holder.tvLikeCount.text = c.likes.size.toString()
+                holder.tvLikeCount.setTextColor(if (isLikedByMe) Color.parseColor("#E0245E") else Color.parseColor("#80FFFFFF"))
+            }
 
             val bitmap = try {
                 val cleanStr = if (c.pfp.contains(",")) c.pfp.substringAfter(",") else c.pfp
@@ -244,7 +275,15 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
             
             holder.ivPfp.setImageDrawable(RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true })
 
+            // 🌟 أنيميشن واهتزاز عند الإعجاب (مثل انستغرام وتويتر) 🌟
             holder.btnLike.setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY) // اهتزاز خفيف
+                
+                // أنيميشن النبض
+                holder.ivLikeIcon.animate().scaleX(1.4f).scaleY(1.4f).setDuration(150).withEndAction {
+                    holder.ivLikeIcon.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
+                }.start()
+
                 if (isLikedByMe) c.likes.remove(myUserId) else c.likes.add(myUserId)
                 notifyItemChanged(position)
                 likeComment(c.id)
@@ -254,12 +293,21 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
                 replyingToCommentId = if (isReply) c.parentId else c.id
                 replyingToName = c.name
                 tvReplyingTo.visibility = View.VISIBLE
-                tvReplyingTo.text = "يتم الرد على ${c.name} (اضغط للإلغاء)"
-                etInput.hint = "اكتب ردك..."
+                tvReplyingTo.text = "يتم الرد على ${c.name} ✖"
+                etInput.hint = "اكتب ردك لـ ${c.name}..."
                 etInput.requestFocus()
             }
 
-            // 🌟 فتح ملف الشخص الآخر عند النقر على اسمه أو صورته (هنا تم حل نقص الـ Intent) 🌟
+            // 🌟 ميزة النسخ عند الضغط المطول 🌟
+            holder.rootLayout.setOnLongClickListener {
+                holder.rootLayout.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("Comment", c.text)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(requireContext(), "تم نسخ التعليق", Toast.LENGTH_SHORT).show()
+                true
+            }
+
             val clickToProfile = View.OnClickListener {
                 val intent = Intent(requireContext(), UserProfileActivity::class.java)
                 intent.putExtra("targetUserId", c.userId)
