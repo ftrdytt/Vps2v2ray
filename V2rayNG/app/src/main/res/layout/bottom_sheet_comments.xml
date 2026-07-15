@@ -4,62 +4,69 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#141417">
+    android:background="@drawable/bg_rounded_dark"
+    android:paddingTop="12dp">
 
+    <!-- مؤشر السحب (Drag Indicator) -->
     <View
         android:layout_width="40dp"
         android:layout_height="4dp"
         android:layout_gravity="center"
-        android:layout_marginTop="12dp"
         android:layout_marginBottom="12dp"
-        android:background="#33FFFFFF"/>
+        android:background="#40FFFFFF"/>
 
+    <!-- عنوان النافذة -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="التعليقات"
         android:gravity="center"
         android:textColor="#FFFFFF"
-        android:textSize="16sp"
+        android:textSize="18sp"
         android:textStyle="bold"
-        android:layout_marginBottom="8dp"/>
+        android:layout_marginBottom="12dp"/>
 
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:background="#1AFFFFFF"/>
 
+    <!-- قائمة التعليقات المتداخلة -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv_comments"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:clipToPadding="false"
-        android:paddingBottom="80dp"/>
+        android:paddingBottom="8dp"/>
 
-    <!-- مربع إدخال التعليق -->
+    <!-- قسم كتابة التعليق والرد -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:background="#1A1A1D"
-        android:padding="8dp">
+        android:elevation="8dp">
 
+        <!-- نص إشعار الرد (يظهر فقط عند الضغط على زر رد) -->
         <TextView
             android:id="@+id/tv_replying_to"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:background="#262629"
             android:textColor="#2196F3"
             android:textSize="12sp"
-            android:paddingStart="8dp"
-            android:paddingBottom="4dp"
+            android:padding="8dp"
+            android:textStyle="bold"
             android:visibility="gone"/>
 
+        <!-- حقل الإدخال وزر الإرسال -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:gravity="center_vertical"
+            android:padding="12dp">
 
             <EditText
                 android:id="@+id/et_comment_input"
@@ -73,16 +80,16 @@
                 android:padding="12dp"
                 android:maxLines="4"/>
 
+            <!-- زر الإرسال -->
             <ImageView
                 android:id="@+id/btn_send_comment"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:padding="12dp"
+                android:layout_width="45dp"
+                android:layout_height="45dp"
+                android:padding="10dp"
                 android:layout_marginStart="8dp"
-                android:background="@drawable/ic_circle"
-                android:backgroundTint="#2196F3"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@android:drawable/ic_menu_send"
-                app:tint="#FFFFFF"/>
+                app:tint="#2196F3"/>
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>
