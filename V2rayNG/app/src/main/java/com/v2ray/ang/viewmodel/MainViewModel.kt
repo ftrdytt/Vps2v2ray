@@ -73,7 +73,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
     }
 
-    // 🌟 دالة التقاط سجلات النواة (Xray-Core) مع فلتر صارم جداً 🌟
+    // 🌟 دالة التقاط سجلات النواة باستخدام فلتر الـ OS الجذري 🌟
     private fun startLogReader() {
         stopLogReader()
         logBuffer.clear()
@@ -82,53 +82,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         logcatJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                // مسح السجلات القديمة لتنظيف الذاكرة
                 Runtime.getRuntime().exec("logcat -c").waitFor()
                 
-                val myPid = android.os.Process.myPid().toString()
-                logProcess = Runtime.getRuntime().exec("logcat -v time")
-                val reader = BufferedReader(InputStreamReader(logProcess!!.inputStream))
+                // الفلتر الجذري: نجلب السجلات التي تهم المحرك فقط ونمنع رسائل النظام
+                val process = Runtime.getRuntime().exec(arrayOf("logcat", "-v", "time", "-s", "GoLog:V", "v2rayNG:V", "V2RayVpnService:V"))
+                logProcess = process
+                val reader = BufferedReader(InputStreamReader(process.inputStream))
                 
                 var line: String? = null
                 
                 while (isActive && reader.readLine().also { line = it } != null) {
                     val currentLine = line ?: continue
                     
-                    if (currentLine.contains(myPid)) {
-                        val lowerLine = currentLine.lowercase()
+                    val cleanLine = if (currentLine.contains("): ")) {
+                        currentLine.substringAfter("): ").trim()
+                    } else {
+                        currentLine.trim()
+                    }
+                    
+                    if (cleanLine.isNotEmpty() && !cleanLine.contains("MainViewModel")) {
+                        logBuffer.add(cleanLine)
                         
-                        // 🚫 الفلتر العكسي: تجاهل كل رسائل نظام الأندرويد وسامسونج المزعجة 🚫
-                        if (lowerLine.contains("ensurecontrolalpha") || 
-                            lowerLine.contains("misdevicedefault") || 
-                            lowerLine.contains("smartclipdata") ||
-                            lowerLine.contains("activitythread") ||
-                            lowerLine.contains("viewrootimpl") ||
-                            lowerLine.contains("choreographer") ||
-                            lowerLine.contains("mainviewmodel")) {
-                            continue 
-                        }
-
-                        // ✅ الفلتر الإيجابي: السماح فقط لرسائل الاتصال والمحرك بالظهور ✅
-                        if (lowerLine.contains("v2ray") || lowerLine.contains("xray") || 
-                            lowerLine.contains("proxy") || lowerLine.contains("dial") || 
-                            lowerLine.contains("tcp") || lowerLine.contains("tls") || 
-                            lowerLine.contains("golog") || lowerLine.contains("timeout") ||
-                            lowerLine.contains("failed") || lowerLine.contains("accepted") ||
-                            lowerLine.contains("rejected") || lowerLine.contains("started")) {
-                            
-                            val cleanLine = if (currentLine.contains("): ")) currentLine.substringAfter("): ").trim() else currentLine.trim()
-                            
-                            if (cleanLine.isNotEmpty()) {
-                                logBuffer.add(cleanLine)
-                                if (logBuffer.size > 150) logBuffer.removeFirst()
-                                
-                                val fullLogStr = logBuffer.joinToString("\n")
-                                
-                                withContext(Dispatchers.Main) {
-                                    fullLog.value = fullLogStr
-                                    liveLog.value = cleanLine
-                                }
-                            }
+                        if (logBuffer.size > 150) logBuffer.removeFirst()
+                        
+                        val fullLogStr = logBuffer.joinToString("\n")
+                        
+                        withContext(Dispatchers.Main) {
+                            fullLog.value = fullLogStr
+                            liveLog.value = cleanLine
                         }
                     }
                 }
@@ -138,7 +119,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // 🌟 دالة إيقاف السجل 🌟
     private fun stopLogReader() {
         logcatJob?.cancel()
         try { logProcess?.destroy() } catch (e: Exception) {}
