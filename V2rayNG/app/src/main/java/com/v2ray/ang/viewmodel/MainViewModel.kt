@@ -30,11 +30,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.io.File
+import java.io.RandomAccessFile
 import java.util.Collections
 import java.util.LinkedList
 
@@ -52,7 +53,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val liveLog by lazy { MutableLiveData<String>() }
     val fullLog by lazy { MutableLiveData<String>() }
     private var logcatJob: Job? = null
-    private var logProcess: Process? = null
     private val logBuffer = LinkedList<String>()
 
     private val tcpingTestScope by lazy { CoroutineScope(Dispatchers.IO) }
@@ -73,7 +73,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
     }
 
-    // 🌟 دالة التقاط سجلات النواة (Xray-Core) وتمريرها للواجهة 🌟
+    // 🌟 دالة التقاط سجلات النواة (Xray-Core) من الملف المباشر 🌟
     private fun startLogReader() {
         stopLogReader()
         logBuffer.clear()
@@ -82,36 +82,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         logcatJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                // مسح السجلات القديمة لتجنب التداخل
-                Runtime.getRuntime().exec("logcat -c").waitFor()
+                // الوصول إلى ملف سجل V2ray الفعلي الذي تكتب فيه النواة
+                val logFile = File(getApplication<Application>().cacheDir, "v2ray_log.txt")
                 
-                // قراءة السجلات الخاصة بالنواة وتطبيقنا فقط
-                val myPid = android.os.Process.myPid().toString()
-                logProcess = Runtime.getRuntime().exec("logcat -v time")
-                val reader = BufferedReader(InputStreamReader(logProcess!!.inputStream))
+                // مسح السجل القديم عند كل بداية جديدة
+                if (logFile.exists()) {
+                    logFile.writeText("") 
+                }
+
+                // قراءة الملف بشكل مستمر (Tail -f)
+                val raf = RandomAccessFile(logFile, "r")
+                var lastPointer = raf.length()
                 
-                // 🌟 هذا هو التعديل الذي أصلحنا به الخطأ (إعطاء قيمة null) 🌟
-                var line: String? = null
-                
-                while (isActive && reader.readLine().also { line = it } != null) {
-                    val currentLine = line ?: continue
-                    
-                    if (currentLine.contains(myPid)) {
-                        val lowerLine = currentLine.lowercase()
-                        // 🌟 فلترة ذكية لاصطياد أحداث الاتصال المهمة فقط 🌟
-                        if (lowerLine.contains("v2ray") || lowerLine.contains("proxy") || 
-                            lowerLine.contains("dial") || lowerLine.contains("error") || 
-                            lowerLine.contains("tcp") || lowerLine.contains("tls") || 
-                            lowerLine.contains("io:") || lowerLine.contains("timeout") ||
-                            lowerLine.contains("failed") || lowerLine.contains("accepted") ||
-                            lowerLine.contains("rejected") || lowerLine.contains("started")) {
+                while (isActive) {
+                    val fileLength = logFile.length()
+                    if (fileLength < lastPointer) {
+                        // تم إعادة تعيين الملف
+                        raf.seek(0)
+                        lastPointer = 0
+                    }
+                    if (fileLength > lastPointer) {
+                        raf.seek(lastPointer)
+                        var line: String?
+                        while (raf.readLine().also { line = it } != null) {
+                            val currentLine = line ?: continue
+                            // تحويل الترميز لتجنب مشاكل اللغة
+                            val cleanLine = String(currentLine.toByteArray(Charsets.ISO_8859_1), Charsets.UTF_8).trim()
                             
-                            // تنظيف السطر ليكون مقروءاً في الواجهة
-                            val cleanLine = if (currentLine.contains("): ")) currentLine.substringAfter("): ").trim() else currentLine.trim()
-                            
-                            if (cleanLine.isNotEmpty() && !cleanLine.contains("MainViewModel")) {
+                            if (cleanLine.isNotEmpty()) {
                                 logBuffer.add(cleanLine)
-                                // الاحتفاظ بآخر 200 سطر فقط لمنع استهلاك الذاكرة (OOM)
                                 if (logBuffer.size > 200) logBuffer.removeFirst()
                                 
                                 val fullLogStr = logBuffer.joinToString("\n")
@@ -122,8 +121,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 }
                             }
                         }
+                        lastPointer = raf.getFilePointer()
                     }
+                    delay(500) // التحديث كل نصف ثانية
                 }
+                raf.close()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -133,10 +135,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // 🌟 دالة إيقاف السجل 🌟
     private fun stopLogReader() {
         logcatJob?.cancel()
-        try {
-            logProcess?.destroy()
-        } catch (e: Exception) {}
-        logProcess = null
     }
 
     fun reloadServerList() {
@@ -388,7 +386,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             when (intent?.getIntExtra("key", 0)) {
                 AppConfig.MSG_STATE_RUNNING -> {
                     isRunning.value = true
-                    startLogReader() // 🌟 تشغيل صائد السجلات 🌟
+                    startLogReader() // 🌟 تشغيل صائد السجلات الفعلي 🌟
                 }
 
                 AppConfig.MSG_STATE_NOT_RUNNING -> {
@@ -400,7 +398,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 AppConfig.MSG_STATE_START_SUCCESS -> {
                     getApplication<AngApplication>().toastSuccess(R.string.toast_services_success)
                     isRunning.value = true
-                    startLogReader() // 🌟 تشغيل صائد السجلات 🌟
+                    startLogReader() // 🌟 تشغيل صائد السجلات الفعلي 🌟
                 }
 
                 AppConfig.MSG_STATE_START_FAILURE -> {
