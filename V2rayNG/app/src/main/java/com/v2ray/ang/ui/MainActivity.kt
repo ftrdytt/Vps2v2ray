@@ -317,7 +317,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
                 scrollView.addView(tvLogs)
 
-                AlertDialog.Builder(this, R.style.Theme_AppCompat_Dialog_Alert)
+                AlertDialog.Builder(this)
                     .setTitle("سجل المحرك الكامل")
                     .setView(scrollView)
                     .setPositiveButton("إغلاق", null)
