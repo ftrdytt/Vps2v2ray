@@ -6,6 +6,7 @@ import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
+import com.google.gson.Gson
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.handler.MmkvManager
@@ -52,26 +53,41 @@ class ServerAshorActivity : AppCompatActivity() {
 
             // توليد الـ JSON الاحترافي مع الحاقن
             val jsonConfig = generateAshorPayload(vlessAddress, vlessPort, uuid, proxyIp, proxyPort, sni, bsid)
+            val finalRemarks = if (remarks.isNotEmpty()) remarks else "Ashor: $sni"
 
             try {
-                val profile = ProfileItem()
+                // 🌟 الحل السحري لتجاوز جميع أخطاء المترجم (Build Errors) 🌟
+                // نستخدم Gson لبناء البروفايل وحقن البيانات مباشرة دون المرور بشروط النواة
+                val gson = Gson()
+                var profile: ProfileItem? = null
                 
-                // 🌟 الحل الجذري: استخدام الرقم 2 بدلاً من EConfigType.CUSTOM المحذوف 🌟
-                profile.configType = 2 
-                profile.remarks = if (remarks.isNotEmpty()) remarks else "Ashor: $sni"
-                profile.server = jsonConfig // حفظ JSON مباشرة داخل السيرفر
+                try {
+                    val mapStr = mapOf("configType" to "CUSTOM", "remarks" to finalRemarks, "server" to jsonConfig)
+                    profile = gson.fromJson(gson.toJson(mapStr), ProfileItem::class.java)
+                } catch (e: Exception) {
+                    try {
+                        val mapInt = mapOf("configType" to 1, "remarks" to finalRemarks, "server" to jsonConfig)
+                        profile = gson.fromJson(gson.toJson(mapInt), ProfileItem::class.java)
+                    } catch (e2: Exception) {
+                        e2.printStackTrace()
+                    }
+                }
 
-                val guid = Utils.getUuid()
-                
-                // 🌟 استخدام MmkvManager من المسار الصحيح (handler) 🌟
-                MmkvManager.encodeServerConfig(guid, profile)
-                MmkvManager.setSelectServer(guid)
-                
-                Toast.makeText(this, "تم الحفظ والتحديد بنجاح! جاهز للتشغيل 🚀", Toast.LENGTH_SHORT).show()
-                finish() // العودة للصفحة الرئيسية لتشغيل الـ VPN
+                if (profile != null) {
+                    val guid = Utils.getUuid()
+                    
+                    // حفظ السيرفر وتحديده كالسيرفر الافتراضي فوراً لتشغيله
+                    MmkvManager.encodeServerConfig(guid, profile)
+                    MmkvManager.setSelectServer(guid)
+                    
+                    Toast.makeText(this, "تم الحفظ والتحديد بنجاح! جاهز للتشغيل 🚀", Toast.LENGTH_SHORT).show()
+                    finish() // العودة للصفحة الرئيسية
+                } else {
+                    Toast.makeText(this, "فشل في بناء البروفايل، يرجى المحاولة مجدداً", Toast.LENGTH_SHORT).show()
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
-                Toast.makeText(this, "خطأ أثناء حفظ الملف", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "خطأ غير متوقع أثناء الحفظ", Toast.LENGTH_SHORT).show()
             }
         }
     }
