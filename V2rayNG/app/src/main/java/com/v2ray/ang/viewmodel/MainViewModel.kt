@@ -30,12 +30,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.RandomAccessFile
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.util.Collections
 import java.util.LinkedList
 
@@ -49,10 +48,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val updateListAction by lazy { MutableLiveData<Int>() }
     val updateTestResultAction by lazy { MutableLiveData<String>() }
     
-    // 🌟 المتغيرات الجديدة الخاصة بنظام السجل المباشر 🌟
+    // 🌟 المتغيرات الخاصة بنظام السجل المباشر 🌟
     val liveLog by lazy { MutableLiveData<String>() }
     val fullLog by lazy { MutableLiveData<String>() }
     private var logcatJob: Job? = null
+    private var logProcess: Process? = null
     private val logBuffer = LinkedList<String>()
 
     private val tcpingTestScope by lazy { CoroutineScope(Dispatchers.IO) }
@@ -68,12 +68,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<AngApplication>().unregisterReceiver(mMsgReceiver)
         tcpingTestScope.coroutineContext[Job]?.cancelChildren()
         SpeedtestManager.closeAllTcpSockets()
-        stopLogReader() // 🌟 إيقاف السجل عند الخروج لتوفير البطارية 🌟
+        stopLogReader() 
         Log.i(AppConfig.TAG, "Main ViewModel is cleared")
         super.onCleared()
     }
 
-    // 🌟 دالة التقاط سجلات النواة (Xray-Core) من الملف المباشر 🌟
+    // 🌟 دالة التقاط سجلات النواة (Xray-Core) مع فلتر صارم جداً 🌟
     private fun startLogReader() {
         stopLogReader()
         logBuffer.clear()
@@ -82,36 +82,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         logcatJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                // الوصول إلى ملف سجل V2ray الفعلي الذي تكتب فيه النواة
-                val logFile = File(getApplication<Application>().cacheDir, "v2ray_log.txt")
+                // مسح السجلات القديمة لتنظيف الذاكرة
+                Runtime.getRuntime().exec("logcat -c").waitFor()
                 
-                // مسح السجل القديم عند كل بداية جديدة
-                if (logFile.exists()) {
-                    logFile.writeText("") 
-                }
+                val myPid = android.os.Process.myPid().toString()
+                logProcess = Runtime.getRuntime().exec("logcat -v time")
+                val reader = BufferedReader(InputStreamReader(logProcess!!.inputStream))
+                
+                var line: String? = null
+                
+                while (isActive && reader.readLine().also { line = it } != null) {
+                    val currentLine = line ?: continue
+                    
+                    if (currentLine.contains(myPid)) {
+                        val lowerLine = currentLine.lowercase()
+                        
+                        // 🚫 الفلتر العكسي: تجاهل كل رسائل نظام الأندرويد وسامسونج المزعجة 🚫
+                        if (lowerLine.contains("ensurecontrolalpha") || 
+                            lowerLine.contains("misdevicedefault") || 
+                            lowerLine.contains("smartclipdata") ||
+                            lowerLine.contains("activitythread") ||
+                            lowerLine.contains("viewrootimpl") ||
+                            lowerLine.contains("choreographer") ||
+                            lowerLine.contains("mainviewmodel")) {
+                            continue 
+                        }
 
-                // قراءة الملف بشكل مستمر (Tail -f)
-                val raf = RandomAccessFile(logFile, "r")
-                var lastPointer = raf.length()
-                
-                while (isActive) {
-                    val fileLength = logFile.length()
-                    if (fileLength < lastPointer) {
-                        // تم إعادة تعيين الملف
-                        raf.seek(0)
-                        lastPointer = 0
-                    }
-                    if (fileLength > lastPointer) {
-                        raf.seek(lastPointer)
-                        var line: String?
-                        while (raf.readLine().also { line = it } != null) {
-                            val currentLine = line ?: continue
-                            // تحويل الترميز لتجنب مشاكل اللغة
-                            val cleanLine = String(currentLine.toByteArray(Charsets.ISO_8859_1), Charsets.UTF_8).trim()
+                        // ✅ الفلتر الإيجابي: السماح فقط لرسائل الاتصال والمحرك بالظهور ✅
+                        if (lowerLine.contains("v2ray") || lowerLine.contains("xray") || 
+                            lowerLine.contains("proxy") || lowerLine.contains("dial") || 
+                            lowerLine.contains("tcp") || lowerLine.contains("tls") || 
+                            lowerLine.contains("golog") || lowerLine.contains("timeout") ||
+                            lowerLine.contains("failed") || lowerLine.contains("accepted") ||
+                            lowerLine.contains("rejected") || lowerLine.contains("started")) {
+                            
+                            val cleanLine = if (currentLine.contains("): ")) currentLine.substringAfter("): ").trim() else currentLine.trim()
                             
                             if (cleanLine.isNotEmpty()) {
                                 logBuffer.add(cleanLine)
-                                if (logBuffer.size > 200) logBuffer.removeFirst()
+                                if (logBuffer.size > 150) logBuffer.removeFirst()
                                 
                                 val fullLogStr = logBuffer.joinToString("\n")
                                 
@@ -121,11 +130,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 }
                             }
                         }
-                        lastPointer = raf.getFilePointer()
                     }
-                    delay(500) // التحديث كل نصف ثانية
                 }
-                raf.close()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -135,6 +141,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // 🌟 دالة إيقاف السجل 🌟
     private fun stopLogReader() {
         logcatJob?.cancel()
+        try { logProcess?.destroy() } catch (e: Exception) {}
+        logProcess = null
     }
 
     fun reloadServerList() {
@@ -386,19 +394,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             when (intent?.getIntExtra("key", 0)) {
                 AppConfig.MSG_STATE_RUNNING -> {
                     isRunning.value = true
-                    startLogReader() // 🌟 تشغيل صائد السجلات الفعلي 🌟
+                    startLogReader() // 🌟 تشغيل صائد السجلات 🌟
                 }
 
                 AppConfig.MSG_STATE_NOT_RUNNING -> {
                     isRunning.value = false
-                    stopLogReader() // 🌟 إيقاف صائد السجلات 🌟
+                    stopLogReader() 
                     liveLog.value = "تم إيقاف المحرك."
                 }
 
                 AppConfig.MSG_STATE_START_SUCCESS -> {
                     getApplication<AngApplication>().toastSuccess(R.string.toast_services_success)
                     isRunning.value = true
-                    startLogReader() // 🌟 تشغيل صائد السجلات الفعلي 🌟
+                    startLogReader() 
                 }
 
                 AppConfig.MSG_STATE_START_FAILURE -> {
