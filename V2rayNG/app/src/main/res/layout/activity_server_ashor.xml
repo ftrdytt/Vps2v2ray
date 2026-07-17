@@ -15,7 +15,7 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- الهيدر (شريط العنوان) متناسق مع بقية البروتوكولات -->
+        <!-- الهيدر (شريط العنوان) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -24,7 +24,6 @@
             android:layout_marginBottom="24dp"
             android:layout_marginTop="8dp">
             
-            <!-- زر الرجوع -->
             <ImageView
                 android:id="@+id/btn_back"
                 android:layout_width="32dp"
@@ -52,11 +51,11 @@
                 android:layout_marginStart="12dp"/>
         </LinearLayout>
 
-        <!-- 1. المعلومات الأساسية (VLESS) -->
+        <!-- 1. المعلومات الأساسية والبروتوكول -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="المعلومات الأساسية (السيرفر)"
+            android:text="نوع البروتوكول والمعلومات الأساسية"
             android:textColor="#FF9800"
             android:textSize="14sp"
             android:textStyle="bold"
@@ -76,17 +75,56 @@
                 android:orientation="vertical"
                 android:padding="16dp">
                 
-                <!-- تم استدعاء نفس الملف المشترك للملاحظات والآيبي والبورت -->
+                <!-- اختيار البروتوكول -->
+                <RadioGroup
+                    android:id="@+id/rg_protocol"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="16dp">
+                    
+                    <RadioButton
+                        android:id="@+id/rb_vless"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="VLESS"
+                        android:textColor="#FFFFFF"
+                        android:buttonTint="#FF9800"
+                        android:checked="true"
+                        android:layout_weight="1"/>
+                        
+                    <RadioButton
+                        android:id="@+id/rb_trojan"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Trojan"
+                        android:textColor="#FFFFFF"
+                        android:buttonTint="#FF9800"
+                        android:layout_weight="1"/>
+                </RadioGroup>
+
+                <!-- تفعيل TLS -->
+                <CheckBox
+                    android:id="@+id/cb_tls"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="تفعيل التشفير (TLS)"
+                    android:textColor="#FFFFFF"
+                    android:buttonTint="#FF9800"
+                    android:checked="true"
+                    android:layout_marginBottom="16dp"/>
+
+                <!-- ملف المشتركات -->
                 <include layout="@layout/layout_address_port" />
                 
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- 2. بيانات الاتصال (UUID) -->
+        <!-- 2. بيانات الاتصال (UUID / Password) -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="بيانات الاتصال (VLESS UUID)"
+            android:text="بيانات الاتصال (UUID / Password)"
             android:textColor="#FF9800"
             android:textSize="14sp"
             android:textStyle="bold"
@@ -111,7 +149,7 @@
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="@string/server_lab_id"
+                    android:hint="المعرف (UUID) أو كلمة السر"
                     app:boxStrokeColor="#FF9800"
                     app:hintTextColor="#FF9800"
                     android:textColorHint="#B0BEC5"
@@ -130,11 +168,11 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- 3. إعدادات الحاقن (Proxy / Payload) -->
+        <!-- 3. إعدادات الحاقن والبايلود -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="إعدادات الحاقن (Proxy / Payload)"
+            android:text="إعدادات الحاقن والبايلود (Proxy / Payload)"
             android:textColor="#FF9800"
             android:textSize="14sp"
             android:textStyle="bold"
@@ -226,6 +264,30 @@
                         android:textColor="#FFFFFF" />
                 </com.google.android.material.textfield.TextInputLayout>
 
+                <!-- البايلود الجديد Payload -->
+                <com.google.android.material.textfield.TextInputLayout
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    android:hint="البايلود / Payload (اختياري)"
+                    app:boxStrokeColor="#FF9800"
+                    app:hintTextColor="#FF9800"
+                    android:textColorHint="#B0BEC5"
+                    app:boxCornerRadiusTopStart="12dp"
+                    app:boxCornerRadiusTopEnd="12dp"
+                    app:boxCornerRadiusBottomStart="12dp"
+                    app:boxCornerRadiusBottomEnd="12dp">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/et_payload"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="textMultiLine"
+                        android:minLines="2"
+                        android:textColor="#FFFFFF" />
+                </com.google.android.material.textfield.TextInputLayout>
+
                 <!-- BSID Header -->
                 <com.google.android.material.textfield.TextInputLayout
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
@@ -252,13 +314,13 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- زر الحفظ والتشغيل -->
+        <!-- زر الحفظ فقط -->
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_save_and_connect"
+            android:id="@+id/btn_save_config"
             android:layout_width="match_parent"
             android:layout_height="65dp"
             android:layout_marginBottom="24dp"
-            android:text="حفظ وتشغيل المحرك 🚀"
+            android:text="حفظ التكوين 💾"
             android:textColor="#FFFFFF"
             android:textSize="18sp"
             android:textStyle="bold"
