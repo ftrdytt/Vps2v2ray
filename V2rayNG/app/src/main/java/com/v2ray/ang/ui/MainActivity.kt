@@ -299,6 +299,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)?.let { it.setOnClickListener { SpeedTestHelper.runSpeedTest(this, mainViewModel.isRunning.value == true) } }
             binding.root.findViewById<CardView>(R.id.card_traffic_meter)?.setOnClickListener { TrafficMonitorHelper.showTrafficDetailsDialog(this, mainViewModel.isRunning.value == true) }
             
+            // 🌟 ربط مباشر لواجهة Ashor من أي مكان (متوافق مع زر القائمة أو واجهة خضراء) 🌟
+            binding.root.findViewById<View>(R.id.btn_add_ashor_payload)?.setOnClickListener {
+                startActivity(Intent(this, ServerAshorActivity::class.java))
+            }
+
             val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
             binding.mainScrollView.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_UP) {
@@ -781,11 +786,20 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         R.id.import_qrcode -> { 
             ImportHelper.showAddBottomSheet(this, mainViewModel, { openLocalFileLauncher.launch(arrayOf("*/*")) }, { openEncryptedFileLauncher.launch(arrayOf("*/*")) })
             true 
-        } 
+        }
+        // 🌟 دمج واجهة إضافة Ashor من زر القائمة العلوية (+) إن وجد 🌟
+        R.id.import_manually_ashor -> {
+            startActivity(Intent(this, ServerAshorActivity::class.java))
+            true
+        }
         else -> super.onOptionsItemSelected(item) 
     }
     
     override fun onNavigationItemSelected(item: MenuItem): Boolean { 
+        // 🌟 إتاحة إطلاق بروتوكول Ashor من القائمة الجانبية إذا أضفت المعرف هناك 🌟
+        if (item.itemId == R.id.nav_add_ashor || item.itemId == R.id.import_manually_ashor) {
+            startActivity(Intent(this, ServerAshorActivity::class.java))
+        }
         binding.drawerLayout.closeDrawer(GravityCompat.START)
         return true 
     }
