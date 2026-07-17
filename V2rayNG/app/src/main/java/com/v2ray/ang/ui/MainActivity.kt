@@ -12,10 +12,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import android.graphics.Color
 import android.content.res.ColorStateList
+import android.widget.ImageView
 import androidx.core.content.ContextCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -299,6 +301,29 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)?.let { it.setOnClickListener { SpeedTestHelper.runSpeedTest(this, mainViewModel.isRunning.value == true) } }
             binding.root.findViewById<CardView>(R.id.card_traffic_meter)?.setOnClickListener { TrafficMonitorHelper.showTrafficDetailsDialog(this, mainViewModel.isRunning.value == true) }
 
+            // 🌟 زر فتح السجل الكامل (Full Log) 🌟
+            binding.root.findViewById<ImageView>(R.id.btn_full_log)?.setOnClickListener {
+                val fullLogs = mainViewModel.fullLog.value ?: "لا توجد سجلات حالياً..."
+                
+                val scrollView = ScrollView(this).apply {
+                    setPadding(40, 30, 40, 30)
+                }
+                val tvLogs = TextView(this).apply {
+                    text = fullLogs
+                    textSize = 12f
+                    setTextColor(Color.WHITE)
+                    layoutDirection = View.LAYOUT_DIRECTION_LTR
+                    textDirection = View.TEXT_DIRECTION_LTR
+                }
+                scrollView.addView(tvLogs)
+
+                AlertDialog.Builder(this, R.style.Theme_AppCompat_Dialog_Alert)
+                    .setTitle("سجل المحرك الكامل")
+                    .setView(scrollView)
+                    .setPositiveButton("إغلاق", null)
+                    .show()
+            }
+
             val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
             binding.mainScrollView.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_UP) {
@@ -417,6 +442,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
+        val tvLiveLog = binding.root.findViewById<TextView>(R.id.tv_live_log)
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
@@ -458,6 +484,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
             binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f)
             binding.root.findViewById<SpeedGaugeView>(R.id.gauge_speed)?.setSpeed(0f)
+            tvLiveLog?.text = "⏳ جاري تهيئة المحرك للاتصال..."
             lottieEngine?.playAnimation()
             return
         }
@@ -554,6 +581,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             binding.layoutTest.isFocusable = false
             btnGreenConnect?.text = "تشغيل المحرك"
             btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
+            tvLiveLog?.text = "بانتظار تشغيل المحرك..."
             lottieEngine?.cancelAnimation()
             lottieEngine?.progress = 0f
             binding.root.findViewById<PingGaugeView>(R.id.gauge_ping)?.setPing(0f)
@@ -652,9 +680,40 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    // 🌟 ترجمة ذكية ومبسطة لأخطاء V2Ray إلى العربية 🌟
+    private fun translateLog(log: String): String {
+        if (log.isBlank()) return "بانتظار تشغيل المحرك..."
+        val l = log.lowercase()
+        return when {
+            l.contains("started") -> "🚀 المحرك يعمل بنجاح! يتم تأمين الاتصال..."
+            l.contains("timeout") -> "⚠️ انتهى وقت الاتصال (Timeout) - تحقق من السيرفر أو البايلود"
+            l.contains("connection reset") -> "⚠️ تم قطع الاتصال من قبل السيرفر (Reset)"
+            l.contains("no route to host") -> "🚫 لا يوجد مسار للسيرفر (تأكد من عنوان IP/SNI)"
+            l.contains("connection refused") -> "🚫 السيرفر يرفض الاتصال (Refused - البورت مغلق؟)"
+            l.contains("tls") || l.contains("certificate") -> "🔒 مشكلة في الحماية (TLS) - تحقق من الـ SNI"
+            l.contains("dns") -> "🌐 مشكلة في تحليل الـ DNS للسيرفر"
+            l.contains("io: read/write on closed pipe") -> "⚡ انقطع الاتصال فجأة (غالباً بسبب التوجيه الخاطئ)"
+            l.contains("dial tcp") -> "⏳ جاري محاولة الاتصال والربط بالسيرفر..."
+            l.contains("vless") && l.contains("encoding") -> "❌ خطأ في إعدادات VLESS"
+            l.contains("proxy/vless") -> "🔄 جاري توجيه بيانات VLESS..."
+            l.contains("proxy/trojan") -> "🔄 جاري توجيه بيانات التروجان..."
+            l.contains("app/dispatcher") -> "🔀 جاري توجيه الاتصال داخلياً..."
+            l.contains("failed to start") -> "❌ فشل بدء المحرك - تأكد من البايلود (JSON)"
+            l.contains("invalid") -> "⚠️ خطأ في صياغة البايلود أو السيرفر غير صالح"
+            else -> log // إذا لم يطابق يعرض السجل كما هو
+        }
+    }
+
     private fun setupViewModel() { 
         mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }
         mainViewModel.isRunning.observe(this) { isRunning -> applyRunningState(false, isRunning) }
+        
+        // 🌟 مراقبة السجل المباشر وتحديث واجهة المستخدم (مترجم) 🌟
+        mainViewModel.liveLog.observe(this) { log ->
+            val tvLiveLog = binding.root.findViewById<TextView>(R.id.tv_live_log)
+            tvLiveLog?.text = translateLog(log)
+        }
+
         mainViewModel.startListenBroadcast()
         mainViewModel.initAssets(assets) 
     }
