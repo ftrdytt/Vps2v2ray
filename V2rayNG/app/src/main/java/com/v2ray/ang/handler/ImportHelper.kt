@@ -20,6 +20,7 @@ import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.ui.MainActivity
 import com.v2ray.ang.ui.ScannerActivity
 import com.v2ray.ang.ui.ServerActivity
+import com.v2ray.ang.ui.ServerAshorActivity // 🌟 تم إضافة استدعاء واجهة Ashor هنا 🌟
 import com.v2ray.ang.ui.ServerGroupActivity
 import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.MainViewModel
@@ -51,6 +52,11 @@ object ImportHelper {
         createOption("استيراد ملف من الجهاز", android.R.drawable.ic_menu_upload) { onLocalFileClick() }
         createOption("إضافة ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) { onEncryptedFileClick() }
         
+        // 🌟 زر إضافة Ashor Payload الجديد 🌟
+        createOption("إضافة Ashor Payload ⚡", android.R.drawable.ic_menu_edit) { 
+            activity.startActivity(Intent(activity, ServerAshorActivity::class.java)) 
+        }
+
         createOption("إضافة VLESS", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.VLESS.value) }
         createOption("إضافة VMess", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.VMESS.value) }
         createOption("إضافة Trojan", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.TROJAN.value) }
