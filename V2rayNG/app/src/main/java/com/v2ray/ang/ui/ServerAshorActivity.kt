@@ -8,12 +8,11 @@ import android.widget.RadioButton
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
-import com.google.gson.Gson
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.ProfileItem
+import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.util.Utils
-import java.io.File
 
 class ServerAshorActivity : AppCompatActivity() {
 
@@ -21,20 +20,14 @@ class ServerAshorActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_server_ashor)
 
-        // زر الرجوع في الهيدر
         findViewById<ImageView>(R.id.btn_back).setOnClickListener { finish() }
 
-        // ربط الحقول المشتركة
         val etRemarks = findViewById<EditText>(R.id.et_remarks)
         val etAddress = findViewById<EditText>(R.id.et_address)
         val etPort = findViewById<EditText>(R.id.et_port)
-        
-        // ربط الحقول الخاصة بالبروتوكول والتشفير
         val rbVless = findViewById<RadioButton>(R.id.rb_vless)
         val rbTrojan = findViewById<RadioButton>(R.id.rb_trojan)
         val cbTls = findViewById<CheckBox>(R.id.cb_tls)
-        
-        // ربط حقول الاتصال والحاقن
         val etId = findViewById<EditText>(R.id.et_id)
         val etProxyIp = findViewById<EditText>(R.id.et_proxy_ip)
         val etProxyPort = findViewById<EditText>(R.id.et_proxy_port)
@@ -42,7 +35,6 @@ class ServerAshorActivity : AppCompatActivity() {
         val etPayload = findViewById<EditText>(R.id.et_payload)
         val etBsid = findViewById<EditText>(R.id.et_bsid)
         
-        // زر الحفظ الجديد (بدون اتصال تلقائي لمنع الخروج المفاجئ)
         val btnSaveConfig = findViewById<MaterialButton>(R.id.btn_save_config)
 
         btnSaveConfig.setOnClickListener {
@@ -59,51 +51,33 @@ class ServerAshorActivity : AppCompatActivity() {
             val isVless = rbVless?.isChecked ?: true
             val useTls = cbTls?.isChecked ?: true
 
-            // التحقق من أن الحقول المهمة غير فارغة
             if (serverAddress.isEmpty() || serverPort.isEmpty() || uuid.isEmpty() || proxyIp.isEmpty() || sni.isEmpty()) {
                 Toast.makeText(this, "يرجى ملء جميع الحقول المطلوبة الأساسية", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
-            // توليد الـ JSON الاحترافي والثغرة
             val jsonConfig = generateAshorPayload(isVless, serverAddress, serverPort, uuid, proxyIp, proxyPort, sni, bsid, payload, useTls)
             val finalRemarks = if (remarks.isNotEmpty()) remarks else "Ashor: $sni"
 
             try {
-                // 🌟 الحل الجذري لمنع الخروج المفاجئ (Crash): حفظ الـ JSON كملف وتمرير مساره 🌟
                 val guid = Utils.getUuid()
-                val fileName = "ashor_config_${guid}.json"
-                val file = File(filesDir, fileName)
-                file.writeText(jsonConfig)
-                
-                val fileAbsolutePath = file.absolutePath
 
-                // الحل السحري لتجاوز أخطاء المترجم (Build Errors) باستخدام Gson
-                val gson = Gson()
-                var profile: ProfileItem? = null
-                
-                try {
-                    val mapStr = mapOf("configType" to "CUSTOM", "remarks" to finalRemarks, "server" to fileAbsolutePath)
-                    profile = gson.fromJson(gson.toJson(mapStr), ProfileItem::class.java)
-                } catch (e: Exception) {
-                    try {
-                        val mapInt = mapOf("configType" to 2, "remarks" to finalRemarks, "server" to fileAbsolutePath)
-                        profile = gson.fromJson(gson.toJson(mapInt), ProfileItem::class.java)
-                    } catch (e2: Exception) {
-                        e2.printStackTrace()
-                    }
-                }
+                // بناء البروفايل الآمن لتجنب الكراش
+                val profile = ProfileItem.create(EConfigType.CUSTOM)
+                profile.remarks = finalRemarks
+                // ترك هذه الحقول فارغة لمنع انهيار MainRecyclerAdapter
+                profile.server = null
+                profile.serverPort = null
+                profile.description = "Ashor Payload ⚡"
 
-                if (profile != null) {
-                    // حفظ السيرفر وتحديده كالسيرفر الافتراضي
-                    MmkvManager.encodeServerConfig(guid, profile)
-                    MmkvManager.setSelectServer(guid)
-                    
-                    Toast.makeText(this, "تم حفظ التكوين بنجاح! يمكنك تشغيله الآن 🚀", Toast.LENGTH_SHORT).show()
-                    finish() // العودة للصفحة الرئيسية للتشغيل اليدوي بأمان
-                } else {
-                    Toast.makeText(this, "فشل في بناء البروفايل، يرجى المحاولة مجدداً", Toast.LENGTH_SHORT).show()
-                }
+                // الحفظ المزدوج (الواجهة + النواة)
+                MmkvManager.encodeServerConfig(guid, profile)
+                MmkvManager.encodeServerRaw(guid, jsonConfig)
+
+                MmkvManager.setSelectServer(guid)
+                
+                Toast.makeText(this, "تم الحفظ بنجاح! جاهز للتشغيل 🚀", Toast.LENGTH_SHORT).show()
+                finish() 
             } catch (e: Exception) {
                 e.printStackTrace()
                 Toast.makeText(this, "خطأ غير متوقع أثناء الحفظ", Toast.LENGTH_SHORT).show()
@@ -111,7 +85,6 @@ class ServerAshorActivity : AppCompatActivity() {
         }
     }
 
-    // دالة توليد JSON المخصص بدمج VLESS و Trojan ودعم البايلود الجديد والـ TLS
     private fun generateAshorPayload(
         isVless: Boolean, vlessAddr: String, vlessPort: String, uuid: String, 
         proxyIp: String, proxyPort: String, sni: String, bsid: String, payload: String, useTls: Boolean
@@ -195,8 +168,6 @@ class ServerAshorActivity : AppCompatActivity() {
         }
 
         val outboundTag = if (isVless) "VLESS" else "TROJAN"
-        
-        // إذا ترك المستخدم حقل البايلود فارغاً نستخدم الافتراضي
         val userAgent = if (payload.isNotEmpty()) payload else "Mozilla/5.0 (Linux; Android 14; SM-A245F Build/UP1A.231005.007; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/133.0.6943.122 Mobile Safari/537.36 [FBAN/InternetOrgApp;FBAV/166.0.0.0.169;]"
 
         return """
