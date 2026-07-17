@@ -95,6 +95,12 @@
             android:screenOrientation="portrait" />
         <!-- 🌟 نهاية الواجهات الجديدة 🌟 -->
 
+        <!-- 🌟 واجهة بروتوكول Ashor المدمج الجديد 🌟 -->
+        <activity
+            android:name=".ui.ServerAshorActivity"
+            android:exported="false"
+            android:windowSoftInputMode="stateUnchanged" />
+
         <activity
             android:name=".ui.ServerActivity"
             android:exported="false"
