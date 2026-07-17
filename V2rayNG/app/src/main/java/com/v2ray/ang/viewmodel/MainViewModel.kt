@@ -90,7 +90,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 logProcess = Runtime.getRuntime().exec("logcat -v time")
                 val reader = BufferedReader(InputStreamReader(logProcess!!.inputStream))
                 
-                var line: String?
+                // 🌟 هذا هو التعديل الذي أصلحنا به الخطأ (إعطاء قيمة null) 🌟
+                var line: String? = null
+                
                 while (isActive && reader.readLine().also { line = it } != null) {
                     val currentLine = line ?: continue
                     
