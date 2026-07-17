@@ -6,12 +6,9 @@ import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
-import com.tencent.mmkv.MMKV
 import com.v2ray.ang.R
-import com.v2ray.ang.dto.EConfigType
-import com.v2ray.ang.dto.ProfileItem
-import com.v2ray.ang.util.AngConfigManager
-import com.v2ray.ang.util.MmkvManager
+import com.v2ray.ang.dto.*
+import com.v2ray.ang.util.*
 import java.io.File
 
 class ServerAshorActivity : AppCompatActivity() {
@@ -23,7 +20,7 @@ class ServerAshorActivity : AppCompatActivity() {
         // زر الرجوع في الهيدر
         findViewById<ImageView>(R.id.btn_back).setOnClickListener { finish() }
 
-        // ربط الحقول المشتركة (موجودة بداخل layout_address_port.xml)
+        // ربط الحقول المشتركة
         val etRemarks = findViewById<EditText>(R.id.et_remarks)
         val etAddress = findViewById<EditText>(R.id.et_address)
         val etPort = findViewById<EditText>(R.id.et_port)
@@ -56,26 +53,25 @@ class ServerAshorActivity : AppCompatActivity() {
             // توليد الـ JSON الاحترافي مع الحاقن
             val jsonConfig = generateAshorPayload(vlessAddress, vlessPort, uuid, proxyIp, proxyPort, sni, bsid)
 
-            // حفظ JSON كملف في بيانات التطبيق
-            val fileName = "ashor_${System.currentTimeMillis()}.json"
-            val file = File(filesDir, fileName)
-            file.writeText(jsonConfig)
+            try {
+                // 🌟 الحل الجذري لأخطاء الـ Build: إنشاء البروفايل كـ Data Class 🌟
+                val profile = ProfileItem(
+                    configType = EConfigType.CUSTOM,
+                    remarks = if (remarks.isNotEmpty()) remarks else "Ashor: $sni",
+                    server = jsonConfig // تمرير الـ JSON مباشرة إلى server بدلاً من إنشاء ملف و customPath
+                )
 
-            // إنشاء بروفايل في قاعدة بيانات v2rayNG
-            val profile = ProfileItem()
-            profile.configType = EConfigType.CUSTOM
-            profile.remarks = if (remarks.isNotEmpty()) remarks else "Ashor: $sni"
-            profile.customPath = file.absolutePath
-
-            val guid = AngConfigManager.addProfile(profile)
-            
-            if (guid.isNotEmpty()) {
-                // 🌟 السحر هنا: تحديد هذا السيرفر كالسيرفر الافتراضي فوراً 🌟
-                MmkvManager.encodeString(MmkvManager.KEY_SELECTED_SERVER, guid)
+                // توليد آيدي مميز للسيرفر
+                val guid = Utils.getUuid()
+                
+                // 🌟 حفظ السيرفر وتحديده كالسيرفر الافتراضي فوراً عبر MmkvManager 🌟
+                MmkvManager.encodeServerConfig(guid, profile)
+                MmkvManager.setSelectServer(guid)
                 
                 Toast.makeText(this, "تم الحفظ والتحديد بنجاح! جاهز للتشغيل 🚀", Toast.LENGTH_SHORT).show()
                 finish() // العودة للصفحة الرئيسية لتشغيل الـ VPN
-            } else {
+            } catch (e: Exception) {
+                e.printStackTrace()
                 Toast.makeText(this, "خطأ أثناء حفظ الملف", Toast.LENGTH_SHORT).show()
             }
         }
@@ -129,7 +125,7 @@ class ServerAshorActivity : AppCompatActivity() {
                 "vnext": [
                   {
                     "address": "$vlessAddr",
-                    "port": $vlessPort,
+                    "port": ${vlessPort.toIntOrNull() ?: 443},
                     "users": [
                       {
                         "encryption": "none",
@@ -157,7 +153,7 @@ class ServerAshorActivity : AppCompatActivity() {
                 "servers": [
                   {
                     "address": "$proxyIp",
-                    "port": $proxyPort
+                    "port": ${proxyPort.toIntOrNull() ?: 8080}
                   }
                 ],
                 "headers": {
