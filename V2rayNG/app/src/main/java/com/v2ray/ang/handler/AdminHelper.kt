@@ -1,129 +1,161 @@
 package com.v2ray.ang.handler
 
 import android.app.Activity
-import android.content.Intent
+import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.Color
-import android.net.Uri
-import android.util.Base64
+import android.text.InputType
 import android.view.Gravity
-import android.view.View
-import android.view.ViewGroup
-import android.widget.ImageView
+import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
-import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.v2ray.ang.R
-import com.v2ray.ang.enums.EConfigType
-import com.v2ray.ang.extension.toast
+import androidx.appcompat.app.AlertDialog
 import com.v2ray.ang.extension.toastError
-import com.v2ray.ang.ui.MainActivity
-import com.v2ray.ang.ui.ScannerActivity
-import com.v2ray.ang.ui.ServerActivity
-import com.v2ray.ang.ui.ServerAshorActivity // 🌟 تم إضافة استدعاء واجهة Ashor هنا 🌟
-import com.v2ray.ang.ui.ServerGroupActivity
-import com.v2ray.ang.util.Utils
-import com.v2ray.ang.viewmodel.MainViewModel
+import com.v2ray.ang.extension.toastSuccess
 import kotlinx.coroutines.*
-import java.io.BufferedReader
-import java.io.InputStreamReader
 
-object ImportHelper {
+object AdminHelper {
 
-    fun showAddBottomSheet(activity: MainActivity, mainViewModel: MainViewModel, onLocalFileClick: () -> Unit, onEncryptedFileClick: () -> Unit) {
-        val bottomSheetDialog = BottomSheetDialog(activity)
-        val scrollView = ScrollView(activity)
-        val container = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#141417")); setPadding(0, 0, 0, 40) }
-        scrollView.addView(container)
+    // دالة ذكية لحساب الوقت وإخفاء الثواني (أيام، ساعات، دقائق فقط)
+    fun formatTimeNoSeconds(expiryMs: Long, context: Context): String {
+        val now = NetworkTime.currentTimeMillis(context)
+        val diff = expiryMs - now
+        if (diff <= 0) return "منتهي الصلاحية 🛑"
 
-        container.addView(TextView(activity).apply { text = "إضافة تكوين جديد"; textSize = 20f; setTextColor(Color.parseColor("#FF9800")); setPadding(40, 40, 40, 20); textAlignment = View.TEXT_ALIGNMENT_CENTER; setTypeface(null, android.graphics.Typeface.BOLD) })
-        container.addView(View(activity).apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 2).apply { setMargins(40, 0, 40, 20) }; setBackgroundColor(Color.parseColor("#33FFFFFF")) })
+        val days = diff / (1000 * 60 * 60 * 24)
+        val hours = (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
+        val minutes = (diff % (1000 * 60 * 60)) / (1000 * 60)
 
-        fun createOption(textStr: String, iconRes: Int, onClick: () -> Unit) {
-            val layout = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT); setPadding(50, 30, 50, 30); gravity = Gravity.CENTER_VERTICAL; isClickable = true; val outValue = android.util.TypedValue(); activity.theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true); setBackgroundResource(outValue.resourceId); setOnClickListener { onClick(); bottomSheetDialog.dismiss() } }
-            layout.addView(ImageView(activity).apply { setImageResource(iconRes); setColorFilter(Color.parseColor("#FF9800")); layoutParams = LinearLayout.LayoutParams(56, 56) })
-            layout.addView(TextView(activity).apply { text = textStr; textSize = 16f; setTextColor(Color.WHITE); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = 40 } })
-            container.addView(layout)
-        }
+        val parts = mutableListOf<String>()
+        if (days > 0) parts.add("$days يوم")
+        if (hours > 0) parts.add("$hours ساعة")
+        if (minutes > 0) parts.add("$minutes دقيقة")
 
-        createOption("استيراد من رمز الاستجابة (QR)", android.R.drawable.ic_menu_camera) { activity.startActivity(Intent(activity, ScannerActivity::class.java)) }
-        createOption("استيراد من الحافظة (عادي)", android.R.drawable.ic_menu_add) { importClipboard(activity, mainViewModel) }
-        createOption("استيراد من حافظة مشفرة", android.R.drawable.ic_lock_idle_lock) { importClipboardEncrypted(activity, mainViewModel) }
-        createOption("استيراد ملف من الجهاز", android.R.drawable.ic_menu_upload) { onLocalFileClick() }
-        createOption("إضافة ملف مشفر (.ashor)", android.R.drawable.ic_menu_save) { onEncryptedFileClick() }
+        if (parts.isEmpty()) return "أقل من دقيقة ⏳"
+        return parts.joinToString(" و ")
+    }
+
+    fun showExtendLicenseDialog(activity: Activity, guid: String, onReloadRequired: () -> Unit, showLoading: () -> Unit, hideLoading: () -> Unit) {
+        val mainLicenseId = V2rayCrypt.getLicenseId(activity, guid)
+        if (mainLicenseId.isEmpty() || mainLicenseId == "LEGACY") { activity.toastError("هذا الكود قديم ولا يدعم الإدارة السحابية."); return }
+
+        // جلب قائمة الملفات المستخرجة
+        val exportedConfigs = V2rayCrypt.getSubscribers(activity, guid)
         
-        // 🌟 زر إضافة Ashor Payload الجديد 🌟
-        createOption("إضافة Ashor Payload ⚡", android.R.drawable.ic_menu_edit) { 
-            activity.startActivity(Intent(activity, ServerAshorActivity::class.java)) 
+        val optionsList = mutableListOf<String>()
+        val licenseIdsList = mutableListOf<String>()
+        val isMainConfigList = mutableListOf<Boolean>()
+
+        // 1. إضافة الملف الرئيسي للخيارات
+        val mainExpiry = V2rayCrypt.getExpiryTime(activity, guid)
+        optionsList.add("👑 الملف الأساسي - (${formatTimeNoSeconds(mainExpiry, activity)})")
+        licenseIdsList.add(mainLicenseId)
+        isMainConfigList.add(true)
+
+        // 2. إضافة الملفات المستخرجة
+        for (config in exportedConfigs) {
+            optionsList.add("📄 ${config.name} - (${formatTimeNoSeconds(config.expiryTimeMs, activity)})")
+            licenseIdsList.add(config.licenseId)
+            isMainConfigList.add(false)
         }
 
-        createOption("إضافة VLESS", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.VLESS.value) }
-        createOption("إضافة VMess", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.VMESS.value) }
-        createOption("إضافة Trojan", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.TROJAN.value) }
-        // الأسطر المضافة للبروتوكولات الجديدة
-        createOption("إضافة Shadowsocks", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.SHADOWSOCKS.value) }
-        createOption("إضافة Socks", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.SOCKS.value) }
-        createOption("إضافة WireGuard", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.WIREGUARD.value) }
-        createOption("إضافة تكوين مخصص (Custom)", android.R.drawable.ic_menu_edit) { importManually(activity, mainViewModel, EConfigType.CUSTOM.value) }
-
-        bottomSheetDialog.setContentView(scrollView)
-        bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
-        bottomSheetDialog.show()
-    }
-
-    private fun importManually(activity: Activity, mainViewModel: MainViewModel, type: Int) {
-        activity.startActivity(Intent().putExtra("createConfigType", type).putExtra("subscriptionId", mainViewModel.subscriptionId).setClass(activity, ServerActivity::class.java))
-    }
-
-    fun importClipboard(activity: MainActivity, vm: MainViewModel) { try { importBatchConfig(activity, vm, Utils.getClipboard(activity)) } catch (e: Exception) {} }
-    
-    fun importClipboardEncrypted(activity: MainActivity, vm: MainViewModel) {
-        try {
-            val clip = Utils.getClipboard(activity); if (clip.isNullOrEmpty()) { activity.toast("الحافظة فارغة"); return }
-            val res = V2rayCrypt.decryptAndCheckExpiry(clip); if (res == null) { activity.toast("الكود غير صالح"); return }
-            importEncryptedBatchConfig(activity, vm, res.first, res.second, res.third)
-        } catch (e: Exception) {}
-    }
-
-    fun importEncryptedContentFromUri(activity: MainActivity, vm: MainViewModel, uri: Uri) {
-        try {
-            val content = activity.contentResolver.openInputStream(uri)?.use { BufferedReader(InputStreamReader(it)).readText() } ?: return
-            val res = V2rayCrypt.decryptAndCheckExpiry(content); if (res != null) importEncryptedBatchConfig(activity, vm, res.first, res.second, res.third)
-        } catch (e: Exception) { activity.toast("خطأ في الملف") }
-    }
-
-    fun readContentFromUri(activity: MainActivity, vm: MainViewModel, uri: Uri) {
-        try { activity.contentResolver.openInputStream(uri).use { importBatchConfig(activity, vm, it?.bufferedReader()?.readText()) } } catch (e: Exception) {}
-    }
-
-    private fun importEncryptedBatchConfig(activity: MainActivity, vm: MainViewModel, server: String?, expiry: Long, licenseId: String) {
-        activity.showLoadingDialog()
-        GlobalScope.launch(Dispatchers.IO) {
-            val before = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
-            val (count, _) = AngConfigManager.importBatchConfig(server, vm.subscriptionId, true)
-            withContext(Dispatchers.Main) {
-                if (count > 0) {
-                    val newGuids = (MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()) - before
-                    V2rayCrypt.addProtectedGuids(activity, newGuids)
-                    newGuids.forEach { guid ->
-                        if (expiry > 0L) V2rayCrypt.saveExpiryTime(activity, guid, expiry)
-                        if (licenseId.isNotEmpty()) V2rayCrypt.saveLicenseId(activity, guid, licenseId)
-                        if (server != null) V2rayCrypt.saveLastConfigHash(activity, guid, Base64.encodeToString(server.toByteArray(), Base64.NO_WRAP).hashCode())
-                    }
-                    vm.reloadServerList(); activity.toast("تم استيراد التكوين!")
-                } else activity.toastError(R.string.toast_failure)
-                activity.hideLoadingDialog()
+        AlertDialog.Builder(activity)
+            .setTitle("اختر الملف لتمديد وقته ⏱️")
+            .setItems(optionsList.toTypedArray()) { _, which ->
+                val selectedLicense = licenseIdsList[which]
+                val isMain = isMainConfigList[which]
+                showTimeInputDialog(activity, guid, selectedLicense, isMain, onReloadRequired, showLoading, hideLoading)
             }
-        }
+            .setNegativeButton("إلغاء", null)
+            .show()
     }
 
-    private fun importBatchConfig(activity: MainActivity, vm: MainViewModel, server: String?) {
-        activity.showLoadingDialog()
+    private fun showTimeInputDialog(
+        activity: Activity, 
+        mainGuid: String, 
+        targetLicenseId: String, 
+        isMainConfig: Boolean, 
+        onReloadRequired: () -> Unit, 
+        showLoading: () -> Unit, 
+        hideLoading: () -> Unit
+    ) {
+        val layout = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 40, 50, 40) }
+        layout.addView(TextView(activity).apply {
+            text = if (isMainConfig) "تمديد الملف الأساسي" else "تمديد الملف المستخرج"
+            textSize = 17f; setTextColor(Color.parseColor("#FF9800")); setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(0, 0, 0, 30); gravity = Gravity.CENTER
+        })
+
+        val mInput = EditText(activity).apply { hint = "أشهر"; inputType = InputType.TYPE_CLASS_NUMBER; setTextColor(Color.BLACK) }; layout.addView(mInput)
+        val dInput = EditText(activity).apply { hint = "أيام"; inputType = InputType.TYPE_CLASS_NUMBER; setTextColor(Color.BLACK) }; layout.addView(dInput)
+        val hInput = EditText(activity).apply { hint = "ساعات"; inputType = InputType.TYPE_CLASS_NUMBER; setTextColor(Color.BLACK) }; layout.addView(hInput)
+
+        AlertDialog.Builder(activity).setView(layout).setPositiveButton("تمديد") { _, _ ->
+            val ms = ((mInput.text.toString().toLongOrNull() ?: 0L) * 30L * 86400000L) + 
+                     ((dInput.text.toString().toLongOrNull() ?: 0L) * 86400000L) + 
+                     ((hInput.text.toString().toLongOrNull() ?: 0L) * 3600000L)
+            
+            if (ms > 0L) {
+                val newTime = NetworkTime.currentTimeMillis(activity) + ms
+                showLoading()
+                GlobalScope.launch(Dispatchers.IO) {
+                    val success = CloudflareAPI.updateExpiry(targetLicenseId, newTime)
+                    withContext(Dispatchers.Main) {
+                        hideLoading()
+                        if (success) { 
+                            if (isMainConfig) {
+                                V2rayCrypt.getAllProtectedGuids(activity).forEach { if (V2rayCrypt.getLicenseId(activity, it) == targetLicenseId) V2rayCrypt.saveExpiryTime(activity, it, newTime) }
+                            } else {
+                                val sub = V2rayCrypt.getSubscribers(activity, mainGuid).find { it.licenseId == targetLicenseId }
+                                V2rayCrypt.updateSubscriberLocally(activity, mainGuid, targetLicenseId, newTime, sub?.activeCount ?: 0)
+                            }
+                            activity.toastSuccess("تم التمديد بنجاح!"); onReloadRequired() 
+                        } else activity.toastError("فشل الاتصال بالسيرفر")
+                    }
+                }
+            } else activity.toastError("أدخل وقت صحيح")
+        }.setNeutralButton("إيقاف (باند)") { _, _ ->
+            showLoading()
+            GlobalScope.launch(Dispatchers.IO) {
+                val expired = NetworkTime.currentTimeMillis(activity) - 1000L
+                val success = CloudflareAPI.updateExpiry(targetLicenseId, expired)
+                withContext(Dispatchers.Main) { 
+                    hideLoading()
+                    if (success) { 
+                        if (isMainConfig) {
+                            V2rayCrypt.getAllProtectedGuids(activity).forEach { if (V2rayCrypt.getLicenseId(activity, it) == targetLicenseId) V2rayCrypt.saveExpiryTime(activity, it, expired) }
+                        } else {
+                            val sub = V2rayCrypt.getSubscribers(activity, mainGuid).find { it.licenseId == targetLicenseId }
+                            V2rayCrypt.updateSubscriberLocally(activity, mainGuid, targetLicenseId, expired, sub?.activeCount ?: 0)
+                        }
+                        activity.toastSuccess("تم إيقاف الملف!"); onReloadRequired() 
+                    } else activity.toastError("فشل الاتصال")
+                }
+            }
+        }.show()
+    }
+
+    // الدالة الأصلية لتحديث الكود من الحافظة (تم الحفاظ عليها كما أرسلتها)
+    fun replaceAndSyncConfigFromClipboard(activity: Activity, guid: String, subId: String, onReloadRequired: () -> Unit, showLoading: () -> Unit, hideLoading: () -> Unit) {
+        val licenseId = V2rayCrypt.getLicenseId(activity, guid)
+        val newConf = (activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip?.getItemAt(0)?.text?.toString() ?: return
+        
+        val expiry = V2rayCrypt.getExpiryTime(activity, guid)
+        showLoading()
         GlobalScope.launch(Dispatchers.IO) {
-            val (count, _) = AngConfigManager.importBatchConfig(server, vm.subscriptionId, true); delay(500L)
-            withContext(Dispatchers.Main) {
-                if (count > 0) { activity.toast("تم إضافة $count سيرفر"); vm.reloadServerList() } else activity.toastError(R.string.toast_failure)
-                activity.hideLoadingDialog()
+            if (CloudflareAPI.createOrUpdateSubscriber(licenseId, expiry, newConf)) {
+                withContext(Dispatchers.Main) {
+                    val before = MmkvManager.decodeServerList()?.toSet() ?: emptySet()
+                    val (count, _) = AngConfigManager.importBatchConfig(newConf, subId, true)
+                    if (count > 0) {
+                        val newGuid = ((MmkvManager.decodeServerList()?.toSet() ?: emptySet()) - before).firstOrNull()
+                        if (newGuid != null) {
+                            V2rayCrypt.addAdminGuid(activity, newGuid); V2rayCrypt.addProtectedGuids(activity, setOf(newGuid)); V2rayCrypt.saveLicenseId(activity, newGuid, licenseId); V2rayCrypt.saveExpiryTime(activity, newGuid, expiry)
+                            MmkvManager.removeServer(guid); MmkvManager.setSelectServer(newGuid); activity.toastSuccess("تم التحديث السحابي!"); onReloadRequired()
+                        }
+                    }
+                    hideLoading()
+                }
             }
         }
     }
