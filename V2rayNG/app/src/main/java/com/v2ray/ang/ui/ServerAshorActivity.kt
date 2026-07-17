@@ -7,9 +7,9 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.R
-import com.v2ray.ang.dto.*
-import com.v2ray.ang.util.*
-import java.io.File
+import com.v2ray.ang.dto.ProfileItem
+import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.util.Utils
 
 class ServerAshorActivity : AppCompatActivity() {
 
@@ -54,17 +54,16 @@ class ServerAshorActivity : AppCompatActivity() {
             val jsonConfig = generateAshorPayload(vlessAddress, vlessPort, uuid, proxyIp, proxyPort, sni, bsid)
 
             try {
-                // 🌟 الحل الجذري لأخطاء الـ Build: إنشاء البروفايل كـ Data Class 🌟
-                val profile = ProfileItem(
-                    configType = EConfigType.CUSTOM,
-                    remarks = if (remarks.isNotEmpty()) remarks else "Ashor: $sni",
-                    server = jsonConfig // تمرير الـ JSON مباشرة إلى server بدلاً من إنشاء ملف و customPath
-                )
+                val profile = ProfileItem()
+                
+                // 🌟 الحل الجذري: استخدام الرقم 2 بدلاً من EConfigType.CUSTOM المحذوف 🌟
+                profile.configType = 2 
+                profile.remarks = if (remarks.isNotEmpty()) remarks else "Ashor: $sni"
+                profile.server = jsonConfig // حفظ JSON مباشرة داخل السيرفر
 
-                // توليد آيدي مميز للسيرفر
                 val guid = Utils.getUuid()
                 
-                // 🌟 حفظ السيرفر وتحديده كالسيرفر الافتراضي فوراً عبر MmkvManager 🌟
+                // 🌟 استخدام MmkvManager من المسار الصحيح (handler) 🌟
                 MmkvManager.encodeServerConfig(guid, profile)
                 MmkvManager.setSelectServer(guid)
                 
