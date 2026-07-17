@@ -418,6 +418,53 @@
                             android:textStyle="bold"
                             app:cornerRadius="32dp" />
 
+                        <!-- 🌟 هنا تمت إضافة شريط السجل المباشر الجديد 🌟 -->
+                        <androidx.cardview.widget.CardView
+                            android:id="@+id/card_live_log"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginHorizontal="30dp"
+                            android:layout_marginTop="16dp"
+                            app:cardBackgroundColor="#1AFFFFFF"
+                            app:cardCornerRadius="12dp"
+                            app:cardElevation="0dp">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:padding="12dp">
+
+                                <ImageView
+                                    android:id="@+id/btn_full_log"
+                                    android:layout_width="24dp"
+                                    android:layout_height="24dp"
+                                    android:src="@android:drawable/ic_dialog_alert"
+                                    app:tint="#FF9800"
+                                    android:background="?attr/selectableItemBackgroundBorderless"
+                                    android:clickable="true"
+                                    android:focusable="true"/>
+
+                                <TextView
+                                    android:id="@+id/tv_live_log"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:layout_marginStart="8dp"
+                                    android:text="بانتظار تشغيل المحرك..."
+                                    android:textColor="#B0BEC5"
+                                    android:textSize="12sp"
+                                    android:singleLine="true"
+                                    android:ellipsize="marquee"
+                                    android:marqueeRepeatLimit="marquee_forever"
+                                    android:textDirection="rtl"
+                                    android:gravity="start|center_vertical"/>
+
+                            </LinearLayout>
+                        </androidx.cardview.widget.CardView>
+                        <!-- 🌟 نهاية شريط السجل 🌟 -->
+
                     </LinearLayout>
                 </FrameLayout>
 
