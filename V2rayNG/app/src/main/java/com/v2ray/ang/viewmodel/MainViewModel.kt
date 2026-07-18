@@ -73,7 +73,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
     }
 
-    // 🌟 دالة التقاط سجلات النواة باستخدام فلتر الـ OS الجذري 🌟
+    // 🌟 دالة التقاط سجلات النواة مع القائمة السوداء الصارمة 🌟
     private fun startLogReader() {
         stopLogReader()
         logBuffer.clear()
@@ -84,32 +84,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 Runtime.getRuntime().exec("logcat -c").waitFor()
                 
-                // الفلتر الجذري: نجلب السجلات التي تهم المحرك فقط ونمنع رسائل النظام
-                val process = Runtime.getRuntime().exec(arrayOf("logcat", "-v", "time", "-s", "GoLog:V", "v2rayNG:V", "V2RayVpnService:V"))
-                logProcess = process
-                val reader = BufferedReader(InputStreamReader(process.inputStream))
+                val myPid = android.os.Process.myPid().toString()
+                logProcess = Runtime.getRuntime().exec("logcat -v time")
+                val reader = BufferedReader(InputStreamReader(logProcess!!.inputStream))
                 
                 var line: String? = null
+                
+                // 🚫 القائمة السوداء: أي سطر يحتوي على هذه الكلمات سيتم تدميره فوراً 🚫
+                val blacklist = listOf(
+                    "ensurecontrolalpha", "misdevicedefault", "smartclipdata",
+                    "activitythread", "viewrootimpl", "choreographer", "mainviewmodel",
+                    "dispatchscrollableareainfo", "pkg=", "activity=", "extractsmartclipdata"
+                )
                 
                 while (isActive && reader.readLine().also { line = it } != null) {
                     val currentLine = line ?: continue
                     
-                    val cleanLine = if (currentLine.contains("): ")) {
-                        currentLine.substringAfter("): ").trim()
-                    } else {
-                        currentLine.trim()
-                    }
-                    
-                    if (cleanLine.isNotEmpty() && !cleanLine.contains("MainViewModel")) {
-                        logBuffer.add(cleanLine)
+                    if (currentLine.contains(myPid)) {
+                        val lowerLine = currentLine.lowercase()
                         
-                        if (logBuffer.size > 150) logBuffer.removeFirst()
+                        // تفعيل القائمة السوداء
+                        if (blacklist.any { lowerLine.contains(it) }) continue
                         
-                        val fullLogStr = logBuffer.joinToString("\n")
-                        
-                        withContext(Dispatchers.Main) {
-                            fullLog.value = fullLogStr
-                            liveLog.value = cleanLine
+                        // ✅ القائمة البيضاء الصارمة لحركة الإنترنت فقط ✅
+                        if (lowerLine.contains("proxy") || lowerLine.contains("dial") || 
+                            lowerLine.contains("tcp") || lowerLine.contains("tls") || 
+                            lowerLine.contains("golog") || lowerLine.contains("timeout") ||
+                            lowerLine.contains("failed") || lowerLine.contains("accepted") ||
+                            lowerLine.contains("rejected") || lowerLine.contains("started") ||
+                            lowerLine.contains("outbound") || lowerLine.contains("inbound") ||
+                            (lowerLine.contains("v2ray") && !lowerLine.contains("com.v2ray.ang"))) {
+                            
+                            val cleanLine = if (currentLine.contains("): ")) currentLine.substringAfter("): ").trim() else currentLine.trim()
+                            
+                            if (cleanLine.isNotEmpty()) {
+                                logBuffer.add(cleanLine)
+                                if (logBuffer.size > 150) logBuffer.removeFirst()
+                                
+                                val fullLogStr = logBuffer.joinToString("\n")
+                                
+                                withContext(Dispatchers.Main) {
+                                    fullLog.value = fullLogStr
+                                    liveLog.value = cleanLine
+                                }
+                            }
                         }
                     }
                 }
