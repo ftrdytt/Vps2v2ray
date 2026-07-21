@@ -25,7 +25,7 @@ import com.v2ray.ang.R
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.NetworkTime
 import com.v2ray.ang.handler.V2rayCrypt
-import com.v2ray.ang.util.AvatarGenerator // 🌟 استدعاء نظام الصور الذكي 🌟
+import com.v2ray.ang.util.AvatarGenerator
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -85,7 +85,9 @@ class SubscribersActivity : AppCompatActivity() {
         }
 
         recycler.layoutManager = LinearLayoutManager(this)
+        // 🌟 تمرير رابط الـ API للـ Adapter 🌟
         adapter = SubscribersAdapter(
+            apiUrl = BASE_API_URL,
             onExtend = { sub -> showExtendDialog(sub) },
             onShare = { sub -> shareSubscriber(sub) },
             onDelete = { sub -> deleteSubscriber(sub) },
@@ -111,7 +113,6 @@ class SubscribersActivity : AppCompatActivity() {
         filterList(etSearch.text.toString())
     }
 
-    // 🌟 تم التحديث: جلب بيانات كل المشتركين من سيرفر الـ VPS الجديد 🌟
     private fun syncSubscribersFromCloud(isManualRefresh: Boolean) {
         if (isManualRefresh) swipeRefresh.isRefreshing = true
         
@@ -192,7 +193,6 @@ class SubscribersActivity : AppCompatActivity() {
             }.setNegativeButton("إلغاء", null).show()
     }
 
-    // 🌟 تم التحديث: رفع التعديل للـ VPS 🌟
     private fun replaceSubscriberConfig(sub: V2rayCrypt.SubscriberData) {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val newConf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
@@ -230,7 +230,6 @@ class SubscribersActivity : AppCompatActivity() {
         val builder = AlertDialog.Builder(this)
         builder.setView(layout)
         
-        // 🌟 تم التحديث: تمديد الوقت عبر الـ VPS 🌟
         builder.setPositiveButton("تمديد") { dialog, _ ->
             val totalMs = ((monthsInput.text.toString().toLongOrNull() ?: 0L) * 30L * 24L * 60L * 60L * 1000L) + ((daysInput.text.toString().toLongOrNull() ?: 0L) * 24L * 60L * 60L * 1000L) + ((hoursInput.text.toString().toLongOrNull() ?: 0L) * 60L * 60L * 1000L)
             if (totalMs > 0L) {
@@ -260,7 +259,6 @@ class SubscribersActivity : AppCompatActivity() {
             dialog.dismiss()
         }
         
-        // 🌟 تم التحديث: إيقاف الكود عبر الـ VPS 🌟
         builder.setNeutralButton("إيقاف الكود") { dialog, _ ->
             Toast.makeText(this, "جاري الإيقاف...", Toast.LENGTH_SHORT).show()
             lifecycleScope.launch(Dispatchers.IO) {
@@ -306,7 +304,6 @@ class SubscribersActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 تم التحديث: حذف المشترك من الـ VPS 🌟
     private fun deleteSubscriber(sub: V2rayCrypt.SubscriberData) {
         AlertDialog.Builder(this).setTitle("حذف المشترك").setMessage("هل أنت متأكد؟ سيتم قطع الاتصال فوراً.")
             .setPositiveButton("نعم، احذف") { _, _ ->
@@ -333,6 +330,7 @@ class SubscribersActivity : AppCompatActivity() {
 }
 
 class SubscribersAdapter(
+    private val apiUrl: String, // 🌟 استقبال الرابط لتمريره 🌟
     private val onExtend: (V2rayCrypt.SubscriberData) -> Unit,
     private val onShare: (V2rayCrypt.SubscriberData) -> Unit,
     private val onDelete: (V2rayCrypt.SubscriberData) -> Unit,
@@ -347,7 +345,7 @@ class SubscribersAdapter(
         return SubViewHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_subscriber, parent, false))
     }
 
-    override fun onBindViewHolder(holder: SubViewHolder, position: Int) { holder.bind(list[position], onExtend, onShare, onDelete, onEdit) }
+    override fun onBindViewHolder(holder: SubViewHolder, position: Int) { holder.bind(list[position], apiUrl, onExtend, onShare, onDelete, onEdit) }
 
     override fun getItemCount() = list.size
 
@@ -367,6 +365,7 @@ class SubscribersAdapter(
 
         fun bind(
             item: V2rayCrypt.SubscriberData,
+            apiUrl: String,
             onExtend: (V2rayCrypt.SubscriberData) -> Unit,
             onShare: (V2rayCrypt.SubscriberData) -> Unit,
             onDelete: (V2rayCrypt.SubscriberData) -> Unit,
@@ -374,18 +373,18 @@ class SubscribersAdapter(
         ) {
             tvName.text = item.name
             
-            // 🌟 السحر هنا: إضافة الدائرة الملونة (الصورة الذكية) بجانب اسم المشترك تلقائياً! 🌟
             val avatarBitmap = AvatarGenerator.generateAvatar(item.name, item.licenseId, 120)
             val avatarDrawable = android.graphics.drawable.BitmapDrawable(itemView.resources, avatarBitmap)
             tvName.setCompoundDrawablesWithIntrinsicBounds(avatarDrawable, null, null, null)
             tvName.compoundDrawablePadding = 30
-            // ==============================================================
 
             tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
             
+            // 🌟 تمرير الرابط للشاشة الثانية 🌟
             tvActiveCount.setOnClickListener {
                 val intent = Intent(itemView.context, FileActiveUsersActivity::class.java)
                 intent.putExtra("guid", item.licenseId)
+                intent.putExtra("apiUrl", apiUrl) 
                 itemView.context.startActivity(intent)
             }
             
@@ -418,7 +417,7 @@ class SubscribersAdapter(
                         tvExpiry.text = "منتهي الصلاحية 🛑"
                         tvExpiry.setTextColor(Color.parseColor("#E53935"))
                     }
-                    delay(60000L) // التحديث كل دقيقة لتجنب الثواني المزعجة
+                    delay(60000L)
                 }
             }
         }
