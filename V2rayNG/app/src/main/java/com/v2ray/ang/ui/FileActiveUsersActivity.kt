@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Base64
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -15,7 +16,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.button.MaterialButton
-import com.v2ray.ang.util.AvatarGenerator // 🌟 استدعاء نظام الصور الذكي 🌟
+import com.v2ray.ang.util.AvatarGenerator
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -27,8 +28,8 @@ import java.net.URLEncoder
 
 class FileActiveUsersActivity : AppCompatActivity() {
 
-    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
-    private val BASE_API_URL = "https://education.ashor.shop"
+    // 🌟 المتغير اللي راح يستلم الرابط من الشاشة السابقة 🌟
+    private var baseUrl: String = "https://education.ashor.shop"
 
     private lateinit var mainContainer: LinearLayout
     private lateinit var tvLoading: TextView
@@ -43,6 +44,9 @@ class FileActiveUsersActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         currentGuid = intent.getStringExtra("guid") ?: ""
+        // 🌟 استلام الرابط لضمان التطابق مع الشاشة الرئيسية 🌟
+        baseUrl = intent.getStringExtra("apiUrl") ?: "https://education.ashor.shop"
+
         if (currentGuid.isEmpty()) {
             Toast.makeText(this, "خطأ في جلب بيانات الملف", Toast.LENGTH_SHORT).show()
             finish()
@@ -164,7 +168,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 🌟 نجلب البيانات مرة واحدة فقط عند فتح الشاشة لتجنب إرهاق السيرفر 🌟
         loadUsers(currentTabType, isSilent = false)
     }
 
@@ -179,15 +182,30 @@ class FileActiveUsersActivity : AppCompatActivity() {
             try {
                 val endpoint = if (type == "ACTIVE") "get_active" else "get_banned"
                 val encodedGuid = URLEncoder.encode(currentGuid, "UTF-8")
-                // 🌟 استخدام الرابط الجديد 🌟
-                val url = URL("$BASE_API_URL/file/$endpoint?guid=$encodedGuid")
+                
+                val url = URL("$baseUrl/file/$endpoint?guid=$encodedGuid")
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 5000
-                conn.readTimeout = 5000
+                conn.connectTimeout = 7000
+                conn.readTimeout = 7000
                 
                 if (conn.responseCode == 200) {
-                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                    val newArray = if (resp.isNotBlank()) JSONArray(resp) else JSONArray()
+                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText().trim()
+                    var newArray = JSONArray()
+                    
+                    // 🌟 نظام القراءة الذكي لفك شفرة الـ JSON بكل حالاته 🌟
+                    if (resp.isNotBlank()) {
+                        try {
+                            newArray = JSONArray(resp)
+                        } catch (e: Exception) {
+                            try {
+                                val jsonObj = JSONObject(resp)
+                                if (jsonObj.has("data")) newArray = jsonObj.getJSONArray("data")
+                                else if (jsonObj.has("users")) newArray = jsonObj.getJSONArray("users")
+                            } catch (e2: Exception) {
+                                Log.e("AshorParseError", "Failed to parse JSON: $resp")
+                            }
+                        }
+                    }
 
                     withContext(Dispatchers.Main) {
                         allLoadedUsers = newArray
@@ -204,7 +222,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
                     }
                 } else {
                     withContext(Dispatchers.Main) {
-                        if (!isSilent) tvLoading.text = "لا توجد بيانات (أو السيرفر مشغول، اسحب للتحديث)"
+                        if (!isSilent) tvLoading.text = "خطأ من السيرفر (Code: ${conn.responseCode})"
                         swipeRefreshLayout.isRefreshing = false
                     }
                 }
@@ -270,7 +288,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
         }
 
-        // 🌟 استبدال صور الانمي القديمة بالدوائر الذكية 🌟
         val ivAvatar = ImageView(this).apply {
             layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 30, 0) }
             background = resources.getDrawable(android.R.drawable.dialog_holo_dark_frame, null)
@@ -333,7 +350,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
                 
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
-                        val conn = URL("$BASE_API_URL/file/toggle_ban").openConnection() as HttpURLConnection
+                        val conn = URL("$baseUrl/file/toggle_ban").openConnection() as HttpURLConnection
                         conn.requestMethod = "POST"
                         conn.setRequestProperty("Content-Type", "application/json")
                         conn.doOutput = true
