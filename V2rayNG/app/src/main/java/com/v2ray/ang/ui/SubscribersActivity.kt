@@ -85,7 +85,7 @@ class SubscribersActivity : AppCompatActivity() {
         }
 
         recycler.layoutManager = LinearLayoutManager(this)
-        // 🌟 تمرير رابط الـ API للـ Adapter 🌟
+        
         adapter = SubscribersAdapter(
             apiUrl = BASE_API_URL,
             onExtend = { sub -> showExtendDialog(sub) },
@@ -113,6 +113,7 @@ class SubscribersActivity : AppCompatActivity() {
         filterList(etSearch.text.toString())
     }
 
+    // 🌟 تم التعديل الجذري: جلب العدد الحقيقي باستخدام مسار السيرفر الصحيح /check 🌟
     private fun syncSubscribersFromCloud(isManualRefresh: Boolean) {
         if (isManualRefresh) swipeRefresh.isRefreshing = true
         
@@ -122,37 +123,41 @@ class SubscribersActivity : AppCompatActivity() {
                 return@launch
             }
 
-            val licenseIds = allSubscribers.map { it.licenseId }
             var isChanged = false
 
-            try {
-                val conn = URL("$BASE_API_URL/files/check_all").openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.doOutput = true
-                val payload = JSONObject().put("guids", JSONArray(licenseIds))
-                conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-                
-                if (conn.responseCode == 200) {
-                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                    val results = JSONObject(resp)
-                    
-                    allSubscribers.forEach { sub ->
-                        if (results.has(sub.licenseId)) {
-                            val data = results.getJSONObject(sub.licenseId)
+            // نرسل طلب فحص (GET) لكل مشترك بشكل متوازي وسريع
+            val deferreds = allSubscribers.map { sub ->
+                async {
+                    try {
+                        val conn = URL("$BASE_API_URL/check?guid=${sub.licenseId}").openConnection() as HttpURLConnection
+                        conn.requestMethod = "GET"
+                        conn.connectTimeout = 5000
+                        conn.readTimeout = 5000
+                        
+                        if (conn.responseCode == 200) {
+                            val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                            val data = JSONObject(resp)
+                            
                             val exp = data.optLong("expiryTime", -1L)
-                            val actCount = data.optInt("activeCount", 0)
+                            val actCount = data.optInt("activeCount", 0) // 🌟 هنا يتم استلام العدد الحقيقي 🌟
+                            
                             if (exp >= 0L) {
+                                // تحديث البيانات محلياً داخل التطبيق (الوقت + عدد المتصلين)
                                 V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, exp, actCount)
                                 isChanged = true
                             }
                         }
+                    } catch (e: Exception) {
+                        // تجاهل الأخطاء للطلبات الفردية
                     }
                 }
-            } catch (e: Exception) {}
+            }
+            
+            // انتظار جميع الطلبات تكتمل
+            deferreds.awaitAll()
 
             withContext(Dispatchers.Main) { 
-                if (isChanged) loadSubscribers()
+                if (isChanged) loadSubscribers() // إعادة رسم الشاشة لإظهار الأرقام الجديدة
                 swipeRefresh.isRefreshing = false
                 if (isManualRefresh) Toast.makeText(this@SubscribersActivity, "تم تحديث البيانات!", Toast.LENGTH_SHORT).show()
             }
@@ -330,7 +335,7 @@ class SubscribersActivity : AppCompatActivity() {
 }
 
 class SubscribersAdapter(
-    private val apiUrl: String, // 🌟 استقبال الرابط لتمريره 🌟
+    private val apiUrl: String, 
     private val onExtend: (V2rayCrypt.SubscriberData) -> Unit,
     private val onShare: (V2rayCrypt.SubscriberData) -> Unit,
     private val onDelete: (V2rayCrypt.SubscriberData) -> Unit,
@@ -380,7 +385,6 @@ class SubscribersAdapter(
 
             tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
             
-            // 🌟 تمرير الرابط للشاشة الثانية 🌟
             tvActiveCount.setOnClickListener {
                 val intent = Intent(itemView.context, FileActiveUsersActivity::class.java)
                 intent.putExtra("guid", item.licenseId)
