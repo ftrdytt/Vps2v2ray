@@ -1,7 +1,11 @@
 package com.v2ray.ang.ui
 
 import android.os.Bundle
-import android.widget.*
+import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.RadioButton
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.R
@@ -56,15 +60,15 @@ class ServerAshorActivity : AppCompatActivity() {
                 val file = File(filesDir, "ashor_$guid.json")
                 file.writeText(jsonConfig)
 
-                // 🌟 الحل الجذري: إعطاء قيم وهمية للنواة لكي لا توقف المحرك 🌟
+                // 🌟 الحل الجذري: إعطاء قيم وهمية للنواة لكي لا توقف المحرك (لمنع كراش الواجهة) 🌟
                 val profile = ProfileItem.create(EConfigType.CUSTOM)
                 profile.remarks = if (remarks.isNotEmpty()) remarks else "Ashor: $sni"
-                profile.server = "127.0.0.1"      // قيمة وهمية للواجهة
-                profile.serverPort = "1080"       // قيمة وهمية للواجهة
+                profile.server = "127.0.0.1"      
+                profile.serverPort = "1080"       
                 profile.description = "Ashor Payload ⚡"
                 
                 MmkvManager.encodeServerConfig(guid, profile)
-                MmkvManager.encodeServerRaw(guid, jsonConfig) // المحرك يقرأ هذا فقط
+                MmkvManager.encodeServerRaw(guid, jsonConfig) // المحرك سيقرأ البايلود الحديدي من هنا فقط
                 MmkvManager.setSelectServer(guid)
                 
                 Toast.makeText(this, "تم الحفظ! الآن اضغط تشغيل في الشاشة الرئيسية", Toast.LENGTH_LONG).show()
@@ -76,47 +80,145 @@ class ServerAshorActivity : AppCompatActivity() {
         }
     }
 
+    // 🌟 البروتوكول الحديدي الجديد (dialerProxy) مع تصليح أخطاء الـ JSON 🌟
     private fun generateAshorPayload(
         isVless: Boolean, vlessAddr: String, vlessPort: String, uuid: String, 
         proxyIp: String, proxyPort: String, sni: String, bsid: String, payload: String, useTls: Boolean
     ): String {
-        val tlsBlock = if (useTls) "\"security\": \"tls\", \"tlsSettings\": { \"allowInsecure\": true, \"serverName\": \"$sni\" }" else "\"security\": \"none\""
         
-        val targetProtocolBlock = if (isVless) """
+        val tlsBlock = if (useTls) {
+            """
+            "security": "tls",
+            "tlsSettings": {
+              "allowInsecure": true,
+              "serverName": "$sni"
+            }
+            """
+        } else {
+            """
+            "security": "none"
+            """
+        }
+
+        val targetProtocolBlock = if (isVless) {
+            """
             {
               "protocol": "vless",
-              "settings": { "vnext": [ { "address": "$vlessAddr", "port": ${vlessPort.toIntOrNull() ?: 443}, "users": [ { "encryption": "none", "id": "$uuid", "level": 8 } ] } ] },
-              "streamSettings": { "network": "tcp", $tlsBlock, "sockopt": { "dialerProxy": "alrufaaey" } },
+              "settings": {
+                "vnext": [
+                  {
+                    "address": "$vlessAddr",
+                    "port": ${vlessPort.toIntOrNull() ?: 443},
+                    "users": [
+                      {
+                        "encryption": "none",
+                        "id": "$uuid",
+                        "level": 8
+                      }
+                    ]
+                  }
+                ]
+              },
+              "streamSettings": {
+                "network": "tcp",
+                $tlsBlock,
+                "sockopt": {
+                  "dialerProxy": "alrufaaey"
+                }
+              },
               "tag": "VLESS"
             }
-        """ else """
+            """
+        } else {
+            """
             {
               "protocol": "trojan",
-              "settings": { "servers": [ { "address": "$vlessAddr", "level": 8, "password": "$uuid", "port": ${vlessPort.toIntOrNull() ?: 443} } ] },
-              "streamSettings": { "network": "tcp", $tlsBlock, "sockopt": { "dialerProxy": "alrufaaey" } },
+              "settings": {
+                "servers": [
+                  {
+                    "address": "$vlessAddr",
+                    "level": 8,
+                    "password": "$uuid",
+                    "port": ${vlessPort.toIntOrNull() ?: 443}
+                  }
+                ]
+              },
+              "streamSettings": {
+                "network": "tcp",
+                $tlsBlock,
+                "sockopt": {
+                  "dialerProxy": "alrufaaey"
+                }
+              },
               "tag": "TROJAN"
             }
-        """
+            """
+        }
 
         val outboundTag = if (isVless) "VLESS" else "TROJAN"
-        val userAgent = if (payload.isNotEmpty()) payload else "Mozilla/5.0 (Linux; Android 14; ...)"
+        val userAgent = if (payload.isNotEmpty()) payload else "Mozilla/5.0 (Linux; Android 14; SM-A245F Build/UP1A.231005.007; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/133.0.6943.122 Mobile Safari/537.36 [FBAN/InternetOrgApp;FBAV/166.0.0.0.169;]"
 
         return """
         {
-          "log": { "loglevel": "warning" },
-          "inbounds": [ { "listen": "127.0.0.1", "port": 10808, "protocol": "socks", "settings": { "auth": "noauth", "udp": true }, "tag": "socks-inbound" } ],
+          "log": {
+            "loglevel": "warning"
+          },
+          "inbounds": [
+            {
+              "listen": "127.0.0.1",
+              "port": 10808,
+              "protocol": "socks",
+              "settings": {
+                "auth": "noauth",
+                "udp": true
+              },
+              "tag": "socks-inbound"
+            }
+          ],
           "outbounds": [
             $targetProtocolBlock,
             {
               "protocol": "http",
-              "settings": { "servers": [ { "address": "$proxyIp", "port": ${proxyPort.toIntOrNull() ?: 8080} } ] },
-              "streamSettings": { "sockopt": { "tcpFastOpen": true } },
-              "tag": "alrufaaey",
-              "headers": { "Host": "$sni:443", "Proxy-Connection": "keep-alive", "User-Agent": "$userAgent", "X-iorg-bsid": "$bsid" }
+              "settings": {
+                "servers": [
+                  {
+                    "address": "$proxyIp",
+                    "port": ${proxyPort.toIntOrNull() ?: 8080}
+                  }
+                ],
+                "headers": {
+                  "Host": ["$sni:443"],
+                  "Proxy-Connection": ["keep-alive"],
+                  "User-Agent": ["$userAgent"],
+                  "X-iorg-bsid": ["$bsid"]
+                }
+              },
+              "streamSettings": {
+                "sockopt": {
+                  "tcpFastOpen": true
+                }
+              },
+              "tag": "alrufaaey"
             },
-            { "protocol": "freedom", "tag": "direct" }
+            {
+              "protocol": "freedom",
+              "tag": "direct"
+            },
+            {
+              "protocol": "blackhole",
+              "tag": "block"
+            }
           ],
-          "routing": { "rules": [ { "type": "field", "inboundTag": ["socks-inbound"], "outboundTag": "$outboundTag" } ] }
+          "routing": {
+            "domainStrategy": "AsIs",
+            "rules": [
+              {
+                "type": "field",
+                "inboundTag": ["socks-inbound"],
+                "outboundTag": "$outboundTag"
+              }
+            ]
+          }
         }
         """.trimIndent()
     }
