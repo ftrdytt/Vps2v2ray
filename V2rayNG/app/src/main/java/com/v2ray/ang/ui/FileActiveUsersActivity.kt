@@ -306,10 +306,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
                 // تفعيل ضغطة الستوري
                 setOnClickListener {
                     Toast.makeText(this@FileActiveUsersActivity, "جاري فتح ستوري: $name", Toast.LENGTH_SHORT).show()
-                    // 💡 هنا تكدر تفعل كود الانتقال لصفحة الستوري مستقبلاً:
-                    // val intent = Intent(this@FileActiveUsersActivity, StoryActivity::class.java)
-                    // intent.putExtra("userId", userId)
-                    // startActivity(intent)
                 }
             }
         }
@@ -468,7 +464,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 تصميم سطر الجهاز الواحد مع زر النسخ 🌟
+    // 🌟 تصميم سطر الجهاز الواحد مع زر النسخ (تم استخدام TextView بدلاً من MaterialButton) 🌟
     private fun createDeviceRow(deviceId: String, isCurrent: Boolean): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -487,14 +483,25 @@ class FileActiveUsersActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        val btnCopy = MaterialButton(this, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+        val btnCopy = TextView(this).apply {
             text = "نسخ"
             setTextColor(Color.parseColor("#2196F3"))
+            textSize = 14f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(20, 20, 20, 20)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            
+            // إضافة تأثير الضغطة الشفاف (Ripple Effect)
+            val outValue = android.util.TypedValue()
+            context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
+            setBackgroundResource(outValue.resourceId)
+            isClickable = true
+            isFocusable = true
+
             setOnClickListener {
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("Device ID", deviceId))
-                Toast.makeText(this@FileActiveUsersActivity, "تم نسخ أيدي الجهاز!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "تم نسخ أيدي الجهاز!", Toast.LENGTH_SHORT).show()
             }
         }
 
