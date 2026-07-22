@@ -21,6 +21,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.NetworkTime
@@ -113,7 +115,6 @@ class SubscribersActivity : AppCompatActivity() {
         filterList(etSearch.text.toString())
     }
 
-    // 🌟 تم التعديل الجذري: جلب العدد الحقيقي باستخدام مسار السيرفر الصحيح /check 🌟
     private fun syncSubscribersFromCloud(isManualRefresh: Boolean) {
         if (isManualRefresh) swipeRefresh.isRefreshing = true
         
@@ -125,7 +126,6 @@ class SubscribersActivity : AppCompatActivity() {
 
             var isChanged = false
 
-            // نرسل طلب فحص (GET) لكل مشترك بشكل متوازي وسريع
             val deferreds = allSubscribers.map { sub ->
                 async {
                     try {
@@ -139,25 +139,21 @@ class SubscribersActivity : AppCompatActivity() {
                             val data = JSONObject(resp)
                             
                             val exp = data.optLong("expiryTime", -1L)
-                            val actCount = data.optInt("activeCount", 0) // 🌟 هنا يتم استلام العدد الحقيقي 🌟
+                            val actCount = data.optInt("activeCount", 0) 
                             
                             if (exp >= 0L) {
-                                // تحديث البيانات محلياً داخل التطبيق (الوقت + عدد المتصلين)
                                 V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, exp, actCount)
                                 isChanged = true
                             }
                         }
-                    } catch (e: Exception) {
-                        // تجاهل الأخطاء للطلبات الفردية
-                    }
+                    } catch (e: Exception) {}
                 }
             }
             
-            // انتظار جميع الطلبات تكتمل
             deferreds.awaitAll()
 
             withContext(Dispatchers.Main) { 
-                if (isChanged) loadSubscribers() // إعادة رسم الشاشة لإظهار الأرقام الجديدة
+                if (isChanged) loadSubscribers() 
                 swipeRefresh.isRefreshing = false
                 if (isManualRefresh) Toast.makeText(this@SubscribersActivity, "تم تحديث البيانات!", Toast.LENGTH_SHORT).show()
             }
@@ -168,6 +164,110 @@ class SubscribersActivity : AppCompatActivity() {
         val filtered = if (query.isEmpty()) allSubscribers else allSubscribers.filter { it.name.contains(query, ignoreCase = true) }
         adapter.submitList(filtered)
         tvEmptyState.visibility = if (filtered.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    // 🌟 نافذة عرض الأجهزة (التليجرام ستايل) 🌟
+    fun showDevicesDialog(userId: String, userName: String) {
+        val bottomSheet = BottomSheetDialog(this)
+        
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(50, 50, 50, 50)
+            setBackgroundColor(Color.parseColor("#1A1A1D")) // لون دارك مود فخم
+        }
+
+        container.addView(TextView(this).apply {
+            text = "الأجهزة المربوطة بحساب: $userName"
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 30)
+        })
+
+        val loadingText = TextView(this).apply {
+            text = "جاري جلب بيانات الأجهزة..."
+            setTextColor(Color.GRAY)
+            gravity = Gravity.CENTER
+            setPadding(0, 20, 0, 20)
+        }
+        container.addView(loadingText)
+
+        bottomSheet.setContentView(container)
+        bottomSheet.show()
+
+        // جلب الأجهزة من السيرفر
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val url = URL("$BASE_API_URL/auth/get_user?id=$userId")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 5000
+                
+                if (conn.responseCode == 200) {
+                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                    val json = JSONObject(resp)
+                    
+                    withContext(Dispatchers.Main) {
+                        container.removeView(loadingText)
+                        val devices = json.optJSONArray("devices") ?: JSONArray()
+                        
+                        if (devices.length() == 0) {
+                            container.addView(TextView(this@SubscribersActivity).apply {
+                                text = "لا توجد أجهزة مرتبطة حالياً"
+                                setTextColor(Color.GRAY)
+                                gravity = Gravity.CENTER
+                                setPadding(0, 20, 0, 20)
+                            })
+                        } else {
+                            for (i in 0 until devices.length()) {
+                                val devId = devices.getString(i)
+                                container.addView(createDeviceRow(devId))
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    loadingText.text = "فشل الاتصال بالسيرفر!"
+                    loadingText.setTextColor(Color.parseColor("#F44336"))
+                }
+            }
+        }
+    }
+
+    private fun createDeviceRow(deviceId: String): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor("#252529"))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, 20)
+            }
+            setPadding(30, 30, 30, 30)
+        }
+
+        val tvDevice = TextView(this).apply {
+            text = "📱 $deviceId"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val btnCopy = MaterialButton(this, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+            text = "نسخ"
+            setTextColor(Color.parseColor("#2196F3"))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setOnClickListener {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Device ID", deviceId))
+                Toast.makeText(this@SubscribersActivity, "تم نسخ أيدي الجهاز!", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        row.addView(tvDevice)
+        row.addView(btnCopy)
+        return row
     }
 
     private fun showEditDialog(sub: V2rayCrypt.SubscriberData) {
@@ -376,7 +476,15 @@ class SubscribersAdapter(
             onDelete: (V2rayCrypt.SubscriberData) -> Unit,
             onEdit: (V2rayCrypt.SubscriberData) -> Unit
         ) {
-            tvName.text = item.name
+            // 🌟 إضافة أيقونة الرتبة للاسم 🌟
+            tvName.text = "${item.name} 👑"
+            
+            // 🌟 ربط ضغطة الاسم لفتح نافذة التليجرام لعرض الأجهزة 🌟
+            tvName.setOnClickListener {
+                if (itemView.context is SubscribersActivity) {
+                    (itemView.context as SubscribersActivity).showDevicesDialog(item.licenseId, item.name)
+                }
+            }
             
             val avatarBitmap = AvatarGenerator.generateAvatar(item.name, item.licenseId, 120)
             val avatarDrawable = android.graphics.drawable.BitmapDrawable(itemView.resources, avatarBitmap)
