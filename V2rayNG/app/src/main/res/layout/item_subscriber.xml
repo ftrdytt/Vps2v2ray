@@ -21,14 +21,52 @@
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
-            <ImageView
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@drawable/ic_circle"
-                android:backgroundTint="#FF9800"
-                android:padding="8dp"
-                android:src="@android:drawable/star_on"
-                app:tint="#FFFFFF" />
+            <!-- 🌟 حاوية الصورة والاستوري 🌟 -->
+            <FrameLayout
+                android:id="@+id/fl_avatar_container"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <!-- إطار الاستوري الأزرق (يختفي ويظهر برمجياً) -->
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/cv_story_ring"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:layout_gravity="center"
+                    app:cardCornerRadius="28dp"
+                    app:cardBackgroundColor="#2196F3"
+                    app:cardElevation="0dp">
+
+                    <!-- خلفية فاصلة (نفس لون البطاقة) لعمل الفراغ بين الإطار والصورة -->
+                    <androidx.cardview.widget.CardView
+                        android:layout_width="52dp"
+                        android:layout_height="52dp"
+                        android:layout_gravity="center"
+                        app:cardCornerRadius="26dp"
+                        app:cardBackgroundColor="#1A1A1D"
+                        app:cardElevation="0dp">
+
+                        <!-- الصورة الدائرية الحقيقية -->
+                        <androidx.cardview.widget.CardView
+                            android:layout_width="46dp"
+                            android:layout_height="46dp"
+                            android:layout_gravity="center"
+                            app:cardCornerRadius="23dp"
+                            app:cardBackgroundColor="@android:color/transparent"
+                            app:cardElevation="0dp">
+
+                            <ImageView
+                                android:id="@+id/iv_sub_avatar"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:scaleType="centerCrop" />
+
+                        </androidx.cardview.widget.CardView>
+                    </androidx.cardview.widget.CardView>
+                </androidx.cardview.widget.CardView>
+            </FrameLayout>
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -37,6 +75,7 @@
                 android:orientation="vertical"
                 android:layout_marginStart="12dp">
 
+                <!-- 🌟 الاسم مع الرتبة 🌟 -->
                 <TextView
                     android:id="@+id/tv_sub_name"
                     android:layout_width="wrap_content"
