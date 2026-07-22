@@ -17,6 +17,7 @@ import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -196,7 +197,6 @@ class SubscribersActivity : AppCompatActivity() {
         bottomSheet.setContentView(container)
         bottomSheet.show()
 
-        // جلب الأجهزة من السيرفر
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val url = URL("$BASE_API_URL/auth/get_user?id=$userId")
@@ -465,6 +465,11 @@ class SubscribersAdapter(
         val btnDelete: View = view.findViewById(R.id.btn_delete)
         val btnEdit: View? = view.findViewById(R.id.btn_edit) 
         
+        // 🌟 المتغيرات الجديدة الخاصة بالصورة الدائرية والاستوري 🌟
+        val ivAvatar: ImageView = view.findViewById(R.id.iv_sub_avatar)
+        val cvStoryRing: CardView = view.findViewById(R.id.cv_story_ring)
+        val flAvatarContainer: FrameLayout = view.findViewById(R.id.fl_avatar_container)
+        
         private var timerJob: Job? = null
         private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -486,10 +491,21 @@ class SubscribersAdapter(
                 }
             }
             
+            // 🌟 تعيين الصورة الجديدة باستخدام ImageView مباشرة وإزالة الطريقة القديمة 🌟
             val avatarBitmap = AvatarGenerator.generateAvatar(item.name, item.licenseId, 120)
-            val avatarDrawable = android.graphics.drawable.BitmapDrawable(itemView.resources, avatarBitmap)
-            tvName.setCompoundDrawablesWithIntrinsicBounds(avatarDrawable, null, null, null)
-            tvName.compoundDrawablePadding = 30
+            ivAvatar.setImageBitmap(avatarBitmap)
+            
+            // 🌟 التحكم بظهور حلقة الاستوري الزرقاء 🌟
+            val hasStory = true // هنا تقدر تخليها true او false بناءً على حالة المستخدم بالسيرفر
+            if (hasStory) {
+                cvStoryRing.setCardBackgroundColor(Color.parseColor("#2196F3")) // إظهار الحلقة
+                flAvatarContainer.setOnClickListener {
+                    Toast.makeText(itemView.context, "جاري فتح ستوري: ${item.name}", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                cvStoryRing.setCardBackgroundColor(Color.TRANSPARENT) // إخفاء الحلقة إذا ماكو ستوري
+                flAvatarContainer.setOnClickListener(null)
+            }
 
             tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
             
