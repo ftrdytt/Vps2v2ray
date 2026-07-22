@@ -236,6 +236,7 @@ class SubscribersActivity : AppCompatActivity() {
         }
     }
 
+    // 🌟 التعديل هنا لتجنب خطأ Build: تم تغيير MaterialButton لـ TextView 🌟
     private fun createDeviceRow(deviceId: String): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -254,12 +255,23 @@ class SubscribersActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        val btnCopy = MaterialButton(this, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+        val btnCopy = TextView(this).apply {
             text = "نسخ"
             setTextColor(Color.parseColor("#2196F3"))
+            textSize = 14f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(20, 20, 20, 20)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            
+            // إضافة تأثير الضغطة الشفاف (Ripple Effect)
+            val outValue = android.util.TypedValue()
+            context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
+            setBackgroundResource(outValue.resourceId)
+            isClickable = true
+            isFocusable = true
+
             setOnClickListener {
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("Device ID", deviceId))
                 Toast.makeText(this@SubscribersActivity, "تم نسخ أيدي الجهاز!", Toast.LENGTH_SHORT).show()
             }
@@ -491,7 +503,7 @@ class SubscribersAdapter(
                 }
             }
             
-            // 🌟 تعيين الصورة الجديدة باستخدام ImageView مباشرة وإزالة الطريقة القديمة 🌟
+            // 🌟 تعيين الصورة الجديدة باستخدام ImageView مباشرة 🌟
             val avatarBitmap = AvatarGenerator.generateAvatar(item.name, item.licenseId, 120)
             ivAvatar.setImageBitmap(avatarBitmap)
             
