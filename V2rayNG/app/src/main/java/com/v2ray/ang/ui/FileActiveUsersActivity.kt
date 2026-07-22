@@ -1,7 +1,11 @@
 package com.v2ray.ang.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -13,8 +17,10 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
 import androidx.lifecycle.lifecycleScope
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.util.AvatarGenerator
 import kotlinx.coroutines.*
@@ -28,15 +34,12 @@ import java.net.URLEncoder
 
 class FileActiveUsersActivity : AppCompatActivity() {
 
-    // 🌟 المتغير اللي راح يستلم الرابط من الشاشة السابقة 🌟
     private var baseUrl: String = "https://education.ashor.shop"
-
     private lateinit var mainContainer: LinearLayout
     private lateinit var tvLoading: TextView
     private lateinit var etSearch: EditText
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private var currentGuid: String = ""
-    
     private var allLoadedUsers = JSONArray() 
     private var currentTabType = "ACTIVE"
 
@@ -44,7 +47,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         currentGuid = intent.getStringExtra("guid") ?: ""
-        // 🌟 استلام الرابط لضمان التطابق مع الشاشة الرئيسية 🌟
         baseUrl = intent.getStringExtra("apiUrl") ?: "https://education.ashor.shop"
 
         if (currentGuid.isEmpty()) {
@@ -192,7 +194,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText().trim()
                     var newArray = JSONArray()
                     
-                    // 🌟 نظام القراءة الذكي لفك شفرة الـ JSON بكل حالاته 🌟
                     if (resp.isNotBlank()) {
                         try {
                             newArray = JSONArray(resp)
@@ -279,6 +280,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
         }
     }
 
+    // 🌟 التعديلات الجديدة: واجهة المستخدم والستوري والرتب 🌟
     private fun addUserCard(deviceId: String, name: String, userId: String, pfp: String, isBanned: Boolean, currentTab: String) {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -288,10 +290,41 @@ class FileActiveUsersActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
         }
 
+        // 🌟 حاوية الاستوري (Story Ring) 🌟
+        val avatarContainer = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(140, 140).apply { setMargins(0, 0, 30, 0) }
+            
+            // إذا كان المستخدم عنده ID (مسجل)، نخليله حلقة زرقاء مثل الاستوري
+            if (userId.isNotEmpty()) {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setStroke(6, Color.parseColor("#2196F3")) // لون أزرق متوهج
+                    setColor(Color.TRANSPARENT)
+                }
+                setPadding(10, 10, 10, 10) // فراغ بين الحلقة والصورة
+                
+                // تفعيل ضغطة الستوري
+                setOnClickListener {
+                    Toast.makeText(this@FileActiveUsersActivity, "جاري فتح ستوري: $name", Toast.LENGTH_SHORT).show()
+                    // 💡 هنا تكدر تفعل كود الانتقال لصفحة الستوري مستقبلاً:
+                    // val intent = Intent(this@FileActiveUsersActivity, StoryActivity::class.java)
+                    // intent.putExtra("userId", userId)
+                    // startActivity(intent)
+                }
+            }
+        }
+
+        // 🌟 الصورة الدائرية الاحترافية 🌟
+        val cvAvatar = CardView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            radius = 70f // لجعلها دائرية بالكامل
+            cardElevation = 0f
+            setCardBackgroundColor(Color.TRANSPARENT)
+        }
+
         val ivAvatar = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 30, 0) }
-            background = resources.getDrawable(android.R.drawable.dialog_holo_dark_frame, null)
-            clipToOutline = true
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            scaleType = ImageView.ScaleType.CENTER_CROP
         }
 
         if (pfp.isNotEmpty()) {
@@ -305,12 +338,45 @@ class FileActiveUsersActivity : AppCompatActivity() {
             ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(name, deviceId))
         }
 
+        cvAvatar.addView(ivAvatar)
+        avatarContainer.addView(cvAvatar)
+
+        // 🌟 معلومات الحساب والرتب 🌟
         val infoLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        infoLayout.addView(TextView(this).apply { text = name; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, android.graphics.Typeface.BOLD) })
+        val nameRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val tvName = TextView(this).apply { 
+            text = name 
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            setTypeface(null, android.graphics.Typeface.BOLD) 
+        }
+        
+        // 🌟 الرتبة (Rank) 🌟
+        val tvRank = TextView(this).apply {
+            text = if (userId.isNotEmpty()) " 👑" else " 👤"
+            textSize = 14f
+            setPadding(10, 0, 10, 0)
+        }
+        
+        nameRow.addView(tvName)
+        nameRow.addView(tvRank)
+        infoLayout.addView(nameRow)
+
+        // حدث الضغط على الاسم أو الرتبة لإظهار الأجهزة المربوطة
+        val onRankClick = View.OnClickListener {
+            if (userId.isNotEmpty()) showDevicesDialog(userId, name, deviceId)
+            else Toast.makeText(this, "هذا جهاز مجهول غير مرتبط بحساب مسجل", Toast.LENGTH_SHORT).show()
+        }
+        nameRow.setOnClickListener(onRankClick)
+
         if (userId.isNotEmpty()) {
             infoLayout.addView(TextView(this).apply { text = "ID: $userId"; setTextColor(Color.parseColor("#FF9800")); textSize = 12f })
         } else {
@@ -332,11 +398,109 @@ class FileActiveUsersActivity : AppCompatActivity() {
             }
         }
 
-        card.addView(ivAvatar)
+        card.addView(avatarContainer)
         card.addView(infoLayout)
         card.addView(btnAction)
 
         mainContainer.addView(card)
+    }
+
+    // 🌟 النافذة السفلية الفخمة لعرض الأجهزة (Telegram Style) 🌟
+    private fun showDevicesDialog(userId: String, userName: String, currentDeviceId: String) {
+        val bottomSheet = BottomSheetDialog(this)
+        
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(50, 50, 50, 50)
+            setBackgroundColor(Color.parseColor("#1A1A1D")) // لون دارك مود فخم
+        }
+
+        container.addView(TextView(this).apply {
+            text = "الأجهزة المربوطة بحساب: $userName"
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 30)
+        })
+
+        val loadingText = TextView(this).apply {
+            text = "جاري جلب بيانات الأجهزة..."
+            setTextColor(Color.GRAY)
+            gravity = Gravity.CENTER
+            setPadding(0, 20, 0, 20)
+        }
+        container.addView(loadingText)
+
+        bottomSheet.setContentView(container)
+        bottomSheet.show()
+
+        // جلب الأجهزة من السيرفر
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val url = URL("$baseUrl/auth/get_user?id=$userId")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 5000
+                
+                if (conn.responseCode == 200) {
+                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                    val json = JSONObject(resp)
+                    
+                    withContext(Dispatchers.Main) {
+                        container.removeView(loadingText)
+                        val devices = json.optJSONArray("devices") ?: JSONArray()
+                        
+                        if (devices.length() == 0) devices.put(currentDeviceId) // كإجراء احتياطي
+                        
+                        for (i in 0 until devices.length()) {
+                            val devId = devices.getString(i)
+                            container.addView(createDeviceRow(devId, devId == currentDeviceId))
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    loadingText.text = "فشل الاتصال بالسيرفر!"
+                    loadingText.setTextColor(Color.parseColor("#F44336"))
+                }
+            }
+        }
+    }
+
+    // 🌟 تصميم سطر الجهاز الواحد مع زر النسخ 🌟
+    private fun createDeviceRow(deviceId: String, isCurrent: Boolean): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor("#252529")) // لون بطاقة الجهاز
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, 20)
+            }
+            setPadding(30, 30, 30, 30)
+        }
+
+        val tvDevice = TextView(this).apply {
+            text = if (isCurrent) "✅ $deviceId (النشط الآن)" else "📱 $deviceId"
+            setTextColor(if (isCurrent) Color.parseColor("#4CAF50") else Color.WHITE)
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val btnCopy = MaterialButton(this, null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+            text = "نسخ"
+            setTextColor(Color.parseColor("#2196F3"))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setOnClickListener {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Device ID", deviceId))
+                Toast.makeText(this@FileActiveUsersActivity, "تم نسخ أيدي الجهاز!", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        row.addView(tvDevice)
+        row.addView(btnCopy)
+        return row
     }
 
     private fun toggleBanStatus(deviceId: String, name: String, userId: String, pfp: String, banStatus: Boolean, currentTab: String) {
