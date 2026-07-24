@@ -41,105 +41,203 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"> 
 
+                <!-- 🌟 القسم العلوي (الصورة + المعلومات + الاستهلاك والقفل) 🌟 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:paddingTop="14dp"
+                    android:paddingBottom="10dp"
                     android:paddingHorizontal="14dp">
 
-                    <androidx.cardview.widget.CardView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        app:cardBackgroundColor="#FF5722" 
-                        app:cardCornerRadius="8dp"
-                        app:cardElevation="0dp">
-                        <TextView
-                            android:id="@+id/tv_type"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:paddingHorizontal="10dp"
-                            android:paddingVertical="4dp"
-                            android:textColor="#FFFFFF"
-                            android:textSize="11sp"
-                            android:textStyle="bold"
-                            android:letterSpacing="0.05"
-                            tools:text="VLESS" />
-                    </androidx.cardview.widget.CardView>
+                    <!-- حاوية الصورة والاستوري الدائرية -->
+                    <FrameLayout
+                        android:id="@+id/fl_avatar_container"
+                        android:layout_width="64dp"
+                        android:layout_height="64dp"
+                        android:layout_marginEnd="12dp">
 
-                    <com.airbnb.lottie.LottieAnimationView
-                        android:id="@+id/lottie_verified"
-                        android:layout_width="38dp"
-                        android:layout_height="38dp"
-                        android:layout_marginStart="4dp"
-                        android:visibility="gone"
-                        app:lottie_fileName="verified_badge.json"
-                        app:lottie_autoPlay="true"
-                        app:lottie_loop="true" />
+                        <!-- الحلقة الزرقاء (تظهر برمجياً) -->
+                        <androidx.cardview.widget.CardView
+                            android:id="@+id/cv_story_ring"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            app:cardCornerRadius="32dp"
+                            app:cardBackgroundColor="@android:color/transparent"
+                            app:cardElevation="0dp">
 
-                    <TextView
-                        android:id="@+id/tv_expiry_countdown"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="4dp"
-                        android:textColor="#FF9800"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        android:visibility="gone"
-                        tools:text="3 يوم و 2 ساعة" />
+                            <!-- الفراغ الداخلي -->
+                            <androidx.cardview.widget.CardView
+                                android:layout_width="56dp"
+                                android:layout_height="56dp"
+                                android:layout_gravity="center"
+                                app:cardCornerRadius="28dp"
+                                app:cardBackgroundColor="#1A1A1D"
+                                app:cardElevation="0dp">
 
-                    <View
-                        android:layout_width="0dp"
-                        android:layout_height="0dp"
-                        android:layout_weight="1" />
+                                <!-- الصورة الفعلية -->
+                                <androidx.cardview.widget.CardView
+                                    android:layout_width="50dp"
+                                    android:layout_height="50dp"
+                                    android:layout_gravity="center"
+                                    app:cardCornerRadius="25dp"
+                                    app:cardBackgroundColor="@android:color/transparent"
+                                    app:cardElevation="0dp">
 
-                    <TextView
-                        android:id="@+id/tv_active_count"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="8dp"
-                        android:text="🟢 0"
-                        android:textColor="#4CAF50"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        android:visibility="gone" />
+                                    <ImageView
+                                        android:id="@+id/iv_file_avatar"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="match_parent"
+                                        android:scaleType="centerCrop" />
+                                </androidx.cardview.widget.CardView>
+                            </androidx.cardview.widget.CardView>
+                        </androidx.cardview.widget.CardView>
+                    </FrameLayout>
 
+                    <!-- النصوص التفصيلية -->
                     <LinearLayout
-                        android:id="@+id/layout_subscribers_btn"
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:background="@drawable/ic_circle"
-                        android:backgroundTint="#2E2E33"
-                        android:padding="6dp"
-                        android:layout_marginEnd="8dp"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:visibility="gone">
-                        <ImageView
-                            android:layout_width="16dp"
-                            android:layout_height="16dp"
-                            android:src="@android:drawable/ic_menu_agenda"
-                            app:tint="#FFC107" />
-                    </LinearLayout>
+                        android:layout_weight="1"
+                        android:orientation="vertical">
 
-                    <TextView
-                        android:id="@+id/tv_test_result"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="#00E676" 
-                        android:textSize="13sp"
-                        android:textStyle="bold"
-                        android:fontFamily="sans-serif-medium"
-                        tools:text="141ms" />
+                        <!-- السطر الأول: اسم الملف والقفل -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical">
+                            
+                            <TextView
+                                android:id="@+id/tv_name"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:maxLines="1"
+                                android:ellipsize="end"
+                                android:textColor="#F5F5F5"
+                                android:textSize="16sp"
+                                android:textStyle="bold"
+                                tools:text="سيرفر ألماني سريع" />
+
+                            <TextView
+                                android:id="@+id/tv_lock_status"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="8dp"
+                                android:textColor="#4CAF50"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                tools:text="🔓 مفتوح" />
+                        </LinearLayout>
+
+                        <!-- السطر الثاني: وقت الصلاحية وعدد النشطين والبنگ -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical">
+
+                            <TextView
+                                android:id="@+id/tv_expiry_countdown"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textColor="#FF9800"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                android:visibility="gone"
+                                tools:text="5 يوم" />
+
+                            <TextView
+                                android:id="@+id/tv_active_count"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="8dp"
+                                android:textColor="#4CAF50"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                android:visibility="gone"
+                                tools:text="🟢 12" />
+
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_height="0dp"
+                                android:layout_weight="1" />
+
+                            <TextView
+                                android:id="@+id/tv_test_result"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textColor="#00E676" 
+                                android:textSize="13sp"
+                                android:textStyle="bold"
+                                android:fontFamily="sans-serif-medium"
+                                tools:text="141ms" />
+                        </LinearLayout>
+
+                        <!-- السطر الثالث: نوع الملف واستهلاك الكيكات -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginTop="6dp"
+                            android:gravity="center_vertical">
+
+                            <androidx.cardview.widget.CardView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                app:cardBackgroundColor="#FF5722" 
+                                app:cardCornerRadius="6dp"
+                                app:cardElevation="0dp">
+                                <TextView
+                                    android:id="@+id/tv_type"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:paddingHorizontal="8dp"
+                                    android:paddingVertical="2dp"
+                                    android:textColor="#FFFFFF"
+                                    android:textSize="10sp"
+                                    android:textStyle="bold"
+                                    tools:text="VLESS" />
+                            </androidx.cardview.widget.CardView>
+
+                            <com.airbnb.lottie.LottieAnimationView
+                                android:id="@+id/lottie_verified"
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                android:layout_marginStart="4dp"
+                                android:visibility="gone"
+                                app:lottie_fileName="verified_badge.json"
+                                app:lottie_autoPlay="true"
+                                app:lottie_loop="true" />
+
+                            <View
+                                android:layout_width="0dp"
+                                android:layout_height="0dp"
+                                android:layout_weight="1" />
+
+                            <!-- 🌟 عداد استهلاك الكيكات 🌟 -->
+                            <TextView
+                                android:id="@+id/tv_data_usage"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textColor="#2196F3"
+                                android:textSize="12sp"
+                                android:textStyle="bold"
+                                tools:text="استهلاك: 1.2 GB" />
+                        </LinearLayout>
+
+                    </LinearLayout>
                 </LinearLayout>
 
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
-                    android:layout_marginTop="10dp"
                     android:background="#15FFFFFF" />
 
+                <!-- 🌟 القسم السفلي (الآيبي والأزرار) 🌟 -->
                 <LinearLayout
                     android:id="@+id/layout_bottom_section"
                     android:layout_width="match_parent"
@@ -157,23 +255,10 @@
                         android:layout_weight="1"
                         android:orientation="vertical">
 
-                        <TextView
-                            android:id="@+id/tv_name"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:maxLines="2"
-                            android:minLines="1"
-                            android:ellipsize="end"
-                            android:textColor="#F5F5F5"
-                            android:textSize="17sp"
-                            android:textStyle="bold"
-                            tools:text="سيرفر ألماني سريع جداً" />
-
                         <LinearLayout
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:orientation="horizontal"
-                            android:layout_marginTop="6dp"
                             android:gravity="center_vertical">
 
                             <androidx.constraintlayout.widget.ConstraintLayout
@@ -182,7 +267,8 @@
                                 android:layout_height="16dp"
                                 android:layout_marginEnd="6dp"
                                 android:background="@drawable/ic_circle"
-                                android:backgroundTint="#00BCD4"> 
+                                android:backgroundTint="#00BCD4"
+                                android:visibility="gone"> 
                                 <TextView
                                     android:id="@+id/tv_subscription"
                                     android:layout_width="wrap_content"
@@ -202,17 +288,25 @@
                                 android:layout_height="wrap_content"
                                 android:lines="1"
                                 android:textColor="#9E9E9E"
-                                android:textSize="13sp"
+                                android:textSize="12sp"
                                 android:fontFamily="sans-serif-light"
                                 tools:text="81 : ***.46.101.111" />
                         </LinearLayout>
                     </LinearLayout>
 
+                    <!-- الأزرار -->
                     <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="bottom"
                         android:orientation="horizontal">
+
+                        <!-- زر مخفي للمشتركين للضرورة البرمجية -->
+                        <LinearLayout
+                            android:id="@+id/layout_subscribers_btn"
+                            android:layout_width="0dp"
+                            android:layout_height="0dp"
+                            android:visibility="gone"/>
 
                         <LinearLayout
                             android:id="@+id/layout_admin_control"
