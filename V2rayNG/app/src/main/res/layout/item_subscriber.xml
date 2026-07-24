@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="16dp"
@@ -29,17 +30,17 @@
                 android:clickable="true"
                 android:focusable="true">
 
-                <!-- إطار الاستوري الأزرق (يختفي ويظهر برمجياً) -->
+                <!-- إطار الاستوري (مخفي برمجياً في شاشة المشتركين) -->
                 <androidx.cardview.widget.CardView
                     android:id="@+id/cv_story_ring"
                     android:layout_width="56dp"
                     android:layout_height="56dp"
                     android:layout_gravity="center"
                     app:cardCornerRadius="28dp"
-                    app:cardBackgroundColor="#2196F3"
+                    app:cardBackgroundColor="@android:color/transparent"
                     app:cardElevation="0dp">
 
-                    <!-- خلفية فاصلة (نفس لون البطاقة) لعمل الفراغ بين الإطار والصورة -->
+                    <!-- خلفية فاصلة -->
                     <androidx.cardview.widget.CardView
                         android:layout_width="52dp"
                         android:layout_height="52dp"
@@ -85,6 +86,7 @@
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
+                <!-- 🌟 وقت الانتهاء (يوم أو ساعة فقط) 🌟 -->
                 <TextView
                     android:id="@+id/tv_sub_expiry"
                     android:layout_width="wrap_content"
@@ -95,14 +97,40 @@
                     android:textStyle="bold"
                     android:textSize="13sp" />
                     
-                <TextView
-                    android:id="@+id/tv_active_count"
-                    android:layout_width="wrap_content"
+                <!-- 🌟 النشط الآن + استهلاك الكيكات 🌟 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="نشط الآن: 🟢 0"
-                    android:textColor="#80FFFFFF"
-                    android:textSize="12sp" />
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/tv_active_count"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="نشط الآن: 🟢 0"
+                        android:textColor="#80FFFFFF"
+                        android:textSize="12sp" />
+
+                    <!-- مسافة لدفع الاستهلاك لليسار -->
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+
+                    <!-- 🌟 عداد استهلاك البيانات للمشترك 🌟 -->
+                    <TextView
+                        android:id="@+id/tv_data_usage"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="#2196F3"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:visibility="gone"
+                        tools:text="استهلاك: 1.2 GB"
+                        tools:visibility="visible" />
+                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 
