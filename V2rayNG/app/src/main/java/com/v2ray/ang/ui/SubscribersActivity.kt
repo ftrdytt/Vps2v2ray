@@ -115,6 +115,18 @@ class SubscribersActivity : AppCompatActivity() {
         filterList(etSearch.text.toString())
     }
 
+    // 🌟 دالة تحويل البايتات إلى ميجا أو جيجا بايت 🌟
+    private fun formatBytes(bytes: Long): String {
+        if (bytes <= 0) return "0.0 MB"
+        val kb = bytes / 1024.0
+        val mb = kb / 1024.0
+        if (mb >= 1024) {
+            val gb = mb / 1024.0
+            return String.format("%.2f GB", gb)
+        }
+        return String.format("%.1f MB", mb)
+    }
+
     private fun syncSubscribersFromCloud(isManualRefresh: Boolean) {
         if (isManualRefresh) swipeRefresh.isRefreshing = true
         
@@ -125,6 +137,7 @@ class SubscribersActivity : AppCompatActivity() {
             }
 
             var isChanged = false
+            val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
 
             val deferreds = allSubscribers.map { sub ->
                 async {
@@ -140,9 +153,12 @@ class SubscribersActivity : AppCompatActivity() {
                             
                             val exp = data.optLong("expiryTime", -1L)
                             val actCount = data.optInt("activeCount", 0) 
+                            val totalUsageBytes = data.optLong("totalUsageBytes", 0L) // 🌟 جلب استهلاك المشترك 🌟
                             
                             if (exp >= 0L) {
                                 V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, exp, actCount)
+                                // حفظ الاستهلاك للمشترك
+                                prefs.edit().putString("usage_${sub.licenseId}", formatBytes(totalUsageBytes)).apply()
                                 isChanged = true
                             }
                         }
@@ -477,6 +493,9 @@ class SubscribersAdapter(
         val cvStoryRing: CardView = view.findViewById(R.id.cv_story_ring)
         val flAvatarContainer: FrameLayout = view.findViewById(R.id.fl_avatar_container)
         
+        // 🌟 المتغير الخاص بالاستهلاك (سيتم إضافته لملف XML قريباً) 🌟
+        val tvDataUsage: TextView? = view.findViewById(R.id.tv_data_usage)
+
         private var timerJob: Job? = null
         private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -499,15 +518,19 @@ class SubscribersAdapter(
             val avatarBitmap = AvatarGenerator.generateAvatar(item.name, item.licenseId, 120)
             ivAvatar.setImageBitmap(avatarBitmap)
             
-            // 🌟 إخفاء حلقة الاستوري نهائياً حسب طلبك 🌟
             cvStoryRing.setCardBackgroundColor(Color.TRANSPARENT)
             
-            // 🌟 ربط ضغطة الصورة بفتح نافذة عرض الأجهزة المربوطة (بدل الاستوري) 🌟
             flAvatarContainer.setOnClickListener {
                 if (itemView.context is SubscribersActivity) {
                     (itemView.context as SubscribersActivity).showDevicesDialog(item.licenseId, item.name)
                 }
             }
+
+            // 🌟 جلب وعرض استهلاك المشترك 🌟
+            val prefs = itemView.context.getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
+            val usage = prefs.getString("usage_${item.licenseId}", "0.0 MB") ?: "0.0 MB"
+            tvDataUsage?.text = "استهلاك: $usage"
+            tvDataUsage?.visibility = View.VISIBLE
 
             tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
             
@@ -534,20 +557,21 @@ class SubscribersAdapter(
                         val h = (diffMs % 86400000L) / 3600000L
                         val m = (diffMs % 3600000L) / 60000L
                         
-                        val timeText = buildString {
-                            if (d > 0) append("$d يوم و ")
-                            if (h > 0 || d > 0) append("$h ساعة و ")
-                            if (m > 0 || (d == 0L && h == 0L)) append("$m دقيقة")
-                            if (this.isEmpty()) append("أقل من دقيقة ⏳")
+                        // 🌟 اختصار الوقت إلى الوحدة الأكبر فقط 🌟
+                        val timeText = when {
+                            d > 0 -> "$d يوم"
+                            h > 0 -> "$h ساعة"
+                            m > 0 -> "$m دقيقة"
+                            else -> "أقل من دقيقة"
                         }
                         
-                        tvExpiry.text = timeText.trim().removeSuffix("و").trim()
+                        tvExpiry.text = timeText
                         tvExpiry.setTextColor(Color.parseColor("#4CAF50"))
                     } else {
                         tvExpiry.text = "منتهي الصلاحية 🛑"
                         tvExpiry.setTextColor(Color.parseColor("#E53935"))
                     }
-                    delay(60000L)
+                    delay(60000L) // تحديث كل دقيقة فقط
                 }
             }
         }
