@@ -39,7 +39,6 @@ import java.net.URL
 
 class SubscribersActivity : AppCompatActivity() {
 
-    // 🌟 الرابط الجديد الأساسي للـ VPS 🌟
     private val BASE_API_URL = "https://education.ashor.shop"
 
     private lateinit var recycler: RecyclerView
@@ -167,14 +166,13 @@ class SubscribersActivity : AppCompatActivity() {
         tvEmptyState.visibility = if (filtered.isEmpty()) View.VISIBLE else View.GONE
     }
 
-    // 🌟 نافذة عرض الأجهزة (التليجرام ستايل) 🌟
     fun showDevicesDialog(userId: String, userName: String) {
         val bottomSheet = BottomSheetDialog(this)
         
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(50, 50, 50, 50)
-            setBackgroundColor(Color.parseColor("#1A1A1D")) // لون دارك مود فخم
+            setBackgroundColor(Color.parseColor("#1A1A1D"))
         }
 
         container.addView(TextView(this).apply {
@@ -236,7 +234,6 @@ class SubscribersActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 التعديل هنا لتجنب خطأ Build: تم تغيير MaterialButton لـ TextView 🌟
     private fun createDeviceRow(deviceId: String): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -263,7 +260,6 @@ class SubscribersActivity : AppCompatActivity() {
             setPadding(20, 20, 20, 20)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             
-            // إضافة تأثير الضغطة الشفاف (Ripple Effect)
             val outValue = android.util.TypedValue()
             context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
             setBackgroundResource(outValue.resourceId)
@@ -477,7 +473,6 @@ class SubscribersAdapter(
         val btnDelete: View = view.findViewById(R.id.btn_delete)
         val btnEdit: View? = view.findViewById(R.id.btn_edit) 
         
-        // 🌟 المتغيرات الجديدة الخاصة بالصورة الدائرية والاستوري 🌟
         val ivAvatar: ImageView = view.findViewById(R.id.iv_sub_avatar)
         val cvStoryRing: CardView = view.findViewById(R.id.cv_story_ring)
         val flAvatarContainer: FrameLayout = view.findViewById(R.id.fl_avatar_container)
@@ -493,30 +488,25 @@ class SubscribersAdapter(
             onDelete: (V2rayCrypt.SubscriberData) -> Unit,
             onEdit: (V2rayCrypt.SubscriberData) -> Unit
         ) {
-            // 🌟 إضافة أيقونة الرتبة للاسم 🌟
             tvName.text = "${item.name} 👑"
             
-            // 🌟 ربط ضغطة الاسم لفتح نافذة التليجرام لعرض الأجهزة 🌟
             tvName.setOnClickListener {
                 if (itemView.context is SubscribersActivity) {
                     (itemView.context as SubscribersActivity).showDevicesDialog(item.licenseId, item.name)
                 }
             }
             
-            // 🌟 تعيين الصورة الجديدة باستخدام ImageView مباشرة 🌟
             val avatarBitmap = AvatarGenerator.generateAvatar(item.name, item.licenseId, 120)
             ivAvatar.setImageBitmap(avatarBitmap)
             
-            // 🌟 التحكم بظهور حلقة الاستوري الزرقاء 🌟
-            val hasStory = true // هنا تقدر تخليها true او false بناءً على حالة المستخدم بالسيرفر
-            if (hasStory) {
-                cvStoryRing.setCardBackgroundColor(Color.parseColor("#2196F3")) // إظهار الحلقة
-                flAvatarContainer.setOnClickListener {
-                    Toast.makeText(itemView.context, "جاري فتح ستوري: ${item.name}", Toast.LENGTH_SHORT).show()
+            // 🌟 إخفاء حلقة الاستوري نهائياً حسب طلبك 🌟
+            cvStoryRing.setCardBackgroundColor(Color.TRANSPARENT)
+            
+            // 🌟 ربط ضغطة الصورة بفتح نافذة عرض الأجهزة المربوطة (بدل الاستوري) 🌟
+            flAvatarContainer.setOnClickListener {
+                if (itemView.context is SubscribersActivity) {
+                    (itemView.context as SubscribersActivity).showDevicesDialog(item.licenseId, item.name)
                 }
-            } else {
-                cvStoryRing.setCardBackgroundColor(Color.TRANSPARENT) // إخفاء الحلقة إذا ماكو ستوري
-                flAvatarContainer.setOnClickListener(null)
             }
 
             tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
