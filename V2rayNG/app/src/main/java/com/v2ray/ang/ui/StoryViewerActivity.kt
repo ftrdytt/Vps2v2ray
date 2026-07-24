@@ -1,5 +1,8 @@
 package com.v2ray.ang.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -43,7 +46,7 @@ class StoryViewerActivity : AppCompatActivity() {
     private var storiesArray = JSONArray()
     private var currentIndex = 0
     private var currentViewsArray: JSONArray? = null 
-    private var currentReactionsObj: JSONObject? = null // جلب التفاعلات
+    private var currentReactionsObj: JSONObject? = null
 
     private lateinit var ivStoryImage: ImageView
     private lateinit var tvStoryText: TextView
@@ -73,12 +76,13 @@ class StoryViewerActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_story_viewer)
 
-        targetUserId = intent.getStringExtra("targetUserId") ?: ""
+        // 🌟 نستلم targetUserId، سواء جايين من قائمة الملفات أو الأصدقاء 🌟
+        targetUserId = intent.getStringExtra("targetUserId") ?: intent.getStringExtra("userId") ?: ""
         myUserId = AuthManager.getId(this)
         myRole = AuthManager.getRole(this)
 
         if (targetUserId.isEmpty()) {
-            Toast.makeText(this, "خطأ في جلب بيانات القصة", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "خطأ في جلب بيانات القصة (لا يوجد ID)", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -117,7 +121,6 @@ class StoryViewerActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.btn_react_fire).setOnClickListener { reactToStory("🔥") }
         findViewById<TextView>(R.id.btn_react_laugh).setOnClickListener { reactToStory("😂") }
 
-        // فتح التعليقات بطريقة صحيحة وبدون Crash
         findViewById<LinearLayout>(R.id.btn_open_comments).setOnClickListener {
             if (storiesArray.length() > 0) {
                 pauseStory()
@@ -155,7 +158,6 @@ class StoryViewerActivity : AppCompatActivity() {
         val bottomSheet = StoryViewersBottomSheet()
         bottomSheet.userIds = userIds
         bottomSheet.myUserId = myUserId
-        // تمرير التفاعلات للنافذة لكي تعرض بجانب الأسماء
         bottomSheet.reactionsJson = currentReactionsObj?.toString() ?: "{}"
         bottomSheet.onDismissAction = { resumeStory() }
         bottomSheet.show(supportFragmentManager, "StoryViewersBottomSheet")
@@ -192,7 +194,6 @@ class StoryViewerActivity : AppCompatActivity() {
                     if (!scaleGestureDetector.isInProgress) {
                         val touchDuration = System.currentTimeMillis() - touchDownTime
                         if (touchDuration < 200) {
-                            // تم إصلاح التقليب: يمين ينتقل للقصة التالية، يسار يعود للسابقة
                             if (event.x > screenWidth / 2) {
                                 showNextStory()
                             } else {
@@ -435,7 +436,6 @@ class StoryViewerActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 دالة الإيموجي الطائر بستايل فيسبوك 🌟
     private fun animateFloatingEmoji(emoji: String) {
         val tvEmoji = TextView(this).apply {
             text = emoji
@@ -443,12 +443,12 @@ class StoryViewerActivity : AppCompatActivity() {
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.BOTTOM or Gravity.END
                 bottomMargin = 150
-                marginEnd = Random.nextInt(50, 300) // يظهر بأماكن عشوائية قليلاً
+                marginEnd = Random.nextInt(50, 300)
             }
         }
         reactionAnimationLayer.addView(tvEmoji)
         tvEmoji.animate()
-            .translationYBy(-800f) // يطير للأعلى
+            .translationYBy(-800f)
             .alpha(0f)
             .setDuration(1500)
             .withEndAction { reactionAnimationLayer.removeView(tvEmoji) }
@@ -459,7 +459,6 @@ class StoryViewerActivity : AppCompatActivity() {
         if (storiesArray.length() == 0) return
         val currentStoryId = storiesArray.getJSONObject(currentIndex).getString("id")
         
-        // إطلاق الأنيميشن فوراً عند الضغط لضمان تجربة مستخدم سريعة
         animateFloatingEmoji(emoji)
 
         lifecycleScope.launch(Dispatchers.IO) {
@@ -622,7 +621,7 @@ class StoryViewersBottomSheet : BottomSheetDialogFragment() {
             val tvName: TextView = view.findViewById(R.id.tv_item_name)
             val tvUsername: TextView = view.findViewById(R.id.tv_item_username)
             val btnFollow: MaterialButton = view.findViewById(R.id.btn_item_follow)
-            val tvReaction: TextView = view.findViewById(R.id.tv_item_reaction) // يجب أن يكون موجود بالـ XML
+            val tvReaction: TextView = view.findViewById(R.id.tv_item_reaction)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -636,7 +635,6 @@ class StoryViewersBottomSheet : BottomSheetDialogFragment() {
             holder.tvUsername.text = "ID: $id"
             holder.btnFollow.visibility = View.GONE
             
-            // إظهار الريأكت إذا كان المستخدم قد تفاعل
             val userReaction = reactionsMap.optString(id, "")
             if (userReaction.isNotEmpty()) {
                 holder.tvReaction.text = userReaction
@@ -683,7 +681,6 @@ class StoryViewersBottomSheet : BottomSheetDialogFragment() {
                                 if (id != myUserId) {
                                     holder.btnFollow.visibility = View.VISIBLE
                                     updateFollowBtn(holder.btnFollow, isFollowingLocal)
-                                    // إصلاح دالة النقر للمتابعة
                                     holder.btnFollow.setOnClickListener { 
                                         toggleFollow(id, holder.btnFollow, isFollowingLocal) { newState ->
                                             isFollowingLocal = newState
@@ -730,7 +727,7 @@ class StoryViewersBottomSheet : BottomSheetDialogFragment() {
                         val isNowFollowing = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText()).getBoolean("isFollowing")
                         withContext(Dispatchers.Main) { 
                             updateFollowBtn(btn, isNowFollowing)
-                            callback(isNowFollowing) // تحديث الحالة داخلياً
+                            callback(isNowFollowing) 
                             btn.isEnabled = true 
                         }
                     }
