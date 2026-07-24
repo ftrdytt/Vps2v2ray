@@ -3,6 +3,7 @@ package com.v2ray.ang.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -269,19 +270,23 @@ class FileActiveUsersActivity : AppCompatActivity() {
         for (i in 0 until array.length()) {
             val obj = array.getJSONObject(i)
             val isBanned = obj.optBoolean("isBanned", type == "BANNED")
+            // 🌟 جلب حالة الاستوري من السيرفر (يتم إرسالها الآن من السيرفر) 🌟
+            val hasActiveStory = obj.optBoolean("hasActiveStory", false)
+
             addUserCard(
                 obj.optString("deviceId"),
                 obj.optString("name", "مجهول الهوية"),
                 obj.optString("userId", ""),
                 obj.optString("pfp", ""),
                 isBanned,
-                type
+                type,
+                hasActiveStory // 🌟 تمرير حالة الاستوري للدالة 🌟
             )
         }
     }
 
-    // 🌟 التعديلات الجديدة: واجهة المستخدم والستوري والرتب 🌟
-    private fun addUserCard(deviceId: String, name: String, userId: String, pfp: String, isBanned: Boolean, currentTab: String) {
+    // 🌟 تم إضافة متغير hasActiveStory للدالة للتحكم بالدائرة الزرقاء 🌟
+    private fun addUserCard(deviceId: String, name: String, userId: String, pfp: String, isBanned: Boolean, currentTab: String, hasActiveStory: Boolean) {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -294,8 +299,8 @@ class FileActiveUsersActivity : AppCompatActivity() {
         val avatarContainer = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(140, 140).apply { setMargins(0, 0, 30, 0) }
             
-            // إذا كان المستخدم عنده ID (مسجل)، نخليله حلقة زرقاء مثل الاستوري
-            if (userId.isNotEmpty()) {
+            // 🌟 إذا كان المستخدم عنده ID (مسجل) وعنده ستوري فعلي (hasActiveStory)، نخليله حلقة زرقاء 🌟
+            if (hasActiveStory && userId.isNotEmpty()) {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
                     setStroke(6, Color.parseColor("#2196F3")) // لون أزرق متوهج
@@ -303,10 +308,23 @@ class FileActiveUsersActivity : AppCompatActivity() {
                 }
                 setPadding(10, 10, 10, 10) // فراغ بين الحلقة والصورة
                 
-                // تفعيل ضغطة الستوري
+                // 🌟 تفعيل الانتقال الحقيقي لصفحة الستوري 🌟
                 setOnClickListener {
-                    Toast.makeText(this@FileActiveUsersActivity, "جاري فتح ستوري: $name", Toast.LENGTH_SHORT).show()
+                    try {
+                        val intent = Intent(this@FileActiveUsersActivity, StoryViewerActivity::class.java)
+                        // نمرر الـ userId بأكثر من اسم مفتاح تحوطاً للطريقة اللي برمجت بيها الـ StoryViewerActivity
+                        intent.putExtra("userId", userId)
+                        intent.putExtra("targetId", userId)
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(this@FileActiveUsersActivity, "لم يتم العثور على واجهة الاستوري", Toast.LENGTH_SHORT).show()
+                    }
                 }
+            } else {
+                // المستخدم ما عنده ستوري نشط، نزيل الإطار الأزرق والضغطة
+                background = null
+                setPadding(0, 0, 0, 0)
+                setOnClickListener(null)
             }
         }
 
@@ -431,7 +449,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         bottomSheet.setContentView(container)
         bottomSheet.show()
 
-        // جلب الأجهزة من السيرفر
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val url = URL("$baseUrl/auth/get_user?id=$userId")
@@ -464,7 +481,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 تصميم سطر الجهاز الواحد مع زر النسخ (تم استخدام TextView بدلاً من MaterialButton) 🌟
+    // 🌟 تصميم سطر الجهاز الواحد مع زر النسخ 🌟
     private fun createDeviceRow(deviceId: String, isCurrent: Boolean): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -491,7 +508,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             setPadding(20, 20, 20, 20)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             
-            // إضافة تأثير الضغطة الشفاف (Ripple Effect)
             val outValue = android.util.TypedValue()
             context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
             setBackgroundResource(outValue.resourceId)
