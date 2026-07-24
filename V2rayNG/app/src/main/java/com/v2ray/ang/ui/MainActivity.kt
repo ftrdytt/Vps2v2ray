@@ -1,6 +1,10 @@
 package com.v2ray.ang.ui
 
+import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.Color
+import android.net.TrafficStats
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -11,14 +15,11 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import android.graphics.Color
-import android.content.res.ColorStateList
-import android.widget.ImageView
-import androidx.core.content.ContextCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -27,6 +28,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.SearchView
 import androidx.cardview.widget.CardView
+import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.core.view.isVisible
 import androidx.drawerlayout.widget.DrawerLayout
@@ -74,8 +76,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var activePingJob: Job? = null
     private var vpnStartTime: Long = 0L
 
-    // 🌟 وظيفة الفحص العالمي للطرد 🌟
+    // 🌟 وظائف الفحص بالخلفية 🌟
     private var accountWatchdogJob: Job? = null 
+    private var fileStatsJob: Job? = null
+
+    // 🌟 متغيرات لحساب الاستهلاك الحقيقي 🌟
+    private var lastRxBytes: Long = 0L
+    private var lastTxBytes: Long = 0L
 
     companion object { var lastReportedState: Boolean? = null }
 
@@ -90,7 +97,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun showLoadingDialog() { showLoading() }
     fun hideLoadingDialog() { hideLoading() }
 
-    // 🌟 دالة توليد Hardware ID ثابت كالصخر 🌟
     private fun getUniqueHardwareId(): String {
         try {
             val devInfo = Build.BOARD + Build.BRAND + Build.DEVICE + Build.DISPLAY +
@@ -119,7 +125,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         setContentView(binding.root)
         lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
         
-        // 🌟 نظام الإنشاء الذكي والرادار المتسلسل (مقاوم لانقطاع النت) 🌟
+        // تهيئة المتغيرات للاستهلاك
+        lastRxBytes = TrafficStats.getUidRxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
+        lastTxBytes = TrafficStats.getUidTxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
+
         lifecycleScope.launch(Dispatchers.IO) {
             while (!AuthManager.isLoggedIn(this@MainActivity)) {
                 val success = attemptInitialAuth()
@@ -128,6 +137,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
             withContext(Dispatchers.Main) {
                 startAccountWatchdog()
+                startFileStatsSync() // 🌟 بدء نظام المزامنة الذكي 🌟
             }
         }
 
@@ -146,17 +156,117 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
+    // 🌟 1. مزامنة الاستهلاك والقفل والاستوري وصورة الناشر بالخلفية بدون أخطاء 🌟
+    private fun startFileStatsSync() {
+        fileStatsJob?.cancel()
+        fileStatsJob = lifecycleScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                try {
+                    val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
+                    val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
+                    val editor = prefs.edit()
+                    
+                    // حساب الاستهلاك الفعلي للموبايل
+                    val currentRx = TrafficStats.getUidRxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
+                    val currentTx = TrafficStats.getUidTxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
+                    
+                    val rxDelta = if (currentRx > lastRxBytes) currentRx - lastRxBytes else 0L
+                    val txDelta = if (currentTx > lastTxBytes) currentTx - lastTxBytes else 0L
+                    val totalDeltaBytes = rxDelta + txDelta
+                    
+                    lastRxBytes = currentRx
+                    lastTxBytes = currentTx
+                    
+                    val activeGuid = MmkvManager.getSelectServer().orEmpty()
+                    val myDeviceId = getUniqueHardwareId()
+                    val myUserId = AuthManager.getId(this@MainActivity)
+
+                    // إرسال استهلاك هذا المشترك للسيرفر إذا كان متصل
+                    if (activeGuid.isNotEmpty() && mainViewModel.isRunning.value == true && totalDeltaBytes > 0) {
+                        val activeLicenseId = V2rayCrypt.getLicenseId(this@MainActivity, activeGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: activeGuid
+                        try {
+                            val payload = JSONObject()
+                                .put("guid", activeLicenseId)
+                                .put("deviceId", myDeviceId)
+                                .put("userId", myUserId)
+                                .put("usageBytes", totalDeltaBytes) 
+                            
+                            val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                            conn.requestMethod = "POST"
+                            conn.setRequestProperty("Content-Type", "application/json")
+                            conn.doOutput = true
+                            conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                            conn.responseCode
+                        } catch (e: Exception) {}
+                    }
+
+                    // جلب معلومات الناشرين والاستهلاك الكلي وحالة القفل لكل الملفات
+                    for (guid in guids) {
+                        val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
+                        
+                        try {
+                            val conn = URL("$BASE_API_URL/auth/get_user?id=$licenseId").openConnection() as HttpURLConnection
+                            conn.connectTimeout = 4000
+                            conn.readTimeout = 4000
+                            if (conn.responseCode == 200) {
+                                val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                                val obj = JSONObject(resp)
+                                if (obj.getBoolean("success")) {
+                                    editor.putString("name_$guid", obj.getString("name"))
+                                    editor.putString("pfp_$guid", obj.optString("pfp", ""))
+                                    editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
+                                }
+                            }
+                        } catch (e: Exception) {}
+
+                        try {
+                            val checkConn = URL("$BASE_API_URL/check?guid=$licenseId").openConnection() as HttpURLConnection
+                            checkConn.connectTimeout = 4000
+                            checkConn.readTimeout = 4000
+                            if (checkConn.responseCode == 200) {
+                                val checkResp = BufferedReader(InputStreamReader(checkConn.inputStream)).readText()
+                                val checkObj = JSONObject(checkResp)
+                                
+                                val isLocked = checkObj.optBoolean("isLocked", false)
+                                val totalUsageBytes = checkObj.optLong("totalUsageBytes", 0L)
+                                
+                                editor.putBoolean("locked_$guid", isLocked)
+                                editor.putString("usage_$guid", formatBytes(totalUsageBytes))
+                            }
+                        } catch (e: Exception) {}
+                    }
+                    
+                    editor.apply()
+                    withContext(Dispatchers.Main) {
+                        mainViewModel.reloadServerList() // تحديث الشاشة لتنعكس التغيرات فوراً
+                    }
+                } catch (e: Exception) {}
+                
+                delay(5 * 60 * 1000L) // تتكرر كل 5 دقائق بالضبط
+            }
+        }
+    }
+
+    // 🌟 2. تنسيق الاستهلاك بدقة واحترافية 🌟
+    private fun formatBytes(bytes: Long): String {
+        if (bytes <= 0) return "0.0 MB"
+        val kb = bytes / 1024.0
+        val mb = kb / 1024.0
+        if (mb >= 1024) {
+            val gb = mb / 1024.0
+            return String.format("%.2f GB", gb)
+        }
+        return String.format("%.1f MB", mb)
+    }
+
     // 🌟 رادار فحص الحساب والطرد الفوري 🌟
     private fun startAccountWatchdog() {
         val userId = AuthManager.getId(this)
         if (userId.isEmpty()) return
         
-        // 🌟 إعفاء الأدمن من المراقبة والطرد 🌟
-        if (AuthManager.getRole(this) == "admin") {
-            return
-        }
+        if (AuthManager.getRole(this) == "admin") return
 
-        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+        val deviceId = getUniqueHardwareId()
 
         accountWatchdogJob?.cancel()
         accountWatchdogJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -192,9 +302,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // 🌟 دالة الخروج الإجباري والتنظيف العميق 🌟
     private fun forceLogoutAndClean(reason: String) {
-        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+        val deviceId = getUniqueHardwareId() 
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
 
@@ -231,10 +340,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // 🌟 دالة إنشاء الحساب التلقائي 🌟
     private suspend fun attemptInitialAuth(): Boolean {
         var isSuccess = false
-        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+        val deviceId = getUniqueHardwareId() 
         try {
             val conn = URL("$BASE_API_URL/auth/init").openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
@@ -301,7 +409,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             binding.root.findViewById<MaterialButton>(R.id.btn_speed_test)?.let { it.setOnClickListener { SpeedTestHelper.runSpeedTest(this, mainViewModel.isRunning.value == true) } }
             binding.root.findViewById<CardView>(R.id.card_traffic_meter)?.setOnClickListener { TrafficMonitorHelper.showTrafficDetailsDialog(this, mainViewModel.isRunning.value == true) }
 
-            // 🌟 زر فتح السجل الكامل (Full Log) 🌟
             binding.root.findViewById<ImageView>(R.id.btn_full_log)?.setOnClickListener {
                 val fullLogs = mainViewModel.fullLog.value ?: "لا توجد سجلات حالياً..."
                 
@@ -403,7 +510,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lifecycleScope.launch(Dispatchers.IO) {
                 val guid = MmkvManager.getSelectServer().orEmpty()
                 val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
-                val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+                val deviceId = getUniqueHardwareId() 
                 
                 if (idToTrack.isNotEmpty()) {
                     val userId = AuthManager.getId(this@MainActivity)
@@ -445,7 +552,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val tvLiveLog = binding.root.findViewById<TextView>(R.id.tv_live_log)
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
-        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+        val deviceId = getUniqueHardwareId() 
         
         val isNowRunning = isRunning && !isLoading
 
@@ -598,7 +705,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val guid = MmkvManager.getSelectServer().orEmpty()
         if (guid.isNullOrEmpty()) { toast(R.string.title_file_chooser); return }
         
-        val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+        val deviceId = getUniqueHardwareId() 
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
         
@@ -680,7 +787,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // 🌟 ترجمة ذكية ومبسطة لأخطاء V2Ray إلى العربية 🌟
     private fun translateLog(log: String): String {
         if (log.isBlank()) return "بانتظار تشغيل المحرك..."
         val l = log.lowercase()
@@ -700,7 +806,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             l.contains("app/dispatcher") -> "🔀 جاري توجيه الاتصال داخلياً..."
             l.contains("failed to start") -> "❌ فشل بدء المحرك - تأكد من البايلود (JSON)"
             l.contains("invalid") -> "⚠️ خطأ في صياغة البايلود أو السيرفر غير صالح"
-            else -> log // إذا لم يطابق يعرض السجل كما هو
+            else -> log 
         }
     }
 
@@ -708,7 +814,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }
         mainViewModel.isRunning.observe(this) { isRunning -> applyRunningState(false, isRunning) }
         
-        // 🌟 مراقبة السجل المباشر وتحديث واجهة المستخدم (مترجم) 🌟
         mainViewModel.liveLog.observe(this) { log ->
             val tvLiveLog = binding.root.findViewById<TextView>(R.id.tv_live_log)
             tvLiveLog?.text = translateLog(log)
@@ -796,7 +901,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         if (lastReportedState == true && idToTrack.isNotEmpty()) {
             lastReportedState = false
-            val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+            val deviceId = getUniqueHardwareId() 
             @Suppress("OPT_IN_USAGE")
             GlobalScope.launch(Dispatchers.IO) {
                 try {
@@ -822,6 +927,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         pingJob?.cancel()
         activePingJob?.cancel()
         accountWatchdogJob?.cancel()
+        fileStatsJob?.cancel() // 🌟 إيقاف مزامنة الاستهلاك عند الخروج 🌟
         super.onDestroy() 
     }
 
@@ -876,7 +982,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         if (mainViewModel.isRunning.value == true) {
             val idToTrack = V2rayCrypt.getLicenseId(this, oldGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: oldGuid
-            val deviceId = getUniqueHardwareId() // 🌟 استخدام الآيدي الثابت 🌟
+            val deviceId = getUniqueHardwareId() 
             
             toast("جاري التبديل للملف الجديد...")
             lifecycleScope.launch(Dispatchers.IO) {
@@ -943,7 +1049,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     override fun onShare(url: String) {} 
     override fun onRefreshData() {}
 
-    // 🌟 دالة جاهزة للاستدعاء من أي مكان تريده لفتح واجهة Ashor بأمان 🌟
     fun openAshorConfig() {
         startActivity(Intent(this, ServerAshorActivity::class.java))
     }
