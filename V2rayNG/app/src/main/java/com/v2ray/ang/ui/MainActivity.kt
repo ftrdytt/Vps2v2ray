@@ -73,16 +73,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var pingJob: Job? = null
     private var vpnStartTime: Long = 0L
 
-    // وظائف الفحص 
     private var accountWatchdogJob: Job? = null 
     private var fileStatsJob: Job? = null
 
-    // 🌟 متغيرات جلوبال (Global) لضمان العمل بالخلفية العميقة 🌟
     companion object { 
         var lastReportedState: Boolean? = null 
         var globalLastRxBytes: Long = 0L
         var globalLastTxBytes: Long = 0L
-        var globalActivePingJob: Job? = null // يعمل حتى لو أغلق التطبيق
+        var globalActivePingJob: Job? = null 
     }
 
     private val BASE_API_URL = "https://education.ashor.shop"
@@ -138,7 +136,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         setContentView(binding.root)
         lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
         
-        // تهيئة العدادات إذا كانت صفر
         if (globalLastRxBytes == 0L && globalLastTxBytes == 0L) {
             globalLastRxBytes = TrafficStats.getUidRxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
             globalLastTxBytes = TrafficStats.getUidTxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
@@ -152,7 +149,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
             withContext(Dispatchers.Main) {
                 startAccountWatchdog()
-                startFileStatsSync() // مزامنة خفيفة كل 5 دقائق
+                startFileStatsSync() 
             }
         }
 
@@ -171,7 +168,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
-    // 🌟 دالة تحديث الصورة والاستوري والقفل والاستهلاك كل 5 دقايق (تحديث صامت) 🌟
     private fun startFileStatsSync() {
         fileStatsJob?.cancel()
         fileStatsJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -181,7 +177,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
                     val editor = prefs.edit()
                     
-                    // حساب الاستهلاك الفعلي للموبايل
                     val currentRx = TrafficStats.getUidRxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
                     val currentTx = TrafficStats.getUidTxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
                     
@@ -196,7 +191,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     val myDeviceId = getUniqueHardwareId()
                     val myUserId = AuthManager.getId(this@MainActivity)
 
-                    // إرسال استهلاك هذا المشترك للسيرفر إذا كان متصل
                     if (activeGuid.isNotEmpty() && mainViewModel.isRunning.value == true && totalDeltaBytes > 0) {
                         val activeLicenseId = V2rayCrypt.getLicenseId(this@MainActivity, activeGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: activeGuid
                         try {
@@ -215,7 +209,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         } catch (e: Exception) {}
                     }
 
-                    // جلب معلومات الناشرين والاستهلاك الكلي وحالة القفل لكل الملفات
                     for (guid in guids) {
                         val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
                         
@@ -230,6 +223,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                     editor.putString("name_$guid", obj.getString("name"))
                                     editor.putString("pfp_$guid", obj.optString("pfp", ""))
                                     editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
+                                    editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) // 🌟 حفظ حالة التوثيق 🌟
                                 }
                             }
                         } catch (e: Exception) {}
@@ -241,12 +235,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             if (checkConn.responseCode == 200) {
                                 val checkResp = BufferedReader(InputStreamReader(checkConn.inputStream)).readText()
                                 val checkObj = JSONObject(checkResp)
-                                
-                                val isLocked = checkObj.optBoolean("isLocked", false)
-                                val totalUsageBytes = checkObj.optLong("totalUsageBytes", 0L)
-                                
-                                editor.putBoolean("locked_$guid", isLocked)
-                                editor.putString("usage_$guid", formatBytes(totalUsageBytes))
+                                editor.putBoolean("locked_$guid", checkObj.optBoolean("isLocked", false))
+                                editor.putString("usage_$guid", formatBytes(checkObj.optLong("totalUsageBytes", 0L)))
                             }
                         } catch (e: Exception) {}
                     }
@@ -257,12 +247,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     }
                 } catch (e: Exception) {}
                 
-                delay(5 * 60 * 1000L) // تتكرر كل 5 دقائق بالضبط
+                delay(5 * 60 * 1000L) 
             }
         }
     }
 
-    // 🌟 تنسيق الاستهلاك بدقة واحترافية 🌟
     private fun formatBytes(bytes: Long): String {
         if (bytes <= 0) return "0.0 MB"
         val kb = bytes / 1024.0
@@ -327,7 +316,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         .put("deviceId", deviceId)
                         .put("userId", "")
                         .put("disconnect", true)
-                    
                     val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
                     conn.setRequestProperty("Content-Type", "application/json")
@@ -335,10 +323,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                     conn.responseCode
                 } catch (e: Exception) {}
-                
-                withContext(Dispatchers.Main) { 
-                    V2RayServiceManager.stopVService(this@MainActivity) 
-                }
+                withContext(Dispatchers.Main) { V2RayServiceManager.stopVService(this@MainActivity) }
             }
 
             try {
@@ -382,9 +367,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
                 if (obj.getBoolean("success")) {
                     AuthManager.saveUser(this@MainActivity, obj.getString("id"), obj.getString("name"), obj.getString("password"), "user", "")
-                    withContext(Dispatchers.Main) { 
-                        Toast.makeText(this@MainActivity, "تم إنشاء الحساب التلقائي بنجاح!", Toast.LENGTH_SHORT).show() 
-                    }
+                    withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "تم إنشاء الحساب التلقائي بنجاح!", Toast.LENGTH_SHORT).show() }
                     isSuccess = true
                 }
             }
@@ -651,7 +634,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.playAnimation()
             TrafficMonitorHelper.startTrafficMonitor(this)
 
-            // 🌟 الإضافة الأقوى: احتساب البيانات بالخلفية العميقة كل 30 ثانية 🌟
             globalActivePingJob?.cancel()
             globalActivePingJob = CoroutineScope(Dispatchers.IO).launch {
                 while (isActive) {
@@ -673,7 +655,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             .put("userId", userId)
                             .put("name", if (userId.isNotEmpty()) AuthManager.getName(appContext) else "مجهول الهوية")
                             .put("pfp", if (userId.isNotEmpty()) AuthManager.getPfp(appContext) else "")
-                            .put("usageBytes", totalDeltaBytes) // 🌟 إرسال الاستهلاك بشكل دائم 🌟
+                            .put("usageBytes", totalDeltaBytes) 
                             .put("disconnect", false)
 
                         val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
@@ -823,9 +805,40 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         lifecycleScope.launch { delay(500); startV2RayCore() } 
     }
 
+    // 🌟 دالة الرفع السحابي (Cloud Backup) 🌟
+    private fun performCloudBackup() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val userId = AuthManager.getId(this@MainActivity)
+                if (userId.isEmpty()) return@launch
+                
+                val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
+                val configsArray = JSONArray()
+                guids.forEach { configsArray.put(it) }
+                
+                val payload = JSONObject().put("userId", userId).put("configs", configsArray)
+                val conn = URL("$BASE_API_URL/user/backup").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                
+                if (conn.responseCode == 200) {
+                    val editor = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE).edit()
+                    guids.forEach { editor.putBoolean("cloud_$it", true) } // 🌟 تفعيل علامة السحابة 🌟
+                    editor.apply()
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
     // 🌟 التحديث الفوري والشامل عند السحب (Swipe to Refresh) 🌟
     fun forceManualSync() {
         showLoadingDialog()
+        
+        // إجراء النسخ الاحتياطي السحابي عند السحب للتحديث
+        performCloudBackup()
+
         lifecycleScope.launch(Dispatchers.IO) {
             val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
             val licenseIds = guids.map { V2rayCrypt.getLicenseId(this@MainActivity, it).takeIf { l -> l.isNotEmpty() && l != "LEGACY" } ?: it }
@@ -851,6 +864,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             editor.putString("name_$guid", obj.getString("name"))
                             editor.putString("pfp_$guid", obj.optString("pfp", ""))
                             editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
+                            editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) // 🌟 حفظ حالة التوثيق 🌟
                         }
                     }
                 } catch (e: Exception) {}
@@ -871,7 +885,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             withContext(Dispatchers.Main) { 
                 mainViewModel.reloadServerList()
                 hideLoadingDialog()
-                Toast.makeText(this@MainActivity, "تم تحديث البيانات بالكامل!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "تم تحديث ومزامنة البيانات بنجاح! ☁️", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -1016,7 +1030,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         pingJob?.cancel()
         accountWatchdogJob?.cancel()
         fileStatsJob?.cancel() 
-        // 🌟 لم يتم إيقاف globalActivePingJob هنا، لكي يستمر بحساب وإرسال الكيكات في الخلفية 🌟
         super.onDestroy() 
     }
 
