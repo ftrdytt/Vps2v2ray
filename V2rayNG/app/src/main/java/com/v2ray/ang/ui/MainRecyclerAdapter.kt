@@ -36,12 +36,19 @@ import com.v2ray.ang.helper.ItemTouchHelperViewHolder
 import com.v2ray.ang.util.AvatarGenerator
 import com.v2ray.ang.viewmodel.MainViewModel
 import java.util.Collections
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
 
 class MainRecyclerAdapter(
     private val mainViewModel: MainViewModel,
     private val adapterListener: MainAdapterListener?
 ) : RecyclerView.Adapter<MainRecyclerAdapter.BaseViewHolder>(), ItemTouchHelperAdapter {
+    
     companion object {
         private const val VIEW_TYPE_ITEM = 1
         private const val VIEW_TYPE_FOOTER = 2
@@ -71,11 +78,31 @@ class MainRecyclerAdapter(
 
             holder.itemView.setBackgroundColor(Color.TRANSPARENT)
             
-            // 🌟 اسم الملف 🌟
+            // 🌟 استخدام findViewById بشكل صريح ومباشر لتجنب أخطاء GitHub Actions 🌟
             val tvFileName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_name)
+            val tvPublisherName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_publisher_name)
+            val ivAvatar = holder.itemMainBinding.root.findViewById<ImageView>(R.id.iv_file_avatar)
+            val flAvatarContainer = holder.itemMainBinding.root.findViewById<FrameLayout>(R.id.fl_avatar_container)
+            val tvDataUsage = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_data_usage)
+            val ivLockStatus = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_lock_status)
+            val layoutIndicator = holder.itemMainBinding.root.findViewById<View>(R.id.layout_indicator)
+            val tvType = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_type)
+            val tvStatistics = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_statistics)
+            val tvTestResult = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_test_result)
+            val tvActiveCount = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_active_count)
+            val tvExpiry = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_expiry_countdown)
+            
+            val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
+            val layoutAdminControl = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_admin_control)
+            val layoutSubscribersBtn = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_subscribers_btn)
+            val layoutShare = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_share)
+            val layoutEdit = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_edit)
+            val layoutRemove = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_remove)
+            val layoutMore = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_more)
+            val infoContainer = holder.itemMainBinding.root.findViewById<View>(R.id.info_container)
+
             tvFileName?.text = profile.remarks
             
-            // 🌟 القفل החقيقي: V2rayCrypt يخبرنا إذا كان الملف محمي 🌟
             val isProtected = V2rayCrypt.isProtected(context, guid)
             val isAdmin = V2rayCrypt.isAdmin(context, guid)
             val licenseId = V2rayCrypt.getLicenseId(context, guid)
@@ -87,18 +114,8 @@ class MainRecyclerAdapter(
             val publisherName = prefs.getString("name_$guid", "صاحب الملف") ?: "صاحب الملف"
             val publisherPfp = prefs.getString("pfp_$guid", "") ?: ""
 
-            // 🌟 ربط العناصر الجديدة حسب السكيچ 🌟
-            val tvPublisherName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_publisher_name)
-            val ivAvatar = holder.itemMainBinding.root.findViewById<ImageView>(R.id.iv_file_avatar)
-            val cvStoryRing = holder.itemMainBinding.root.findViewById<CardView>(R.id.cv_story_ring)
-            val flAvatarContainer = holder.itemMainBinding.root.findViewById<FrameLayout>(R.id.fl_avatar_container)
-            val tvDataUsage = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_data_usage)
-            val ivLockStatus = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_lock_status)
-
-            // اسم الناشر
             tvPublisherName?.text = publisherName
 
-            // إعداد صورة الناشر
             ivAvatar?.let {
                 if (publisherPfp.isNotEmpty()) {
                     try {
@@ -112,7 +129,6 @@ class MainRecyclerAdapter(
                 }
             }
 
-            // إعداد حلقة الاستوري
             flAvatarContainer?.let {
                 if (hasActiveStory && targetId.isNotEmpty()) {
                     it.background = GradientDrawable().apply {
@@ -144,10 +160,8 @@ class MainRecyclerAdapter(
                 }
             }
 
-            // إعداد القفل والاستهلاك
             tvDataUsage?.text = "استهلاك: $dataUsage"
             
-            // 🌟 حل مشكلة القفل الحقيقي (مبني على حماية الملف) 🌟
             if (isProtected) {
                 ivLockStatus?.text = "🔒 مقفول"
                 ivLockStatus?.setTextColor(Color.parseColor("#E53935"))
@@ -155,9 +169,6 @@ class MainRecyclerAdapter(
                 ivLockStatus?.text = "🔓 مفتوح"
                 ivLockStatus?.setTextColor(Color.parseColor("#4CAF50"))
             }
-
-            val tvType = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_type)
-            val tvStatistics = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_statistics)
 
             if (isProtected && !isAdmin) {
                 tvStatistics?.visibility = View.GONE
@@ -176,7 +187,6 @@ class MainRecyclerAdapter(
             }
 
             val aff = MmkvManager.decodeServerAffiliationInfo(guid)
-            val tvTestResult = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_test_result)
             tvTestResult?.text = aff?.getTestDelayString().orEmpty()
             if ((aff?.testDelayMillis ?: 0L) < 0L) {
                 tvTestResult?.setTextColor(ContextCompat.getColor(context, R.color.colorPingRed))
@@ -184,7 +194,6 @@ class MainRecyclerAdapter(
                 tvTestResult?.setTextColor(Color.parseColor("#00E676"))
             }
 
-            val tvActiveCount = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_active_count)
             if (isProtected || isAdmin) {
                 val activeCount = V2rayCrypt.getActiveCount(context, guid)
                 tvActiveCount?.visibility = View.VISIBLE
@@ -205,8 +214,6 @@ class MainRecyclerAdapter(
             }
 
             val expiryTime = V2rayCrypt.getExpiryTime(context, guid)
-            val tvExpiry = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_expiry_countdown)
-            
             holder.countdownJob?.cancel()
 
             if ((isProtected || isAdmin) && expiryTime > 0L) {
@@ -242,19 +249,11 @@ class MainRecyclerAdapter(
                 tvExpiry?.visibility = View.GONE
             }
 
-            val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
-            val layoutAdminControl = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_admin_control)
-            val layoutSubscribersBtn = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_subscribers_btn)
-            val layoutShare = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_share)
-            val layoutEdit = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_edit)
-            val layoutRemove = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_remove)
-            val layoutMore = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_more)
-
             if (guid == MmkvManager.getSelectServer()) {
-                holder.itemMainBinding.layoutIndicator.visibility = View.VISIBLE
+                layoutIndicator?.visibility = View.VISIBLE
                 bottomSection?.setBackgroundColor(Color.parseColor("#1A4CAF50")) 
             } else {
-                holder.itemMainBinding.layoutIndicator.visibility = View.INVISIBLE
+                layoutIndicator?.visibility = View.INVISIBLE
                 bottomSection?.setBackgroundColor(Color.TRANSPARENT)
             }
 
@@ -272,7 +271,6 @@ class MainRecyclerAdapter(
             } else {
                 layoutMore?.visibility = View.GONE
 
-                // 🌟 حل مشكلة اختفاء زر الأدمن: الأزرار تظهر بناءً على نوع الملف 🌟
                 if (isProtected && !isAdmin) {
                     layoutShare?.visibility = View.GONE
                     layoutEdit?.visibility = View.GONE
@@ -282,7 +280,7 @@ class MainRecyclerAdapter(
                     layoutShare?.visibility = View.VISIBLE
                     layoutEdit?.visibility = View.VISIBLE
                     layoutAdminControl?.visibility = View.VISIBLE
-                    layoutSubscribersBtn?.visibility = View.VISIBLE // 🌟 إظهار زر المشتركين 🌟
+                    layoutSubscribersBtn?.visibility = View.VISIBLE 
                 } else {
                     layoutShare?.visibility = View.VISIBLE
                     layoutEdit?.visibility = View.VISIBLE
@@ -324,7 +322,7 @@ class MainRecyclerAdapter(
                 }
             }
 
-            holder.itemMainBinding.infoContainer.setOnClickListener {
+            infoContainer?.setOnClickListener {
                 adapterListener?.onSelectServer(guid)
             }
         }
@@ -332,15 +330,6 @@ class MainRecyclerAdapter(
 
     private fun getAddress(profile: ProfileItem): String {
         return profile.description.nullIfBlank() ?: AngConfigManager.generateDescription(profile)
-    }
-
-    private fun getSubscriptionRemarks(profile: ProfileItem): String {
-        val subRemarks =
-            if (mainViewModel.subscriptionId.isEmpty())
-                MmkvManager.decodeSubscription(profile.subscriptionId)?.remarks?.firstOrNull()
-            else
-                null
-        return subRemarks?.toString() ?: ""
     }
 
     fun removeServerSub(guid: String, position: Int) {
