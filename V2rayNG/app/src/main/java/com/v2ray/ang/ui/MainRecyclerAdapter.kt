@@ -79,6 +79,7 @@ class MainRecyclerAdapter(
 
             holder.itemView.setBackgroundColor(Color.TRANSPARENT)
             
+            // 🌟 ربط العناصر يدوياً لتجنب أي أخطاء بالـ GitHub 🌟
             val tvFileName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_name)
             val tvPublisherName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_publisher_name)
             val ivAvatar = holder.itemMainBinding.root.findViewById<ImageView>(R.id.iv_file_avatar)
@@ -101,20 +102,26 @@ class MainRecyclerAdapter(
             val layoutMore = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_more)
             val infoContainer = holder.itemMainBinding.root.findViewById<View>(R.id.info_container)
 
-            tvFileName?.text = profile.remarks
-            
             val isProtected = V2rayCrypt.isProtected(context, guid)
             val isAdmin = V2rayCrypt.isAdmin(context, guid)
             val licenseId = V2rayCrypt.getLicenseId(context, guid)
             val targetId = if (licenseId.isNotEmpty() && licenseId != "LEGACY") licenseId else guid
 
+            // 🌟 جلب المعلومات الحقيقية من السيرفر (من الذاكرة المؤقتة) 🌟
             val prefs = context.getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             val dataUsage = prefs.getString("usage_$guid", "0.0 MB") ?: "0.0 MB"
             val hasActiveStory = prefs.getBoolean("story_$guid", false)
             val publisherName = prefs.getString("name_$guid", "صاحب الملف") ?: "صاحب الملف"
             val publisherPfp = prefs.getString("pfp_$guid", "") ?: ""
+            val isVerified = prefs.getBoolean("verified_$guid", false) // جلب حالة التوثيق
+            val isCloudSaved = prefs.getBoolean("cloud_$guid", false) // جلب حالة الحفظ السحابي
 
-            tvPublisherName?.text = publisherName
+            // 🌟 عرض اسم الملف مع علامة السحابة ☁️ أو الهاتف 📱 🌟
+            val cloudIcon = if (isCloudSaved) "☁️" else "📱"
+            tvFileName?.text = "${profile.remarks} $cloudIcon"
+
+            // 🌟 عرض اسم الناشر الحقيقي مع علامة التوثيق ☑️ 🌟
+            tvPublisherName?.text = if (isVerified) "$publisherName ☑️" else publisherName
 
             ivAvatar?.let {
                 if (publisherPfp.isNotEmpty()) {
@@ -406,7 +413,6 @@ class MainRecyclerAdapter(
     
     override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
         super.onDetachedFromRecyclerView(recyclerView)
-        // 🌟 الحل الجذري والنهائي لتجنب خطأ Unresolved reference 'cancel' 🌟
         coroutineScope.coroutineContext.cancelChildren()
     }
 }
