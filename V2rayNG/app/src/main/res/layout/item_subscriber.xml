@@ -4,18 +4,21 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginHorizontal="16dp"
-    android:layout_marginVertical="8dp"
+    android:layout_marginHorizontal="14dp"
+    android:layout_marginVertical="6dp"
     app:cardBackgroundColor="#1A1A1D"
-    app:cardCornerRadius="16dp"
-    app:cardElevation="2dp">
+    app:cardCornerRadius="18dp"
+    app:cardElevation="3dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:paddingTop="14dp"
+        android:paddingBottom="10dp"
+        android:paddingHorizontal="14dp">
 
+        <!-- 🌟 القسم العلوي (الصورة على اليمين والنصوص على اليسار مثل الواجهة الرئيسية) 🌟 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -25,36 +28,35 @@
             <!-- 🌟 حاوية الصورة والاستوري 🌟 -->
             <FrameLayout
                 android:id="@+id/fl_avatar_container"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_marginEnd="14dp"
                 android:clickable="true"
                 android:focusable="true">
 
-                <!-- إطار الاستوري (مخفي برمجياً في شاشة المشتركين) -->
                 <androidx.cardview.widget.CardView
                     android:id="@+id/cv_story_ring"
-                    android:layout_width="56dp"
-                    android:layout_height="56dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:layout_gravity="center"
-                    app:cardCornerRadius="28dp"
+                    app:cardCornerRadius="30dp"
                     app:cardBackgroundColor="@android:color/transparent"
                     app:cardElevation="0dp">
 
-                    <!-- خلفية فاصلة -->
                     <androidx.cardview.widget.CardView
-                        android:layout_width="52dp"
-                        android:layout_height="52dp"
+                        android:layout_width="54dp"
+                        android:layout_height="54dp"
                         android:layout_gravity="center"
-                        app:cardCornerRadius="26dp"
+                        app:cardCornerRadius="27dp"
                         app:cardBackgroundColor="#1A1A1D"
                         app:cardElevation="0dp">
 
                         <!-- الصورة الدائرية الحقيقية -->
                         <androidx.cardview.widget.CardView
-                            android:layout_width="46dp"
-                            android:layout_height="46dp"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
                             android:layout_gravity="center"
-                            app:cardCornerRadius="23dp"
+                            app:cardCornerRadius="24dp"
                             app:cardBackgroundColor="@android:color/transparent"
                             app:cardElevation="0dp">
 
@@ -69,24 +71,54 @@
                 </androidx.cardview.widget.CardView>
             </FrameLayout>
 
+            <!-- 🌟 النصوص التفصيلية 🌟 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical"
-                android:layout_marginStart="12dp">
+                android:orientation="vertical">
 
-                <!-- 🌟 الاسم مع الرتبة 🌟 -->
+                <!-- الاسم مع علامة التوثيق (يأتي من الكود) -->
                 <TextView
                     android:id="@+id/tv_sub_name"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="اسم المشترك"
                     android:textColor="#FFFFFF"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
 
-                <!-- 🌟 وقت الانتهاء (يوم أو ساعة فقط) 🌟 -->
+                <!-- الاستهلاك والنشطين -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <!-- 🌟 عداد استهلاك البيانات بارز بلون أزرق 🌟 -->
+                    <TextView
+                        android:id="@+id/tv_data_usage"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="#2196F3"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:layout_marginEnd="8dp"
+                        tools:text="استهلاك: 1.2 GB" />
+
+                    <TextView
+                        android:id="@+id/tv_active_count"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🟢 0"
+                        android:textColor="#B0BEC5"
+                        android:textSize="11sp" />
+                </LinearLayout>
+
+                <!-- 🌟 وقت الانتهاء 🌟 -->
                 <TextView
                     android:id="@+id/tv_sub_expiry"
                     android:layout_width="wrap_content"
@@ -95,45 +127,12 @@
                     android:text="جاري الحساب..."
                     android:textColor="#4CAF50"
                     android:textStyle="bold"
-                    android:textSize="13sp" />
-                    
-                <!-- 🌟 النشط الآن + استهلاك الكيكات 🌟 -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
+                    android:textSize="12sp" />
 
-                    <TextView
-                        android:id="@+id/tv_active_count"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="نشط الآن: 🟢 0"
-                        android:textColor="#80FFFFFF"
-                        android:textSize="12sp" />
-
-                    <!-- مسافة لدفع الاستهلاك لليسار -->
-                    <View
-                        android:layout_width="0dp"
-                        android:layout_height="0dp"
-                        android:layout_weight="1" />
-
-                    <!-- 🌟 عداد استهلاك البيانات للمشترك 🌟 -->
-                    <TextView
-                        android:id="@+id/tv_data_usage"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="#2196F3"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        android:visibility="gone"
-                        tools:text="استهلاك: 1.2 GB"
-                        tools:visibility="visible" />
-                </LinearLayout>
             </LinearLayout>
         </LinearLayout>
 
+        <!-- فاصل رفيع -->
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
@@ -141,42 +140,27 @@
             android:layout_marginBottom="8dp"
             android:background="#15FFFFFF" />
 
+        <!-- 🌟 القسم السفلي (الأزرار) 🌟 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="end">
+            android:gravity="start">
 
             <LinearLayout
-                android:id="@+id/btn_extend"
+                android:id="@+id/btn_delete"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:clickable="true"
                 android:focusable="true"
-                android:padding="8dp"
-                android:layout_marginEnd="12dp">
+                android:padding="6dp"
+                android:layout_marginEnd="8dp">
                 <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@android:drawable/ic_menu_recent_history"
-                    app:tint="#2196F3" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/btn_edit"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:clickable="true"
-                android:focusable="true"
-                android:padding="8dp"
-                android:layout_marginEnd="12dp">
-                <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@android:drawable/ic_menu_edit"
-                    app:tint="#B0BEC5" />
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@android:drawable/ic_delete"
+                    app:tint="#E53935" />
             </LinearLayout>
 
             <LinearLayout
@@ -186,28 +170,44 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:clickable="true"
                 android:focusable="true"
-                android:padding="8dp"
-                android:layout_marginEnd="12dp">
+                android:padding="6dp"
+                android:layout_marginEnd="8dp">
                 <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
                     android:src="@android:drawable/ic_menu_share"
                     app:tint="#4CAF50" />
             </LinearLayout>
 
             <LinearLayout
-                android:id="@+id/btn_delete"
+                android:id="@+id/btn_edit"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:clickable="true"
                 android:focusable="true"
-                android:padding="8dp">
+                android:padding="6dp"
+                android:layout_marginEnd="8dp">
                 <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@android:drawable/ic_delete"
-                    app:tint="#E53935" />
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@android:drawable/ic_menu_edit"
+                    app:tint="#B0BEC5" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/btn_extend"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:focusable="true"
+                android:padding="6dp">
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:src="@android:drawable/ic_menu_recent_history"
+                    app:tint="#2196F3" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
