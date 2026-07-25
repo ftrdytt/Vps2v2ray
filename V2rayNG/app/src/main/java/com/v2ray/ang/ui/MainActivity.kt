@@ -73,18 +73,19 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private var screenWidth = 0
     
     private var pingJob: Job? = null
-    private var activePingJob: Job? = null
     private var vpnStartTime: Long = 0L
 
-    // 🌟 وظائف الفحص بالخلفية 🌟
+    // وظائف الفحص 
     private var accountWatchdogJob: Job? = null 
     private var fileStatsJob: Job? = null
 
-    // 🌟 متغيرات لحساب الاستهلاك الحقيقي 🌟
-    private var lastRxBytes: Long = 0L
-    private var lastTxBytes: Long = 0L
-
-    companion object { var lastReportedState: Boolean? = null }
+    // 🌟 متغيرات جلوبال (Global) لضمان العمل بالخلفية العميقة 🌟
+    companion object { 
+        var lastReportedState: Boolean? = null 
+        var globalLastRxBytes: Long = 0L
+        var globalLastTxBytes: Long = 0L
+        var globalActivePingJob: Job? = null // يعمل حتى لو أغلق التطبيق
+    }
 
     private val BASE_API_URL = "https://education.ashor.shop"
 
@@ -125,9 +126,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         setContentView(binding.root)
         lifecycleScope.launch(Dispatchers.IO) { NetworkTime.syncTime(this@MainActivity) }
         
-        // تهيئة المتغيرات للاستهلاك
-        lastRxBytes = TrafficStats.getUidRxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
-        lastTxBytes = TrafficStats.getUidTxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
+        // تهيئة العدادات إذا كانت صفر
+        if (globalLastRxBytes == 0L && globalLastTxBytes == 0L) {
+            globalLastRxBytes = TrafficStats.getUidRxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
+            globalLastTxBytes = TrafficStats.getUidTxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
+        }
 
         lifecycleScope.launch(Dispatchers.IO) {
             while (!AuthManager.isLoggedIn(this@MainActivity)) {
@@ -137,7 +140,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
             withContext(Dispatchers.Main) {
                 startAccountWatchdog()
-                startFileStatsSync() // 🌟 بدء نظام المزامنة الذكي 🌟
+                startFileStatsSync() // مزامنة خفيفة كل 5 دقائق
             }
         }
 
@@ -156,7 +159,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
-    // 🌟 1. مزامنة الاستهلاك والقفل والاستوري وصورة الناشر بالخلفية بدون أخطاء 🌟
+    // 🌟 دالة تحديث الصورة والاستوري والقفل والاستهلاك كل 5 دقايق (تحديث صامت) 🌟
     private fun startFileStatsSync() {
         fileStatsJob?.cancel()
         fileStatsJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -165,49 +168,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
                     val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
                     val editor = prefs.edit()
-                    
-                    // حساب الاستهلاك الفعلي للموبايل
-                    val currentRx = TrafficStats.getUidRxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
-                    val currentTx = TrafficStats.getUidTxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
-                    
-                    val rxDelta = if (currentRx > lastRxBytes) currentRx - lastRxBytes else 0L
-                    val txDelta = if (currentTx > lastTxBytes) currentTx - lastTxBytes else 0L
-                    val totalDeltaBytes = rxDelta + txDelta
-                    
-                    lastRxBytes = currentRx
-                    lastTxBytes = currentTx
-                    
-                    val activeGuid = MmkvManager.getSelectServer().orEmpty()
-                    val myDeviceId = getUniqueHardwareId()
-                    val myUserId = AuthManager.getId(this@MainActivity)
 
-                    // إرسال استهلاك هذا المشترك للسيرفر إذا كان متصل
-                    if (activeGuid.isNotEmpty() && mainViewModel.isRunning.value == true && totalDeltaBytes > 0) {
-                        val activeLicenseId = V2rayCrypt.getLicenseId(this@MainActivity, activeGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: activeGuid
-                        try {
-                            val payload = JSONObject()
-                                .put("guid", activeLicenseId)
-                                .put("deviceId", myDeviceId)
-                                .put("userId", myUserId)
-                                .put("usageBytes", totalDeltaBytes) 
-                            
-                            val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
-                            conn.requestMethod = "POST"
-                            conn.setRequestProperty("Content-Type", "application/json")
-                            conn.doOutput = true
-                            conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-                            conn.responseCode
-                        } catch (e: Exception) {}
-                    }
-
-                    // جلب معلومات الناشرين والاستهلاك الكلي وحالة القفل لكل الملفات
                     for (guid in guids) {
                         val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
                         
                         try {
                             val conn = URL("$BASE_API_URL/auth/get_user?id=$licenseId").openConnection() as HttpURLConnection
-                            conn.connectTimeout = 4000
-                            conn.readTimeout = 4000
+                            conn.connectTimeout = 4000; conn.readTimeout = 4000
                             if (conn.responseCode == 200) {
                                 val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
                                 val obj = JSONObject(resp)
@@ -221,33 +188,25 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
                         try {
                             val checkConn = URL("$BASE_API_URL/check?guid=$licenseId").openConnection() as HttpURLConnection
-                            checkConn.connectTimeout = 4000
-                            checkConn.readTimeout = 4000
+                            checkConn.connectTimeout = 4000; checkConn.readTimeout = 4000
                             if (checkConn.responseCode == 200) {
                                 val checkResp = BufferedReader(InputStreamReader(checkConn.inputStream)).readText()
                                 val checkObj = JSONObject(checkResp)
-                                
-                                val isLocked = checkObj.optBoolean("isLocked", false)
-                                val totalUsageBytes = checkObj.optLong("totalUsageBytes", 0L)
-                                
-                                editor.putBoolean("locked_$guid", isLocked)
-                                editor.putString("usage_$guid", formatBytes(totalUsageBytes))
+                                editor.putBoolean("locked_$guid", checkObj.optBoolean("isLocked", false))
+                                editor.putString("usage_$guid", formatBytes(checkObj.optLong("totalUsageBytes", 0L)))
                             }
                         } catch (e: Exception) {}
                     }
                     
                     editor.apply()
-                    withContext(Dispatchers.Main) {
-                        mainViewModel.reloadServerList() // تحديث الشاشة لتنعكس التغيرات فوراً
-                    }
+                    withContext(Dispatchers.Main) { mainViewModel.reloadServerList() }
                 } catch (e: Exception) {}
                 
-                delay(5 * 60 * 1000L) // تتكرر كل 5 دقائق بالضبط
+                delay(5 * 60 * 1000L) // 5 دقائق
             }
         }
     }
 
-    // 🌟 2. تنسيق الاستهلاك بدقة واحترافية 🌟
     private fun formatBytes(bytes: Long): String {
         if (bytes <= 0) return "0.0 MB"
         val kb = bytes / 1024.0
@@ -259,13 +218,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         return String.format("%.1f MB", mb)
     }
 
-    // 🌟 رادار فحص الحساب والطرد الفوري 🌟
     private fun startAccountWatchdog() {
         val userId = AuthManager.getId(this)
-        if (userId.isEmpty()) return
-        
-        if (AuthManager.getRole(this) == "admin") return
-
+        if (userId.isEmpty() || AuthManager.getRole(this) == "admin") return
         val deviceId = getUniqueHardwareId()
 
         accountWatchdogJob?.cancel()
@@ -273,28 +228,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             while (isActive) {
                 try {
                     val conn = URL("$BASE_API_URL/auth/get_user?id=$userId").openConnection() as HttpURLConnection
-                    conn.connectTimeout = 5000
-                    conn.readTimeout = 5000
+                    conn.connectTimeout = 5000; conn.readTimeout = 5000
                     if (conn.responseCode == 200) {
-                        val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                        val obj = JSONObject(resp)
+                        val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
                         if (obj.getBoolean("success")) {
                             val serverDevices = obj.optJSONArray("devices") ?: JSONArray()
                             var isDeviceAuthorized = false
-                            for (i in 0 until serverDevices.length()) {
-                                if (serverDevices.getString(i) == deviceId) {
-                                    isDeviceAuthorized = true
-                                    break
-                                }
-                            }
-                            if (!isDeviceAuthorized) {
-                                forceLogoutAndClean("تم إنهاء جلستك من جهاز آخر أو من الإدارة! 🚫")
-                                break
-                            }
-                        } else {
-                            forceLogoutAndClean("تم حذف حسابك من قبل الإدارة! 🚫")
-                            break
-                        }
+                            for (i in 0 until serverDevices.length()) if (serverDevices.getString(i) == deviceId) { isDeviceAuthorized = true; break }
+                            if (!isDeviceAuthorized) { forceLogoutAndClean("تم إنهاء جلستك من جهاز آخر أو من الإدارة! 🚫"); break }
+                        } else { forceLogoutAndClean("تم حذف حسابك من قبل الإدارة! 🚫"); break }
                     }
                 } catch (e: Exception) {}
                 delay(15000)
@@ -310,12 +252,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         lifecycleScope.launch(Dispatchers.IO) {
             if (mainViewModel.isRunning.value == true) {
                 try {
-                    val payload = JSONObject().put("guid", idToTrack).put("deviceId", deviceId).put("userId", "").put("disconnect", true)
                     val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
                     conn.requestMethod = "POST"
                     conn.setRequestProperty("Content-Type", "application/json")
                     conn.doOutput = true
-                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                    conn.outputStream.use { it.write(JSONObject().put("guid", idToTrack).put("deviceId", deviceId).put("userId", "").put("disconnect", true).toString().toByteArray()) }
                     conn.responseCode
                 } catch (e: Exception) {}
                 withContext(Dispatchers.Main) { V2RayServiceManager.stopVService(this@MainActivity) }
@@ -326,15 +267,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
-                conn.outputStream.use { it.write(JSONObject().put("id", AuthManager.getId(this@MainActivity)).put("targetDeviceId", deviceId).toString().toByteArray(Charsets.UTF_8)) }
+                conn.outputStream.use { it.write(JSONObject().put("id", AuthManager.getId(this@MainActivity)).put("targetDeviceId", deviceId).toString().toByteArray()) }
                 conn.responseCode
             } catch (e: Exception) {}
 
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@MainActivity, reason, Toast.LENGTH_LONG).show()
                 AuthManager.logout(this@MainActivity)
-                val intent = Intent(this@MainActivity, LoginActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK }
-                startActivity(intent)
+                startActivity(Intent(this@MainActivity, LoginActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK })
                 finish()
             }
         }
@@ -342,17 +282,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     private suspend fun attemptInitialAuth(): Boolean {
         var isSuccess = false
-        val deviceId = getUniqueHardwareId() 
         try {
             val conn = URL("$BASE_API_URL/auth/init").openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
-            conn.connectTimeout = 5000
-            conn.readTimeout = 5000
-            conn.doOutput = true
-            
-            val payload = JSONObject().apply { put("deviceId", deviceId) }
-            conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+            conn.connectTimeout = 5000; conn.readTimeout = 5000; conn.doOutput = true
+            conn.outputStream.use { it.write(JSONObject().put("deviceId", getUniqueHardwareId()).toString().toByteArray()) }
 
             if (conn.responseCode == 200) {
                 val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
@@ -372,15 +307,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val settingsWrapper = binding.root.findViewById<View>(R.id.settings_wrapper)
             settingsWrapper?.layoutParams?.width = screenWidth
             
-            val updatesWrapper = FrameLayout(this).apply { 
-                id = View.generateViewId()
-                layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) 
-            }
-            
-            val profileWrapper = FrameLayout(this).apply { 
-                id = View.generateViewId()
-                layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) 
-            }
+            val updatesWrapper = FrameLayout(this).apply { id = View.generateViewId(); layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) }
+            val profileWrapper = FrameLayout(this).apply { id = View.generateViewId(); layoutParams = LinearLayout.LayoutParams(screenWidth, ViewGroup.LayoutParams.MATCH_PARENT) }
             
             val scrollContainer = settingsWrapper?.parent as? LinearLayout
             if (scrollContainer != null) {
@@ -394,13 +322,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     .replace(profileWrapper.id, ProfileFragment())
                     .commitAllowingStateLoss()
             }
-            
             binding.homeContentContainer.layoutParams.width = screenWidth
-            
-            val greenScreen = binding.root.findViewById<View>(R.id.green_screen_container)
-            greenScreen?.layoutParams?.width = screenWidth
-            
-        } catch (e: Exception) { e.printStackTrace() }
+            binding.root.findViewById<View>(R.id.green_screen_container)?.layoutParams?.width = screenWidth
+        } catch (e: Exception) {}
     }
 
     private fun setupUIInteractionsSafe() {
@@ -411,37 +335,20 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
             binding.root.findViewById<ImageView>(R.id.btn_full_log)?.setOnClickListener {
                 val fullLogs = mainViewModel.fullLog.value ?: "لا توجد سجلات حالياً..."
-                
-                val scrollView = ScrollView(this).apply {
-                    setPadding(40, 30, 40, 30)
-                }
-                val tvLogs = TextView(this).apply {
-                    text = fullLogs
-                    textSize = 12f
-                    setTextColor(Color.WHITE)
-                    layoutDirection = View.LAYOUT_DIRECTION_LTR
-                    textDirection = View.TEXT_DIRECTION_LTR
-                }
+                val scrollView = ScrollView(this).apply { setPadding(40, 30, 40, 30) }
+                val tvLogs = TextView(this).apply { text = fullLogs; textSize = 12f; setTextColor(Color.WHITE); layoutDirection = View.LAYOUT_DIRECTION_LTR; textDirection = View.TEXT_DIRECTION_LTR }
                 scrollView.addView(tvLogs)
-
-                AlertDialog.Builder(this)
-                    .setTitle("سجل المحرك الكامل")
-                    .setView(scrollView)
-                    .setPositiveButton("إغلاق", null)
-                    .show()
+                AlertDialog.Builder(this).setTitle("سجل المحرك الكامل").setView(scrollView).setPositiveButton("إغلاق", null).show()
             }
 
             val bottomNav = binding.root.findViewById<BottomNavigationView>(R.id.bottom_nav_view)
             binding.mainScrollView.setOnTouchListener { _, event ->
                 if (event.action == MotionEvent.ACTION_UP) {
-                    val scrollX = binding.mainScrollView.scrollX
-                    val page = if (screenWidth > 0) ((scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 4) else 0
+                    val page = if (screenWidth > 0) ((binding.mainScrollView.scrollX + (screenWidth / 2)) / screenWidth).coerceIn(0, 4) else 0
                     binding.mainScrollView.post { binding.mainScrollView.smoothScrollTo(page * screenWidth, 0) }
                     when (page) { 
-                        0 -> bottomNav?.selectedItemId = R.id.nav_settings
-                        1 -> bottomNav?.selectedItemId = R.id.nav_updates
-                        2 -> bottomNav?.selectedItemId = R.id.nav_profile
-                        3 -> bottomNav?.selectedItemId = R.id.nav_servers
+                        0 -> bottomNav?.selectedItemId = R.id.nav_settings; 1 -> bottomNav?.selectedItemId = R.id.nav_updates
+                        2 -> bottomNav?.selectedItemId = R.id.nav_profile; 3 -> bottomNav?.selectedItemId = R.id.nav_servers
                         4 -> bottomNav?.selectedItemId = R.id.nav_home 
                     }
                     return@setOnTouchListener true
@@ -451,10 +358,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
             bottomNav?.setOnItemSelectedListener { item -> 
                 when (item.itemId) { 
-                    R.id.nav_settings -> binding.mainScrollView.smoothScrollTo(0, 0)
-                    R.id.nav_updates -> binding.mainScrollView.smoothScrollTo(screenWidth, 0)
-                    R.id.nav_profile -> binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0)
-                    R.id.nav_servers -> binding.mainScrollView.smoothScrollTo(screenWidth * 3, 0)
+                    R.id.nav_settings -> binding.mainScrollView.smoothScrollTo(0, 0); R.id.nav_updates -> binding.mainScrollView.smoothScrollTo(screenWidth, 0)
+                    R.id.nav_profile -> binding.mainScrollView.smoothScrollTo(screenWidth * 2, 0); R.id.nav_servers -> binding.mainScrollView.smoothScrollTo(screenWidth * 3, 0)
                     R.id.nav_home -> binding.mainScrollView.smoothScrollTo(screenWidth * 4, 0) 
                 }
                 true 
@@ -462,21 +367,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             
             binding.mainScrollView.post { binding.mainScrollView.scrollTo(screenWidth * 4, 0) }
             setupToolbar(binding.toolbar, false, "اشور لود")
-            
             val toggle = ActionBarDrawerToggle(this, binding.drawerLayout, binding.toolbar, R.string.navigation_drawer_open, R.string.navigation_drawer_close)
-            
             toggle.isDrawerIndicatorEnabled = false 
             binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED) 
-            
             binding.drawerLayout.addDrawerListener(toggle)
             toggle.syncState()
             binding.navView.setNavigationItemSelectedListener(this)
             
             binding.layoutTest.setOnClickListener { 
-                if (mainViewModel.isRunning.value == true) { 
-                    setTestState(getString(R.string.connection_test_testing))
-                    mainViewModel.testCurrentServerRealPing() 
-                } else { toast(R.string.connection_not_connected) }
+                if (mainViewModel.isRunning.value == true) { setTestState(getString(R.string.connection_test_testing)); mainViewModel.testCurrentServerRealPing() } 
+                else { toast(R.string.connection_not_connected) }
             }
             
             onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -488,7 +388,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     }
                 }
             })
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {}
     }
 
     private fun handleFabAction() {
@@ -510,22 +410,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lifecycleScope.launch(Dispatchers.IO) {
                 val guid = MmkvManager.getSelectServer().orEmpty()
                 val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
-                val deviceId = getUniqueHardwareId() 
                 
                 if (idToTrack.isNotEmpty()) {
-                    val userId = AuthManager.getId(this@MainActivity)
-                    val payload = JSONObject()
-                        .put("guid", idToTrack)
-                        .put("deviceId", deviceId)
-                        .put("userId", userId)
-                        .put("disconnect", true)
-                    
                     try {
+                        val payload = JSONObject().put("guid", idToTrack).put("deviceId", getUniqueHardwareId()).put("userId", AuthManager.getId(this@MainActivity)).put("disconnect", true)
                         val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
-                        conn.requestMethod = "POST"
-                        conn.setRequestProperty("Content-Type", "application/json")
-                        conn.doOutput = true
-                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                         conn.responseCode
                     } catch (e: Exception) {}
 
@@ -533,19 +424,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
                 }
-                
                 delay(1200) 
-                
-                withContext(Dispatchers.Main) {
-                    mainViewModel.reloadServerList()
-                    V2RayServiceManager.stopVService(this@MainActivity) 
-                }
+                withContext(Dispatchers.Main) { mainViewModel.reloadServerList(); V2RayServiceManager.stopVService(this@MainActivity) }
             }
         } else {
             startV2Ray()
         }
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     private fun applyRunningState(isLoading: Boolean, isRunning: Boolean) {
         val lottieEngine = binding.root.findViewById<LottieAnimationView>(R.id.lottie_engine)
         val btnGreenConnect = binding.root.findViewById<MaterialButton>(R.id.btn_green_connect)
@@ -553,6 +440,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val guid = MmkvManager.getSelectServer().orEmpty()
         val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
         val deviceId = getUniqueHardwareId() 
+        val appContext = applicationContext // استخدام سياق التطبيق للعمل بالخلفية
         
         val isNowRunning = isRunning && !isLoading
 
@@ -562,18 +450,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 lifecycleScope.launch(Dispatchers.IO) {
                     try {
                         val userId = AuthManager.getId(this@MainActivity)
-                        val payload = JSONObject()
-                            .put("guid", idToTrack)
-                            .put("deviceId", deviceId)
-                            .put("userId", userId)
+                        val payload = JSONObject().put("guid", idToTrack).put("deviceId", deviceId).put("userId", userId)
                             .put("name", if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول")
                             .put("pfp", if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else "")
-                        
                         val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
-                        conn.requestMethod = "POST"
-                        conn.setRequestProperty("Content-Type", "application/json")
-                        conn.doOutput = true
-                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                         conn.responseCode
                     } catch (e: Exception) {}
 
@@ -608,23 +490,30 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             lottieEngine?.playAnimation()
             TrafficMonitorHelper.startTrafficMonitor(this)
 
-            activePingJob?.cancel()
-            activePingJob = lifecycleScope.launch(Dispatchers.IO) {
+            // 🌟 الإضافة الأقوى: احتساب البيانات بالخلفية العميقة كل 30 ثانية 🌟
+            globalActivePingJob?.cancel()
+            globalActivePingJob = GlobalScope.launch(Dispatchers.IO) {
                 while (isActive) {
                     try {
-                        val userId = AuthManager.getId(this@MainActivity)
+                        val currentRx = TrafficStats.getUidRxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
+                        val currentTx = TrafficStats.getUidTxBytes(android.os.Process.myUid()).let { if (it == TrafficStats.UNSUPPORTED.toLong()) 0L else it }
+                        
+                        val rxDelta = if (currentRx > globalLastRxBytes) currentRx - globalLastRxBytes else 0L
+                        val txDelta = if (currentTx > globalLastTxBytes) currentTx - globalLastTxBytes else 0L
+                        val totalDeltaBytes = rxDelta + txDelta
+                        
+                        globalLastRxBytes = currentRx
+                        globalLastTxBytes = currentTx
+
+                        val userId = AuthManager.getId(appContext)
                         val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
-                        conn.requestMethod = "POST"
-                        conn.setRequestProperty("Content-Type", "application/json")
-                        conn.doOutput = true
-                        val payload = JSONObject()
-                            .put("guid", idToTrack)
-                            .put("deviceId", deviceId)
-                            .put("userId", userId)
-                            .put("name", if (userId.isNotEmpty()) AuthManager.getName(this@MainActivity) else "مجهول الهوية")
-                            .put("pfp", if (userId.isNotEmpty()) AuthManager.getPfp(this@MainActivity) else "")
+                        conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                        val payload = JSONObject().put("guid", idToTrack).put("deviceId", deviceId).put("userId", userId)
+                            .put("name", if (userId.isNotEmpty()) AuthManager.getName(appContext) else "مجهول الهوية")
+                            .put("pfp", if (userId.isNotEmpty()) AuthManager.getPfp(appContext) else "")
+                            .put("usageBytes", totalDeltaBytes) // 🌟 إرسال الاستهلاك بشكل دائم 🌟
                             .put("disconnect", false)
-                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                         conn.responseCode
                     } catch (e: Exception) {}
                     
@@ -643,21 +532,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
                             withContext(Dispatchers.IO) {
                                 if (idToTrack.isNotEmpty()) {
-                                    val userId = AuthManager.getId(this@MainActivity)
-                                    val payload = JSONObject()
-                                        .put("guid", idToTrack)
-                                        .put("deviceId", deviceId)
-                                        .put("userId", userId)
-                                        .put("disconnect", true)
+                                    val payload = JSONObject().put("guid", idToTrack).put("deviceId", deviceId).put("userId", AuthManager.getId(this@MainActivity)).put("disconnect", true)
                                     try {
                                         val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
-                                        conn.requestMethod = "POST"
-                                        conn.setRequestProperty("Content-Type", "application/json")
-                                        conn.doOutput = true
-                                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                                        conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                                         conn.responseCode
                                     } catch (e: Exception) {}
-                                    
                                     val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
                                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
                                     lastReportedState = false
@@ -679,7 +560,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         } else {
             vpnStartTime = 0L 
             pingJob?.cancel()
-            activePingJob?.cancel() 
+            globalActivePingJob?.cancel() // إيقاف إرسال الاستهلاك فقط عند إيقاف الـ VPN
             TrafficMonitorHelper.stopTrafficMonitor()
             binding.fab.setImageResource(R.drawable.ic_play_24dp)
             binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
@@ -718,8 +599,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             var isBanned = false
             try {
                 val conn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
-                conn.connectTimeout = 3000
-                conn.readTimeout = 3000
+                conn.connectTimeout = 3000; conn.readTimeout = 3000
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
                     if (resp.startsWith("{")) {
@@ -741,9 +621,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             } catch (e: Exception) {} 
             
-            if (!isBanned) {
-                withContext(Dispatchers.Main) { startV2RayCore() }
-            }
+            if (!isBanned) withContext(Dispatchers.Main) { startV2RayCore() }
         }
     }
 
@@ -752,9 +630,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         if (SettingsManager.isVpnMode()) { 
             val intent = VpnService.prepare(this)
             if (intent == null) V2RayServiceManager.startVService(this) else requestVpnPermission.launch(intent) 
-        } else {
-            V2RayServiceManager.startVService(this)
-        }
+        } else { V2RayServiceManager.startVService(this) }
     }
     
     fun restartV2Ray() { 
@@ -762,27 +638,55 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         lifecycleScope.launch { delay(500); startV2RayCore() } 
     }
 
+    // 🌟 التحديث الفوري والشامل عند السحب (Swipe to Refresh) 🌟
     fun forceManualSync() {
         showLoadingDialog()
         lifecycleScope.launch(Dispatchers.IO) {
             val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
             val licenseIds = guids.map { V2rayCrypt.getLicenseId(this@MainActivity, it).takeIf { l -> l.isNotEmpty() && l != "LEGACY" } ?: it }
-            
             val batchResults = CloudflareAPI.checkAllLiveConfigs(licenseIds)
+            val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
+            val editor = prefs.edit()
             
             for (guid in guids) {
                 val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { l -> l.isNotEmpty() && l != "LEGACY" } ?: guid
                 val data = batchResults[licenseId]
                 if (data != null) {
-                    if (data.first >= 0L) {
-                        V2rayCrypt.saveExpiryTime(this@MainActivity, guid, data.first)
-                    }
+                    if (data.first >= 0L) V2rayCrypt.saveExpiryTime(this@MainActivity, guid, data.first)
                     V2rayCrypt.saveActiveCount(this@MainActivity, guid, data.second)
                 }
+
+                // تحديث فوري للاستوري والصورة
+                try {
+                    val conn = URL("$BASE_API_URL/auth/get_user?id=$licenseId").openConnection() as HttpURLConnection
+                    conn.connectTimeout = 3000; conn.readTimeout = 3000
+                    if (conn.responseCode == 200) {
+                        val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
+                        if (obj.getBoolean("success")) {
+                            editor.putString("name_$guid", obj.getString("name"))
+                            editor.putString("pfp_$guid", obj.optString("pfp", ""))
+                            editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
+                        }
+                    }
+                } catch (e: Exception) {}
+
+                // تحديث فوري للقفل والاستهلاك
+                try {
+                    val checkConn = URL("$BASE_API_URL/check?guid=$licenseId").openConnection() as HttpURLConnection
+                    checkConn.connectTimeout = 3000; checkConn.readTimeout = 3000
+                    if (checkConn.responseCode == 200) {
+                        val checkObj = JSONObject(BufferedReader(InputStreamReader(checkConn.inputStream)).readText())
+                        editor.putBoolean("locked_$guid", checkObj.optBoolean("isLocked", false))
+                        editor.putString("usage_$guid", formatBytes(checkObj.optLong("totalUsageBytes", 0L)))
+                    }
+                } catch (e: Exception) {}
             }
+            
+            editor.apply()
             withContext(Dispatchers.Main) { 
                 mainViewModel.reloadServerList()
                 hideLoadingDialog()
+                Toast.makeText(this@MainActivity, "تم تحديث البيانات بالكامل!", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -813,12 +717,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     private fun setupViewModel() { 
         mainViewModel.updateTestResultAction.observe(this) { setTestState(it) }
         mainViewModel.isRunning.observe(this) { isRunning -> applyRunningState(false, isRunning) }
-        
-        mainViewModel.liveLog.observe(this) { log ->
-            val tvLiveLog = binding.root.findViewById<TextView>(R.id.tv_live_log)
-            tvLiveLog?.text = translateLog(log)
-        }
-
+        mainViewModel.liveLog.observe(this) { log -> binding.root.findViewById<TextView>(R.id.tv_live_log)?.text = translateLog(log) }
         mainViewModel.startListenBroadcast()
         mainViewModel.initAssets(assets) 
     }
@@ -827,18 +726,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         try {
             val groups = mainViewModel.getSubscriptions(this)
             groupPagerAdapter.update(groups)
-            
             tabMediator?.detach()
-            tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position -> 
-                val item = groupPagerAdapter.groups.getOrNull(position)
-                tab.text = item?.remarks
-                tab.tag = item?.id
-            }.also { it.attach() }
-            
+            tabMediator = TabLayoutMediator(binding.tabGroup, binding.viewPager) { tab, position -> tab.text = groupPagerAdapter.groups.getOrNull(position)?.remarks; tab.tag = groupPagerAdapter.groups.getOrNull(position)?.id }.also { it.attach() }
             val index = groups.indexOfFirst { it.id == mainViewModel.subscriptionId }
             binding.viewPager.setCurrentItem(if (index >= 0) index else max(0, groups.size - 1), false)
             binding.tabGroup.isVisible = groups.size > 1 
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {}
     }
 
     private fun setTestState(content: String?) {
@@ -847,38 +740,20 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         val tvGreenPing = binding.root.findViewById<TextView>(R.id.tv_green_ping)
         
         tvTestState?.text = content ?: ""
-        
-        if (content.isNullOrEmpty()) {
-            gaugePing?.setPing(0f)
-            tvGreenPing?.text = "--- ms"
-            return
-        }
+        if (content.isNullOrEmpty()) { gaugePing?.setPing(0f); tvGreenPing?.text = "--- ms"; return }
         
         try {
             val normalizedContent = content.replace("٠", "0").replace("١", "1").replace("٢", "2").replace("٣", "3").replace("٤", "4").replace("٥", "5").replace("٦", "6").replace("٧", "7").replace("٨", "8").replace("٩", "9")
-            
             if (normalizedContent.contains("ms", ignoreCase = true) || normalizedContent.contains("م.ث")) {
                 val match = Regex("(\\d+)\\s*(ms|م\\.ث)", RegexOption.IGNORE_CASE).find(normalizedContent)
-                if (match != null) { 
-                    val pingValue = match.groupValues[1].toFloat()
-                    gaugePing?.setPing(pingValue) 
-                    tvGreenPing?.text = "${pingValue.toInt()} ms" 
-                } 
-                else Regex("(\\d+)").find(normalizedContent)?.let { 
-                    gaugePing?.setPing(it.value.toFloat()) 
-                    tvGreenPing?.text = "${it.value} ms" 
-                }
+                if (match != null) { gaugePing?.setPing(match.groupValues[1].toFloat()); tvGreenPing?.text = "${match.groupValues[1].toFloat().toInt()} ms" } 
+                else Regex("(\\d+)").find(normalizedContent)?.let { gaugePing?.setPing(it.value.toFloat()); tvGreenPing?.text = "${it.value} ms" }
             } else if (normalizedContent.contains("Timeout", ignoreCase = true) || normalizedContent.contains("Failed", ignoreCase = true) || normalizedContent.contains("فشل", ignoreCase = true)) { 
-                gaugePing?.setPing(500f) 
-                tvGreenPing?.text = "Timeout" 
-            } 
-            else if (normalizedContent == getString(R.string.connection_connected)) { 
-                gaugePing?.setPing(0f)
-                tvGreenPing?.text = "متصل..." 
+                gaugePing?.setPing(500f); tvGreenPing?.text = "Timeout" 
+            } else if (normalizedContent == getString(R.string.connection_connected)) { 
+                gaugePing?.setPing(0f); tvGreenPing?.text = "متصل..." 
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) {}
     }
 
     override fun onResume() { 
@@ -886,7 +761,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         if (mainViewModel.isRunning.value == true) TrafficMonitorHelper.startTrafficMonitor(this) else TrafficMonitorHelper.updateTrafficDisplay(this)
         VpnEngineHelper.startLiveUpdates(this, mainViewModel)
         if (UpdateManager.isUpdateReady && UpdateManager.readyApkFile != null) UpdateManager.showMandatoryUpdateDialog(this, UpdateManager.readyApkFile!!) 
-        
         forceManualSync()
     }
 
@@ -897,84 +771,35 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
     
     override fun onDestroy() { 
-        val guid = MmkvManager.getSelectServer().orEmpty()
-        val idToTrack = V2rayCrypt.getLicenseId(this, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
-        if (lastReportedState == true && idToTrack.isNotEmpty()) {
-            lastReportedState = false
-            val deviceId = getUniqueHardwareId() 
-            @Suppress("OPT_IN_USAGE")
-            GlobalScope.launch(Dispatchers.IO) {
-                try {
-                    val userId = AuthManager.getId(this@MainActivity)
-                    val payload = JSONObject()
-                        .put("guid", idToTrack)
-                        .put("deviceId", deviceId)
-                        .put("userId", userId)
-                        .put("disconnect", true)
-                    val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
-                    conn.requestMethod = "POST"
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    conn.doOutput = true
-                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-                    conn.responseCode
-                } catch (e: Exception) {}
-            }
-        }
         tabMediator?.detach()
         VpnEngineHelper.cancelAllJobs()
         TrafficMonitorHelper.stopTrafficMonitor()
         SpeedTestHelper.cancelJobs()
         pingJob?.cancel()
-        activePingJob?.cancel()
         accountWatchdogJob?.cancel()
-        fileStatsJob?.cancel() // 🌟 إيقاف مزامنة الاستهلاك عند الخروج 🌟
+        fileStatsJob?.cancel() 
+        // 🌟 لم يتم إيقاف globalActivePingJob هنا، لكي يستمر بحساب وإرسال الكيكات في الخلفية 🌟
         super.onDestroy() 
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean { 
         menuInflater.inflate(R.menu.menu_main, menu)
-        (menu.findItem(R.id.search_view)?.actionView as? SearchView)?.apply { 
-            setOnQueryTextListener(object : SearchView.OnQueryTextListener { 
-                override fun onQueryTextSubmit(q: String?) = false
-                override fun onQueryTextChange(t: String?) = false.also { mainViewModel.filterConfig(t.orEmpty()) } 
-            }) 
-        }
+        (menu.findItem(R.id.search_view)?.actionView as? SearchView)?.apply { setOnQueryTextListener(object : SearchView.OnQueryTextListener { override fun onQueryTextSubmit(q: String?) = false; override fun onQueryTextChange(t: String?) = false.also { mainViewModel.filterConfig(t.orEmpty()) } }) }
         return super.onCreateOptionsMenu(menu) 
     }
     
     override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) { 
-        R.id.import_qrcode -> { 
-            ImportHelper.showAddBottomSheet(this, mainViewModel, { openLocalFileLauncher.launch(arrayOf("*/*")) }, { openEncryptedFileLauncher.launch(arrayOf("*/*")) })
-            true 
-        }
+        R.id.import_qrcode -> { ImportHelper.showAddBottomSheet(this, mainViewModel, { openLocalFileLauncher.launch(arrayOf("*/*")) }, { openEncryptedFileLauncher.launch(arrayOf("*/*")) }); true }
         else -> super.onOptionsItemSelected(item) 
     }
     
-    override fun onNavigationItemSelected(item: MenuItem): Boolean { 
-        binding.drawerLayout.closeDrawer(GravityCompat.START)
-        return true 
-    }
-    
-    override fun onNewIntent(intent: Intent) { 
-        super.onNewIntent(intent)
-        handleIntent(intent) 
-    }
-    
-    private fun handleIntent(intent: Intent?) { 
-        if (intent?.action == Intent.ACTION_VIEW) intent.data?.let { ImportHelper.importEncryptedContentFromUri(this, mainViewModel, it) } 
-    }
+    override fun onNavigationItemSelected(item: MenuItem): Boolean { binding.drawerLayout.closeDrawer(GravityCompat.START); return true }
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); handleIntent(intent) }
+    private fun handleIntent(intent: Intent?) { if (intent?.action == Intent.ACTION_VIEW) intent.data?.let { ImportHelper.importEncryptedContentFromUri(this, mainViewModel, it) } }
 
-    fun openSubscribersPanel(parentGuid: String) { 
-        startActivity(Intent(this, SubscribersActivity::class.java).putExtra("parentGuid", parentGuid)) 
-    }
-    
-    fun showExtendLicenseDialog(guid: String) { 
-        AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) 
-    }
-    
-    fun replaceAndSyncConfigFromClipboard(guid: String) { 
-        AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) 
-    }
+    fun openSubscribersPanel(parentGuid: String) { startActivity(Intent(this, SubscribersActivity::class.java).putExtra("parentGuid", parentGuid)) }
+    fun showExtendLicenseDialog(guid: String) { AdminHelper.showExtendLicenseDialog(this, guid, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
+    fun replaceAndSyncConfigFromClipboard(guid: String) { AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) }
 
     override fun onSelectServer(guid: String) { 
         val oldGuid = MmkvManager.getSelectServer().orEmpty()
@@ -982,24 +807,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         if (mainViewModel.isRunning.value == true) {
             val idToTrack = V2rayCrypt.getLicenseId(this, oldGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: oldGuid
-            val deviceId = getUniqueHardwareId() 
-            
             toast("جاري التبديل للملف الجديد...")
             lifecycleScope.launch(Dispatchers.IO) {
-                
                 if (idToTrack.isNotEmpty()) {
                     try {
-                        val userId = AuthManager.getId(this@MainActivity)
-                        val payload = JSONObject()
-                            .put("guid", idToTrack)
-                            .put("deviceId", deviceId)
-                            .put("userId", userId)
-                            .put("disconnect", true)
+                        val payload = JSONObject().put("guid", idToTrack).put("deviceId", getUniqueHardwareId()).put("userId", AuthManager.getId(this@MainActivity)).put("disconnect", true)
                         val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
-                        conn.requestMethod = "POST"
-                        conn.setRequestProperty("Content-Type", "application/json")
-                        conn.doOutput = true
-                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                        conn.requestMethod = "POST"; conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
+                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                         conn.responseCode
                     } catch (e: Exception) {}
 
@@ -1007,20 +822,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     V2rayCrypt.saveActiveCount(this@MainActivity, oldGuid, max(0, prevCount - 1))
                     lastReportedState = false
                 }
-                
                 delay(1000) 
-                
-                withContext(Dispatchers.Main) {
-                    V2RayServiceManager.stopVService(this@MainActivity)
-                    MmkvManager.setSelectServer(guid)
-                    groupPagerAdapter.notifyDataSetChanged()
-                }
-                
+                withContext(Dispatchers.Main) { V2RayServiceManager.stopVService(this@MainActivity); MmkvManager.setSelectServer(guid); groupPagerAdapter.notifyDataSetChanged() }
                 delay(800) 
-                
-                withContext(Dispatchers.Main) {
-                    startV2RayCore()
-                }
+                withContext(Dispatchers.Main) { startV2RayCore() }
             }
         } else {
             MmkvManager.setSelectServer(guid)
@@ -1029,27 +834,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
     
-    override fun onEdit(guid: String, pos: Int, p: ProfileItem) { 
-        if (!V2rayCrypt.isProtected(this, guid) || V2rayCrypt.isAdmin(this, guid)) {
-            startActivity(Intent(this, ServerActivity::class.java).putExtra("guid", guid)) 
-        } else {
-            toast("هذا السيرفر محمي") 
-        }
-    }
-    
-    override fun onRemove(guid: String, pos: Int) { 
-        AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ -> mainViewModel.removeServer(guid) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show() 
-    }
-    
+    override fun onEdit(guid: String, pos: Int, p: ProfileItem) { if (!V2rayCrypt.isProtected(this, guid) || V2rayCrypt.isAdmin(this, guid)) { startActivity(Intent(this, ServerActivity::class.java).putExtra("guid", guid)) } else { toast("هذا السيرفر محمي") } }
+    override fun onRemove(guid: String, pos: Int) { AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm).setPositiveButton(android.R.string.ok) { _, _ -> mainViewModel.removeServer(guid) }.setNegativeButton(android.R.string.cancel, null).show() }
     override fun onShare(guid: String, p: ProfileItem, pos: Int, isMore: Boolean) {} 
     override fun onEdit(guid: String, pos: Int) {} 
     override fun onShare(url: String) {} 
     override fun onRefreshData() {}
-
-    fun openAshorConfig() {
-        startActivity(Intent(this, ServerAshorActivity::class.java))
-    }
+    fun openAshorConfig() { startActivity(Intent(this, ServerAshorActivity::class.java)) }
 }
