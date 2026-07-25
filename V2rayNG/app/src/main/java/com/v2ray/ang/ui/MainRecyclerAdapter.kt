@@ -43,6 +43,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 
 class MainRecyclerAdapter(
     private val mainViewModel: MainViewModel,
@@ -78,7 +79,6 @@ class MainRecyclerAdapter(
 
             holder.itemView.setBackgroundColor(Color.TRANSPARENT)
             
-            // 🌟 استخدام findViewById بشكل صريح ومباشر لتجنب أخطاء GitHub Actions 🌟
             val tvFileName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_name)
             val tvPublisherName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_publisher_name)
             val ivAvatar = holder.itemMainBinding.root.findViewById<ImageView>(R.id.iv_file_avatar)
@@ -332,6 +332,15 @@ class MainRecyclerAdapter(
         return profile.description.nullIfBlank() ?: AngConfigManager.generateDescription(profile)
     }
 
+    private fun getSubscriptionRemarks(profile: ProfileItem): String {
+        val subRemarks =
+            if (mainViewModel.subscriptionId.isEmpty())
+                MmkvManager.decodeSubscription(profile.subscriptionId)?.remarks?.firstOrNull()
+            else
+                null
+        return subRemarks?.toString() ?: ""
+    }
+
     fun removeServerSub(guid: String, position: Int) {
         val idx = data.indexOfFirst { it.guid == guid }
         if (idx >= 0) {
@@ -397,6 +406,7 @@ class MainRecyclerAdapter(
     
     override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
         super.onDetachedFromRecyclerView(recyclerView)
-        coroutineScope.cancel()
+        // 🌟 الحل الجذري والنهائي لتجنب خطأ Unresolved reference 'cancel' 🌟
+        coroutineScope.coroutineContext.cancelChildren()
     }
 }
