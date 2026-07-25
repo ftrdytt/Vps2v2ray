@@ -18,7 +18,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.recyclerview.widget.RecyclerView
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
@@ -71,27 +70,33 @@ class MainRecyclerAdapter(
             val profile = data[position].profile
 
             holder.itemView.setBackgroundColor(Color.TRANSPARENT)
-            holder.itemMainBinding.tvName.text = profile.remarks
             
+            // 🌟 اسم الملف 🌟
+            val tvFileName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_name)
+            tvFileName?.text = profile.remarks
+            
+            // 🌟 القفل החقيقي: V2rayCrypt يخبرنا إذا كان الملف محمي 🌟
             val isProtected = V2rayCrypt.isProtected(context, guid)
             val isAdmin = V2rayCrypt.isAdmin(context, guid)
             val licenseId = V2rayCrypt.getLicenseId(context, guid)
             val targetId = if (licenseId.isNotEmpty() && licenseId != "LEGACY") licenseId else guid
 
-            // 🌟 جلب البيانات المحفوظة بالخلفية (الاستهلاك، الاستوري، القفل، اسم الناشر) لضمان سلاسة السكرول 🌟
             val prefs = context.getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             val dataUsage = prefs.getString("usage_$guid", "0.0 MB") ?: "0.0 MB"
-            val isLocked = prefs.getBoolean("locked_$guid", false)
             val hasActiveStory = prefs.getBoolean("story_$guid", false)
             val publisherName = prefs.getString("name_$guid", "صاحب الملف") ?: "صاحب الملف"
             val publisherPfp = prefs.getString("pfp_$guid", "") ?: ""
 
-            // 🌟 ربط العناصر الجديدة (التي سنضيفها للـ XML قريباً) 🌟
+            // 🌟 ربط العناصر الجديدة حسب السكيچ 🌟
+            val tvPublisherName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_publisher_name)
             val ivAvatar = holder.itemMainBinding.root.findViewById<ImageView>(R.id.iv_file_avatar)
             val cvStoryRing = holder.itemMainBinding.root.findViewById<CardView>(R.id.cv_story_ring)
             val flAvatarContainer = holder.itemMainBinding.root.findViewById<FrameLayout>(R.id.fl_avatar_container)
             val tvDataUsage = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_data_usage)
             val ivLockStatus = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_lock_status)
+
+            // اسم الناشر
+            tvPublisherName?.text = publisherName
 
             // إعداد صورة الناشر
             ivAvatar?.let {
@@ -141,31 +146,42 @@ class MainRecyclerAdapter(
 
             // إعداد القفل والاستهلاك
             tvDataUsage?.text = "استهلاك: $dataUsage"
-            ivLockStatus?.text = if (isLocked) "🔒 مقفول" else "🔓 مفتوح"
-            ivLockStatus?.setTextColor(if (isLocked) Color.parseColor("#E53935") else Color.parseColor("#4CAF50"))
+            
+            // 🌟 حل مشكلة القفل الحقيقي (مبني على حماية الملف) 🌟
+            if (isProtected) {
+                ivLockStatus?.text = "🔒 مقفول"
+                ivLockStatus?.setTextColor(Color.parseColor("#E53935"))
+            } else {
+                ivLockStatus?.text = "🔓 مفتوح"
+                ivLockStatus?.setTextColor(Color.parseColor("#4CAF50"))
+            }
+
+            val tvType = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_type)
+            val tvStatistics = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_statistics)
 
             if (isProtected && !isAdmin) {
-                holder.itemMainBinding.tvStatistics.visibility = View.GONE
-                holder.itemMainBinding.tvType.text = "Secure Config" 
-                (holder.itemMainBinding.tvType.parent as? androidx.cardview.widget.CardView)?.setCardBackgroundColor(Color.parseColor("#D32F2F"))
+                tvStatistics?.visibility = View.GONE
+                tvType?.text = "Secure Config" 
+                (tvType?.parent as? CardView)?.setCardBackgroundColor(Color.parseColor("#D32F2F"))
             } else if (isAdmin) {
-                holder.itemMainBinding.tvStatistics.visibility = View.VISIBLE
-                holder.itemMainBinding.tvStatistics.text = getAddress(profile)
-                holder.itemMainBinding.tvType.text = "Admin Panel"
-                (holder.itemMainBinding.tvType.parent as? androidx.cardview.widget.CardView)?.setCardBackgroundColor(Color.parseColor("#2196F3"))
+                tvStatistics?.visibility = View.VISIBLE
+                tvStatistics?.text = getAddress(profile)
+                tvType?.text = "Admin Panel"
+                (tvType?.parent as? CardView)?.setCardBackgroundColor(Color.parseColor("#2196F3"))
             } else {
-                holder.itemMainBinding.tvStatistics.visibility = View.VISIBLE
-                holder.itemMainBinding.tvStatistics.text = getAddress(profile)
-                holder.itemMainBinding.tvType.text = profile.configType.name
-                (holder.itemMainBinding.tvType.parent as? androidx.cardview.widget.CardView)?.setCardBackgroundColor(Color.parseColor("#FF5722"))
+                tvStatistics?.visibility = View.VISIBLE
+                tvStatistics?.text = getAddress(profile)
+                tvType?.text = profile.configType.name
+                (tvType?.parent as? CardView)?.setCardBackgroundColor(Color.parseColor("#FF5722"))
             }
 
             val aff = MmkvManager.decodeServerAffiliationInfo(guid)
-            holder.itemMainBinding.tvTestResult.text = aff?.getTestDelayString().orEmpty()
+            val tvTestResult = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_test_result)
+            tvTestResult?.text = aff?.getTestDelayString().orEmpty()
             if ((aff?.testDelayMillis ?: 0L) < 0L) {
-                holder.itemMainBinding.tvTestResult.setTextColor(ContextCompat.getColor(context, R.color.colorPingRed))
+                tvTestResult?.setTextColor(ContextCompat.getColor(context, R.color.colorPingRed))
             } else {
-                holder.itemMainBinding.tvTestResult.setTextColor(Color.parseColor("#00E676"))
+                tvTestResult?.setTextColor(Color.parseColor("#00E676"))
             }
 
             val tvActiveCount = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_active_count)
@@ -201,7 +217,6 @@ class MainRecyclerAdapter(
                         val currentTime = NetworkTime.currentTimeMillis(context)
                         val diffMs = expiryTime - currentTime
                         
-                        // 🌟 التعديل هنا: عرض الوحدة الأكبر فقط (يوم، أو ساعة، أو دقيقة) 🌟
                         if (diffMs > 0L) {
                             val d = diffMs / 86400000L
                             val h = (diffMs % 86400000L) / 3600000L
@@ -220,61 +235,57 @@ class MainRecyclerAdapter(
                             tvExpiry?.text = "منتهي الصلاحية 🛑"
                             tvExpiry?.setTextColor(Color.parseColor("#E53935")) 
                         }
-                        delay(60000L) // التحديث كل دقيقة يقلل استهلاك البطارية
+                        delay(60000L) 
                     }
                 }
             } else {
                 tvExpiry?.visibility = View.GONE
             }
 
-            val lottieVerified = holder.itemMainBinding.root.findViewById<com.airbnb.lottie.LottieAnimationView>(R.id.lottie_verified)
             val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
             val layoutAdminControl = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_admin_control)
             val layoutSubscribersBtn = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_subscribers_btn)
+            val layoutShare = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_share)
+            val layoutEdit = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_edit)
+            val layoutRemove = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_remove)
+            val layoutMore = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_more)
 
             if (guid == MmkvManager.getSelectServer()) {
                 holder.itemMainBinding.layoutIndicator.visibility = View.VISIBLE
                 bottomSection?.setBackgroundColor(Color.parseColor("#1A4CAF50")) 
-                lottieVerified?.visibility = View.VISIBLE
-                lottieVerified?.playAnimation()
             } else {
                 holder.itemMainBinding.layoutIndicator.visibility = View.INVISIBLE
                 bottomSection?.setBackgroundColor(Color.TRANSPARENT)
-                lottieVerified?.visibility = View.GONE
-                lottieVerified?.cancelAnimation()
             }
 
-            val subRemarks = getSubscriptionRemarks(profile)
-            holder.itemMainBinding.tvSubscription.text = subRemarks
-            holder.itemMainBinding.layoutSubscription.visibility = if (subRemarks.isEmpty()) View.GONE else View.VISIBLE
-
             if (doubleColumnDisplay) {
-                holder.itemMainBinding.layoutShare.visibility = View.GONE
-                holder.itemMainBinding.layoutEdit.visibility = View.GONE
-                holder.itemMainBinding.layoutRemove.visibility = View.GONE
+                layoutShare?.visibility = View.GONE
+                layoutEdit?.visibility = View.GONE
+                layoutRemove?.visibility = View.GONE
                 layoutAdminControl?.visibility = View.GONE
                 layoutSubscribersBtn?.visibility = View.GONE
-                holder.itemMainBinding.layoutMore.visibility = View.VISIBLE
+                layoutMore?.visibility = View.VISIBLE
 
-                holder.itemMainBinding.layoutMore.setOnClickListener {
+                layoutMore?.setOnClickListener {
                     adapterListener?.onShare(guid, profile, position, true)
                 }
             } else {
-                holder.itemMainBinding.layoutMore.visibility = View.GONE
+                layoutMore?.visibility = View.GONE
 
+                // 🌟 حل مشكلة اختفاء زر الأدمن: الأزرار تظهر بناءً على نوع الملف 🌟
                 if (isProtected && !isAdmin) {
-                    holder.itemMainBinding.layoutShare.visibility = View.GONE
-                    holder.itemMainBinding.layoutEdit.visibility = View.GONE
+                    layoutShare?.visibility = View.GONE
+                    layoutEdit?.visibility = View.GONE
                     layoutAdminControl?.visibility = View.GONE
                     layoutSubscribersBtn?.visibility = View.GONE
                 } else if (isAdmin) {
-                    holder.itemMainBinding.layoutShare.visibility = View.VISIBLE
-                    holder.itemMainBinding.layoutEdit.visibility = View.VISIBLE
+                    layoutShare?.visibility = View.VISIBLE
+                    layoutEdit?.visibility = View.VISIBLE
                     layoutAdminControl?.visibility = View.VISIBLE
-                    layoutSubscribersBtn?.visibility = View.VISIBLE
+                    layoutSubscribersBtn?.visibility = View.VISIBLE // 🌟 إظهار زر المشتركين 🌟
                 } else {
-                    holder.itemMainBinding.layoutShare.visibility = View.VISIBLE
-                    holder.itemMainBinding.layoutEdit.visibility = View.VISIBLE
+                    layoutShare?.visibility = View.VISIBLE
+                    layoutEdit?.visibility = View.VISIBLE
                     layoutAdminControl?.visibility = View.GONE
                     layoutSubscribersBtn?.visibility = View.GONE
                 }
@@ -287,11 +298,11 @@ class MainRecyclerAdapter(
                     if (context is MainActivity) context.showExtendLicenseDialog(guid)
                 }
 
-                holder.itemMainBinding.layoutShare.setOnClickListener {
+                layoutShare?.setOnClickListener {
                     adapterListener?.onShare(guid, profile, position, false)
                 }
 
-                holder.itemMainBinding.layoutEdit.setOnClickListener {
+                layoutEdit?.setOnClickListener {
                     if (isAdmin) {
                         val options = arrayOf("تعديل يدوي للسيرفر", "استبدال السيرفر من الحافظة (السحابة)")
                         AlertDialog.Builder(context)
@@ -308,7 +319,7 @@ class MainRecyclerAdapter(
                     }
                 }
                 
-                holder.itemMainBinding.layoutRemove.setOnClickListener {
+                layoutRemove?.setOnClickListener {
                     adapterListener?.onRemove(guid, position)
                 }
             }
