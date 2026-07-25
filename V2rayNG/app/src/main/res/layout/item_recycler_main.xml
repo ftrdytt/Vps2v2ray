@@ -8,14 +8,14 @@
     android:gravity="center_vertical"
     android:orientation="vertical"
     android:paddingHorizontal="14dp"
-    android:paddingVertical="7dp"
+    android:paddingVertical="8dp"
     android:background="#0A0A0C"> 
     
     <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:cardBackgroundColor="#1A1A1D" 
-        app:cardCornerRadius="18dp"
+        app:cardCornerRadius="20dp"
         app:cardElevation="4dp">
 
         <LinearLayout
@@ -27,44 +27,44 @@
             android:focusable="true"
             android:orientation="vertical">
 
-            <!-- 🌟 القسم العلوي (حسب رسمة السكيچ) 🌟 -->
+            <!-- 🌟 القسم العلوي (مطابق للسكيچ مالتك بالضبط) 🌟 -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:paddingTop="14dp"
-                android:paddingBottom="10dp"
-                android:paddingHorizontal="14dp">
+                android:paddingTop="16dp"
+                android:paddingBottom="12dp"
+                android:paddingHorizontal="16dp">
 
-                <!-- 🌟 صورة الناشر والاستوري (على اليمين) 🌟 -->
+                <!-- 🌟 صورة الناشر والاستوري (بارزة على اليمين) 🌟 -->
                 <FrameLayout
                     android:id="@+id/fl_avatar_container"
-                    android:layout_width="64dp"
-                    android:layout_height="64dp"
-                    android:layout_marginEnd="12dp">
+                    android:layout_width="68dp"
+                    android:layout_height="68dp"
+                    android:layout_marginEnd="14dp">
 
                     <androidx.cardview.widget.CardView
                         android:id="@+id/cv_story_ring"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
-                        app:cardCornerRadius="32dp"
+                        app:cardCornerRadius="34dp"
                         app:cardBackgroundColor="@android:color/transparent"
                         app:cardElevation="0dp">
 
                         <androidx.cardview.widget.CardView
-                            android:layout_width="56dp"
-                            android:layout_height="56dp"
+                            android:layout_width="60dp"
+                            android:layout_height="60dp"
                             android:layout_gravity="center"
-                            app:cardCornerRadius="28dp"
+                            app:cardCornerRadius="30dp"
                             app:cardBackgroundColor="#1A1A1D"
                             app:cardElevation="0dp">
 
                             <androidx.cardview.widget.CardView
-                                android:layout_width="50dp"
-                                android:layout_height="50dp"
+                                android:layout_width="54dp"
+                                android:layout_height="54dp"
                                 android:layout_gravity="center"
-                                app:cardCornerRadius="25dp"
+                                app:cardCornerRadius="27dp"
                                 app:cardBackgroundColor="@android:color/transparent"
                                 app:cardElevation="0dp">
 
@@ -78,56 +78,38 @@
                     </androidx.cardview.widget.CardView>
                 </FrameLayout>
 
-                <!-- 🌟 النصوص التفصيلية (على اليسار) 🌟 -->
+                <!-- 🌟 النصوص التفصيلية (على اليسار مرتبة عمودياً) 🌟 -->
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:orientation="vertical">
 
-                    <!-- السطر الأول: اسم صاحب الملف + الصلاحية + النشطين -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
+                    <!-- اسم الناشر (يظهر بصفه التوثيق برمجياً) -->
+                    <TextView
+                        android:id="@+id/tv_publisher_name"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical">
-                        
-                        <TextView
-                            android:id="@+id/tv_publisher_name"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:maxLines="1"
-                            android:ellipsize="end"
-                            android:textColor="#F5F5F5"
-                            android:textSize="16sp"
-                            android:textStyle="bold"
-                            tools:text="صاحب الملف" />
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:textColor="#FFFFFF"
+                        android:textSize="17sp"
+                        android:textStyle="bold"
+                        tools:text="صاحب الملف ☑️" />
 
-                        <TextView
-                            android:id="@+id/tv_expiry_countdown"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="6dp"
-                            android:textColor="#FF9800"
-                            android:textSize="12sp"
-                            android:textStyle="bold"
-                            android:visibility="gone"
-                            tools:text="32 يوم" />
+                    <!-- اسم الملف (تظهر بصفه السحابة برمجياً) -->
+                    <TextView
+                        android:id="@+id/tv_name"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:textColor="#B0BEC5"
+                        android:textSize="13sp"
+                        tools:text="r8 ☁️" />
 
-                        <TextView
-                            android:id="@+id/tv_active_count"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="6dp"
-                            android:textColor="#4CAF50"
-                            android:textSize="12sp"
-                            android:textStyle="bold"
-                            android:visibility="gone"
-                            tools:text="🟢 0" />
-                    </LinearLayout>
-
-                    <!-- السطر الثاني: اسم الملف + الاستهلاك + القفل -->
+                    <!-- شريط الإحصائيات (الاستهلاك، القفل، النشطين، الصلاحية) -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -136,45 +118,56 @@
                         android:gravity="center_vertical">
 
                         <TextView
-                            android:id="@+id/tv_name"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:maxLines="1"
-                            android:ellipsize="end"
-                            android:textColor="#9E9E9E"
-                            android:textSize="14sp"
-                            tools:text="r8" />
-
-                        <TextView
                             android:id="@+id/tv_data_usage"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
                             android:textColor="#2196F3"
-                            android:textSize="12sp"
+                            android:textSize="11sp"
                             android:textStyle="bold"
-                            tools:text="استهلاك: 0.0 MB" />
+                            android:layout_marginEnd="8dp"
+                            tools:text="استهلاك: 1.2 GB" />
 
                         <TextView
                             android:id="@+id/tv_lock_status"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
                             android:textColor="#4CAF50"
-                            android:textSize="12sp"
+                            android:textSize="11sp"
                             android:textStyle="bold"
+                            android:layout_marginEnd="8dp"
                             tools:text="🔓 مفتوح" />
+
+                        <TextView
+                            android:id="@+id/tv_active_count"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="#4CAF50"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            android:layout_marginEnd="8dp"
+                            android:visibility="gone"
+                            tools:text="🟢 12" />
+
+                        <TextView
+                            android:id="@+id/tv_expiry_countdown"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="#FFB300"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            android:visibility="gone"
+                            tools:text="32 يوم" />
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
 
+            <!-- فاصل خفيف -->
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
                 android:background="#15FFFFFF" />
 
-            <!-- 🌟 القسم السفلي (النوع والآيبي والأزرار) 🌟 -->
+            <!-- 🌟 القسم السفلي (المؤشر، النوع، البنگ، الأزرار) 🌟 -->
             <LinearLayout
                 android:id="@+id/layout_bottom_section"
                 android:layout_width="match_parent"
@@ -183,7 +176,7 @@
                 android:gravity="bottom"
                 android:paddingHorizontal="14dp"
                 android:paddingTop="10dp"
-                android:paddingBottom="14dp"
+                android:paddingBottom="12dp"
                 android:background="@android:color/transparent">
 
                 <LinearLayout
@@ -211,7 +204,7 @@
                         <androidx.cardview.widget.CardView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_marginEnd="6dp"
+                            android:layout_marginEnd="8dp"
                             app:cardBackgroundColor="#FF5722" 
                             app:cardCornerRadius="6dp"
                             app:cardElevation="0dp">
@@ -220,7 +213,7 @@
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:paddingHorizontal="8dp"
-                                android:paddingVertical="2dp"
+                                android:paddingVertical="3dp"
                                 android:textColor="#FFFFFF"
                                 android:textSize="10sp"
                                 android:textStyle="bold"
@@ -233,7 +226,7 @@
                             android:layout_height="wrap_content"
                             android:lines="1"
                             android:textColor="#9E9E9E"
-                            android:textSize="12sp"
+                            android:textSize="11sp"
                             android:fontFamily="sans-serif-light"
                             tools:text="81 : ***.46.101.111" />
                             
