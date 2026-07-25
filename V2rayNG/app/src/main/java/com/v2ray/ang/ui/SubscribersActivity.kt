@@ -4,11 +4,14 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
+import android.util.Base64
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -23,7 +26,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.NetworkTime
@@ -36,6 +38,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.max
 
 class SubscribersActivity : AppCompatActivity() {
 
@@ -115,7 +118,7 @@ class SubscribersActivity : AppCompatActivity() {
         filterList(etSearch.text.toString())
     }
 
-    // 🌟 دالة تحويل البايتات إلى ميجا أو جيجا بايت 🌟
+    // 🌟 تنسيق البايتات إلى ميجا وجيجا 🌟
     private fun formatBytes(bytes: Long): String {
         if (bytes <= 0) return "0.0 MB"
         val kb = bytes / 1024.0
@@ -127,6 +130,7 @@ class SubscribersActivity : AppCompatActivity() {
         return String.format("%.1f MB", mb)
     }
 
+    // 🌟 جلب الاستهلاك والصورة والتفاصيل لكل مشترك من السيرفر 🌟
     private fun syncSubscribersFromCloud(isManualRefresh: Boolean) {
         if (isManualRefresh) swipeRefresh.isRefreshing = true
         
@@ -142,26 +146,53 @@ class SubscribersActivity : AppCompatActivity() {
             val deferreds = allSubscribers.map { sub ->
                 async {
                     try {
-                        val conn = URL("$BASE_API_URL/check?guid=${sub.licenseId}").openConnection() as HttpURLConnection
-                        conn.requestMethod = "GET"
-                        conn.connectTimeout = 5000
-                        conn.readTimeout = 5000
+                        // 1. جلب بيانات الاستهلاك والصلاحية
+                        val connCheck = URL("$BASE_API_URL/check?guid=${sub.licenseId}").openConnection() as HttpURLConnection
+                        connCheck.requestMethod = "GET"
+                        connCheck.connectTimeout = 4000
+                        connCheck.readTimeout = 4000
                         
-                        if (conn.responseCode == 200) {
-                            val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                            val data = JSONObject(resp)
-                            
+                        if (connCheck.responseCode == 200) {
+                            val data = JSONObject(BufferedReader(InputStreamReader(connCheck.inputStream)).readText())
                             val exp = data.optLong("expiryTime", -1L)
                             val actCount = data.optInt("activeCount", 0) 
-                            val totalUsageBytes = data.optLong("totalUsageBytes", 0L) // 🌟 جلب استهلاك المشترك 🌟
+                            val totalUsageBytes = data.optLong("totalUsageBytes", 0L) 
                             
                             if (exp >= 0L) {
                                 V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, exp, actCount)
-                                // حفظ الاستهلاك للمشترك
-                                prefs.edit().putString("usage_${sub.licenseId}", formatBytes(totalUsageBytes)).apply()
+                                
+                                // نظام التصفير: طرح القيمة المرجعية (Baseline)
+                                val baseline = prefs.getLong("baseline_${sub.licenseId}", 0L)
+                                val actualUsage = max(0L, totalUsageBytes - baseline)
+                                
+                                prefs.edit()
+                                    .putLong("raw_usage_${sub.licenseId}", totalUsageBytes)
+                                    .putString("usage_${sub.licenseId}", formatBytes(actualUsage))
+                                    .apply()
+                                    
                                 isChanged = true
                             }
                         }
+
+                        // 2. جلب الاسم والصورة والتفاصيل الحقيقية للحساب
+                        val connAuth = URL("$BASE_API_URL/auth/get_user?id=${sub.licenseId}").openConnection() as HttpURLConnection
+                        connAuth.requestMethod = "GET"
+                        connAuth.connectTimeout = 4000
+                        connAuth.readTimeout = 4000
+
+                        if (connAuth.responseCode == 200) {
+                            val authData = JSONObject(BufferedReader(InputStreamReader(connAuth.inputStream)).readText())
+                            if (authData.getBoolean("success")) {
+                                prefs.edit()
+                                    .putString("name_${sub.licenseId}", authData.getString("name"))
+                                    .putString("pfp_${sub.licenseId}", authData.optString("pfp", ""))
+                                    .putBoolean("story_${sub.licenseId}", authData.optBoolean("hasActiveStory", false))
+                                    .putBoolean("verified_${sub.licenseId}", authData.optBoolean("isVerified", false))
+                                    .apply()
+                                isChanged = true
+                            }
+                        }
+
                     } catch (e: Exception) {}
                 }
             }
@@ -171,7 +202,7 @@ class SubscribersActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) { 
                 if (isChanged) loadSubscribers() 
                 swipeRefresh.isRefreshing = false
-                if (isManualRefresh) Toast.makeText(this@SubscribersActivity, "تم تحديث البيانات!", Toast.LENGTH_SHORT).show()
+                if (isManualRefresh) Toast.makeText(this@SubscribersActivity, "تم تحديث بيانات المشتركين! ☁️", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -192,7 +223,7 @@ class SubscribersActivity : AppCompatActivity() {
         }
 
         container.addView(TextView(this).apply {
-            text = "الأجهزة المربوطة بحساب: $userName"
+            text = "الأجهزة المربوطة بـ: $userName"
             setTextColor(Color.WHITE)
             textSize = 16f
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -295,15 +326,33 @@ class SubscribersActivity : AppCompatActivity() {
     }
 
     private fun showEditDialog(sub: V2rayCrypt.SubscriberData) {
-        AlertDialog.Builder(this).setTitle("تعديل: ${sub.name}")
-            .setItems(arrayOf("تغيير اسم المشترك", "استبدال السيرفر للمشترك (من الحافظة)")) { _, which ->
-                when (which) { 0 -> showRenameDialog(sub); 1 -> replaceSubscriberConfig(sub) }
+        AlertDialog.Builder(this).setTitle("إدارة المشترك")
+            .setItems(arrayOf("تغيير اسم المشترك محلياً", "استبدال السيرفر للمشترك (من الحافظة)", "تصفير عداد الاستهلاك 🔄")) { _, which ->
+                when (which) { 
+                    0 -> showRenameDialog(sub) 
+                    1 -> replaceSubscriberConfig(sub) 
+                    2 -> resetSubscriberUsage(sub) // 🌟 زر تصفير الاستهلاك 🌟
+                }
             }.show()
+    }
+
+    // 🌟 دالة تصفير الاستهلاك الحصري لكل مشترك 🌟
+    private fun resetSubscriberUsage(sub: V2rayCrypt.SubscriberData) {
+        val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
+        val rawUsage = prefs.getLong("raw_usage_${sub.licenseId}", 0L) // نجيب الرقم الكلي اللي بالسيرفر
+        
+        prefs.edit()
+            .putLong("baseline_${sub.licenseId}", rawUsage) // نحفظه كنقطة انطلاق (صفر جديد)
+            .putString("usage_${sub.licenseId}", "0.0 MB") // نصفر العرض
+            .apply()
+            
+        loadSubscribers()
+        Toast.makeText(this, "تم تصفير عداد الاستهلاك للمشترك بنجاح!", Toast.LENGTH_SHORT).show()
     }
 
     private fun showRenameDialog(sub: V2rayCrypt.SubscriberData) {
         val input = EditText(this).apply { setText(sub.name); setTextColor(Color.BLACK); setHintTextColor(Color.GRAY) }
-        AlertDialog.Builder(this).setTitle("تغيير الاسم").setView(input)
+        AlertDialog.Builder(this).setTitle("تغيير الاسم محلياً").setView(input)
             .setPositiveButton("حفظ") { _, _ ->
                 val newName = input.text.toString().trim()
                 if (newName.isNotEmpty()) {
@@ -343,13 +392,13 @@ class SubscribersActivity : AppCompatActivity() {
                 if (conn.responseCode == 200) success = true
             } catch (e: Exception) {}
             
-            withContext(Dispatchers.Main) { Toast.makeText(this@SubscribersActivity, if (success) "تم استبدال السيرفر!" else "فشل الاتصال.", Toast.LENGTH_LONG).show() }
+            withContext(Dispatchers.Main) { Toast.makeText(this@SubscribersActivity, if (success) "تم استبدال السيرفر بنجاح!" else "فشل الاتصال.", Toast.LENGTH_LONG).show() }
         }
     }
 
     private fun showExtendDialog(sub: V2rayCrypt.SubscriberData) {
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 40, 50, 40) }
-        val titleView = TextView(this).apply { text = "إدارة وقت: ${sub.name}"; textSize = 18f; setTextColor(Color.parseColor("#2196F3")); setTypeface(null, android.graphics.Typeface.BOLD); setPadding(0, 0, 0, 30); gravity = Gravity.CENTER }
+        val titleView = TextView(this).apply { text = "إدارة وقت المشترك"; textSize = 18f; setTextColor(Color.parseColor("#2196F3")); setTypeface(null, android.graphics.Typeface.BOLD); setPadding(0, 0, 0, 30); gravity = Gravity.CENTER }
         layout.addView(titleView)
         val monthsInput = EditText(this).apply { hint = "عدد الأشهر"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
         val daysInput = EditText(this).apply { hint = "عدد الأيام"; inputType = InputType.TYPE_CLASS_NUMBER; setHintTextColor(Color.GRAY); setTextColor(Color.BLACK) }
@@ -422,7 +471,7 @@ class SubscribersActivity : AppCompatActivity() {
             val conf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
             if (conf.isNotEmpty()) {
                 val encryptedConf = V2rayCrypt.encrypt(conf, sub.expiryTimeMs, sub.licenseId)
-                AlertDialog.Builder(this).setTitle("مشاركة: ${sub.name}")
+                AlertDialog.Builder(this).setTitle("مشاركة المشترك")
                     .setItems(arrayOf("نسخ إلى الحافظة", "تصدير كملف")) { _, which ->
                         when (which) {
                             0 -> { clipboard.setPrimaryClip(ClipData.newPlainText("Config", encryptedConf)); Toast.makeText(this, "تم نسخ الكود!", Toast.LENGTH_SHORT).show() }
@@ -492,8 +541,6 @@ class SubscribersAdapter(
         val ivAvatar: ImageView = view.findViewById(R.id.iv_sub_avatar)
         val cvStoryRing: CardView = view.findViewById(R.id.cv_story_ring)
         val flAvatarContainer: FrameLayout = view.findViewById(R.id.fl_avatar_container)
-        
-        // 🌟 المتغير الخاص بالاستهلاك (سيتم إضافته لملف XML قريباً) 🌟
         val tvDataUsage: TextView? = view.findViewById(R.id.tv_data_usage)
 
         private var timerJob: Job? = null
@@ -507,28 +554,67 @@ class SubscribersAdapter(
             onDelete: (V2rayCrypt.SubscriberData) -> Unit,
             onEdit: (V2rayCrypt.SubscriberData) -> Unit
         ) {
-            tvName.text = "${item.name} 👑"
+            val prefs = itemView.context.getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
+            
+            // 🌟 جلب المعلومات الحقيقية من السيرفر للمشتركين 🌟
+            val realName = prefs.getString("name_${item.licenseId}", item.name) ?: item.name
+            val pfp = prefs.getString("pfp_${item.licenseId}", "") ?: ""
+            val isVerified = prefs.getBoolean("verified_${item.licenseId}", false)
+            val hasStory = prefs.getBoolean("story_${item.licenseId}", false)
+            val usage = prefs.getString("usage_${item.licenseId}", "0.0 MB") ?: "0.0 MB"
+
+            // وضع الاسم وعلامة التوثيق إذا كان موثوق
+            tvName.text = if (isVerified) "$realName ☑️" else realName
             
             tvName.setOnClickListener {
                 if (itemView.context is SubscribersActivity) {
-                    (itemView.context as SubscribersActivity).showDevicesDialog(item.licenseId, item.name)
+                    (itemView.context as SubscribersActivity).showDevicesDialog(item.licenseId, realName)
                 }
             }
             
-            val avatarBitmap = AvatarGenerator.generateAvatar(item.name, item.licenseId, 120)
-            ivAvatar.setImageBitmap(avatarBitmap)
+            // الصورة
+            if (pfp.isNotEmpty()) {
+                try {
+                    val b = Base64.decode(if (pfp.contains(",")) pfp.substringAfter(",") else pfp, Base64.DEFAULT)
+                    ivAvatar.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size))
+                } catch (e: Exception) {
+                    ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(realName, item.licenseId, 120))
+                }
+            } else {
+                ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(realName, item.licenseId, 120))
+            }
             
             cvStoryRing.setCardBackgroundColor(Color.TRANSPARENT)
             
-            flAvatarContainer.setOnClickListener {
-                if (itemView.context is SubscribersActivity) {
-                    (itemView.context as SubscribersActivity).showDevicesDialog(item.licenseId, item.name)
+            // الاستوري
+            if (hasStory) {
+                flAvatarContainer.background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setStroke(5, Color.parseColor("#2196F3"))
+                    setColor(Color.TRANSPARENT)
+                }
+                flAvatarContainer.setPadding(8, 8, 8, 8)
+                flAvatarContainer.setOnClickListener {
+                    try {
+                        val intent = Intent(itemView.context, StoryViewerActivity::class.java)
+                        intent.putExtra("targetUserId", item.licenseId)
+                        intent.putExtra("userId", item.licenseId)
+                        itemView.context.startActivity(intent)
+                    } catch (e: Exception) { Toast.makeText(itemView.context, "الاستوري غير متوفر", Toast.LENGTH_SHORT).show() }
+                }
+            } else {
+                flAvatarContainer.background = null
+                flAvatarContainer.setPadding(0, 0, 0, 0)
+                flAvatarContainer.setOnClickListener {
+                    try {
+                        val intent = Intent(itemView.context, UserProfileActivity::class.java)
+                        intent.putExtra("targetUserId", item.licenseId)
+                        itemView.context.startActivity(intent)
+                    } catch (e: Exception) {}
                 }
             }
 
-            // 🌟 جلب وعرض استهلاك المشترك 🌟
-            val prefs = itemView.context.getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
-            val usage = prefs.getString("usage_${item.licenseId}", "0.0 MB") ?: "0.0 MB"
+            // 🌟 إظهار الاستهلاك بدقة بصف الاسم 🌟
             tvDataUsage?.text = "استهلاك: $usage"
             tvDataUsage?.visibility = View.VISIBLE
 
@@ -557,7 +643,6 @@ class SubscribersAdapter(
                         val h = (diffMs % 86400000L) / 3600000L
                         val m = (diffMs % 3600000L) / 60000L
                         
-                        // 🌟 اختصار الوقت إلى الوحدة الأكبر فقط 🌟
                         val timeText = when {
                             d > 0 -> "$d يوم"
                             h > 0 -> "$h ساعة"
@@ -571,10 +656,15 @@ class SubscribersAdapter(
                         tvExpiry.text = "منتهي الصلاحية 🛑"
                         tvExpiry.setTextColor(Color.parseColor("#E53935"))
                     }
-                    delay(60000L) // تحديث كل دقيقة فقط
+                    delay(60000L) 
                 }
             }
         }
         fun cancelTimer() { timerJob?.cancel() }
+    }
+    
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        super.onDetachedFromRecyclerView(recyclerView)
+        coroutineScope.coroutineContext.cancelChildren()
     }
 }
