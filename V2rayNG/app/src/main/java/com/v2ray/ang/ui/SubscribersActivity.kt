@@ -118,7 +118,6 @@ class SubscribersActivity : AppCompatActivity() {
         filterList(etSearch.text.toString())
     }
 
-    // 🌟 تنسيق البايتات إلى ميجا وجيجا 🌟
     private fun formatBytes(bytes: Long): String {
         if (bytes <= 0) return "0.0 MB"
         val kb = bytes / 1024.0
@@ -130,7 +129,6 @@ class SubscribersActivity : AppCompatActivity() {
         return String.format("%.1f MB", mb)
     }
 
-    // 🌟 جلب الاستهلاك والصورة والتفاصيل لكل مشترك من السيرفر 🌟
     private fun syncSubscribersFromCloud(isManualRefresh: Boolean) {
         if (isManualRefresh) swipeRefresh.isRefreshing = true
         
@@ -146,7 +144,6 @@ class SubscribersActivity : AppCompatActivity() {
             val deferreds = allSubscribers.map { sub ->
                 async {
                     try {
-                        // 1. جلب بيانات الاستهلاك والصلاحية
                         val connCheck = URL("$BASE_API_URL/check?guid=${sub.licenseId}").openConnection() as HttpURLConnection
                         connCheck.requestMethod = "GET"
                         connCheck.connectTimeout = 4000
@@ -161,7 +158,6 @@ class SubscribersActivity : AppCompatActivity() {
                             if (exp >= 0L) {
                                 V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, exp, actCount)
                                 
-                                // نظام التصفير: طرح القيمة المرجعية (Baseline)
                                 val baseline = prefs.getLong("baseline_${sub.licenseId}", 0L)
                                 val actualUsage = max(0L, totalUsageBytes - baseline)
                                 
@@ -174,7 +170,6 @@ class SubscribersActivity : AppCompatActivity() {
                             }
                         }
 
-                        // 2. جلب الاسم والصورة والتفاصيل الحقيقية للحساب
                         val connAuth = URL("$BASE_API_URL/auth/get_user?id=${sub.licenseId}").openConnection() as HttpURLConnection
                         connAuth.requestMethod = "GET"
                         connAuth.connectTimeout = 4000
@@ -331,19 +326,18 @@ class SubscribersActivity : AppCompatActivity() {
                 when (which) { 
                     0 -> showRenameDialog(sub) 
                     1 -> replaceSubscriberConfig(sub) 
-                    2 -> resetSubscriberUsage(sub) // 🌟 زر تصفير الاستهلاك 🌟
+                    2 -> resetSubscriberUsage(sub) 
                 }
             }.show()
     }
 
-    // 🌟 دالة تصفير الاستهلاك الحصري لكل مشترك 🌟
     private fun resetSubscriberUsage(sub: V2rayCrypt.SubscriberData) {
         val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
-        val rawUsage = prefs.getLong("raw_usage_${sub.licenseId}", 0L) // نجيب الرقم الكلي اللي بالسيرفر
+        val rawUsage = prefs.getLong("raw_usage_${sub.licenseId}", 0L) 
         
         prefs.edit()
-            .putLong("baseline_${sub.licenseId}", rawUsage) // نحفظه كنقطة انطلاق (صفر جديد)
-            .putString("usage_${sub.licenseId}", "0.0 MB") // نصفر العرض
+            .putLong("baseline_${sub.licenseId}", rawUsage) 
+            .putString("usage_${sub.licenseId}", "0.0 MB") 
             .apply()
             
         loadSubscribers()
@@ -556,14 +550,12 @@ class SubscribersAdapter(
         ) {
             val prefs = itemView.context.getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             
-            // 🌟 جلب المعلومات الحقيقية من السيرفر للمشتركين 🌟
             val realName = prefs.getString("name_${item.licenseId}", item.name) ?: item.name
             val pfp = prefs.getString("pfp_${item.licenseId}", "") ?: ""
             val isVerified = prefs.getBoolean("verified_${item.licenseId}", false)
             val hasStory = prefs.getBoolean("story_${item.licenseId}", false)
             val usage = prefs.getString("usage_${item.licenseId}", "0.0 MB") ?: "0.0 MB"
 
-            // وضع الاسم وعلامة التوثيق إذا كان موثوق
             tvName.text = if (isVerified) "$realName ☑️" else realName
             
             tvName.setOnClickListener {
@@ -572,7 +564,6 @@ class SubscribersAdapter(
                 }
             }
             
-            // الصورة
             if (pfp.isNotEmpty()) {
                 try {
                     val b = Base64.decode(if (pfp.contains(",")) pfp.substringAfter(",") else pfp, Base64.DEFAULT)
@@ -586,7 +577,6 @@ class SubscribersAdapter(
             
             cvStoryRing.setCardBackgroundColor(Color.TRANSPARENT)
             
-            // الاستوري
             if (hasStory) {
                 flAvatarContainer.background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
@@ -614,7 +604,6 @@ class SubscribersAdapter(
                 }
             }
 
-            // 🌟 إظهار الاستهلاك بدقة بصف الاسم 🌟
             tvDataUsage?.text = "استهلاك: $usage"
             tvDataUsage?.visibility = View.VISIBLE
 
@@ -661,10 +650,5 @@ class SubscribersAdapter(
             }
         }
         fun cancelTimer() { timerJob?.cancel() }
-    }
-    
-    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
-        super.onDetachedFromRecyclerView(recyclerView)
-        coroutineScope.coroutineContext.cancelChildren()
     }
 }
