@@ -18,6 +18,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AuthManager
+import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.UpdateManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -84,6 +85,10 @@ class LoginActivity : AppCompatActivity() {
                         val obj = JSONObject(resp)
                         if (obj.getBoolean("success")) {
                             AuthManager.saveUser(this@LoginActivity, obj.getString("id"), obj.getString("name"), obj.getString("password"), "user", "")
+                            
+                            // 🌟 مسح كل الملفات القديمة من الجهاز لأن الحساب جديد 🌟
+                            MmkvManager.clearAllConfigs()
+                            
                             isSuccess = true
                             message = "تم إنشاء الحساب بنجاح! ✅"
                         } else {
@@ -150,6 +155,11 @@ class LoginActivity : AppCompatActivity() {
                     val obj = JSONObject(resp)
                     if (obj.getBoolean("success")) {
                         AuthManager.saveUser(this@LoginActivity, id, obj.getString("name"), pass, obj.getString("role"), obj.optString("pfp", ""))
+                        
+                        // 🌟 جلب الملفات من السحابة قبل الدخول للتطبيق 🌟
+                        withContext(Dispatchers.Main) { button.text = "جاري استعادة ملفاتك... ☁️" }
+                        restoreCloudData(id)
+                        
                         isSuccess = true
                     } else {
                         message = obj.optString("message", "خطأ في تسجيل الدخول ❌")
@@ -172,6 +182,31 @@ class LoginActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    // 🌟 دالة مسؤولة عن تنزيل ملفات المستخدم من السحابة وفرشها في الجهاز 🌟
+    private suspend fun restoreCloudData(userId: String) {
+        try {
+            val url = URL("$BASE_API_URL/user/restore?userId=$userId")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 7000
+            conn.readTimeout = 7000
+
+            if (conn.responseCode == 200) {
+                val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                val json = JSONObject(resp)
+                if (json.getBoolean("success")) {
+                    val configsStr = json.optJSONArray("configs")?.toString()
+                    MmkvManager.importCloudConfigs(configsStr)
+                    return
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        // في حالة فشل الجلب أو عدم وجود ملفات، نصفر الجهاز حتى ما تظهر ملفات حساب آخر
+        MmkvManager.clearAllConfigs()
     }
 
     // 🌟 دالة الإشعارات الأنيقة والحديثة 🌟
@@ -219,7 +254,7 @@ class LoginActivity : AppCompatActivity() {
                 }
                 hexString.append(hex)
             }
-            return hexString.toString().take(15).uppercase() // 🌟 تم تعديل toUpperCase() إلى uppercase() هنا 🌟
+            return hexString.toString().take(15).uppercase()
         } catch (e: Exception) {
             return "UNKNOWN_HW_ID"
         }
