@@ -1,3 +1,5 @@
+
+
 package com.v2ray.ang.ui
 
 import android.app.Activity.RESULT_OK
@@ -30,6 +32,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AuthManager
+import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.util.AvatarGenerator 
 import kotlinx.coroutines.*
 import org.json.JSONArray
@@ -55,7 +58,6 @@ class ProfileFragment : Fragment() {
     private lateinit var etPass: EditText
     private lateinit var btnSave: Button
     
-    // 🌟 عناصر التواصل الاجتماعي 🌟
     private var tvFollowersCount: TextView? = null
     private var tvFollowingCount: TextView? = null
     private var btnAddStory: ImageView? = null
@@ -230,7 +232,6 @@ class ProfileFragment : Fragment() {
             pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
         }
         
-        // 🌟 تفعيل زر إضافة قصة (يفتح واجهة StoryUploadActivity) 🌟
         btnAddStory?.setOnClickListener {
             startActivity(Intent(requireContext(), StoryUploadActivity::class.java))
         }
@@ -295,8 +296,9 @@ class ProfileFragment : Fragment() {
             saveProfile(newName, newUsername, newPass, userRole, newId)
         }
 
+        // 🌟 زر تسجيل الخروج، يمسح الملفات 🌟
         btnLogout.setOnClickListener {
-            AlertDialog.Builder(requireContext()).setTitle("تسجيل خروج").setMessage("هل أنت متأكد من الخروج التام؟")
+            AlertDialog.Builder(requireContext()).setTitle("تسجيل خروج").setMessage("هل أنت متأكد من الخروج التام؟ (سيتم مسح كافة الملفات من هذا الجهاز)")
                 .setPositiveButton("نعم") { _, _ ->
                     lifecycleScope.launch(Dispatchers.IO) {
                         try {
@@ -322,6 +324,10 @@ class ProfileFragment : Fragment() {
             if (kickedMessage != null) {
                 Toast.makeText(requireContext(), kickedMessage, Toast.LENGTH_LONG).show()
             }
+            
+            // 🌟 مسح الملفات من الجهاز نهائياً 🌟
+            MmkvManager.clearAllConfigs()
+            
             AuthManager.logout(requireContext())
             val intent = Intent(requireActivity(), LoginActivity::class.java).apply { 
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK 
@@ -484,7 +490,6 @@ class ProfileFragment : Fragment() {
         renderDevices()
     }
 
-    // 🌟 تفعيل مشاهدة القصة عند النقر على الدائرة الزرقاء 🌟
     private fun updateProfilePicture(base64Str: String, name: String, userId: String, hasActiveStory: Boolean) {
         val bitmap = try {
             val cleanStr = if (base64Str.contains(",")) base64Str.substringAfter(",") else base64Str
@@ -500,7 +505,7 @@ class ProfileFragment : Fragment() {
                 if (hasActiveStory) {
                     it.background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
-                        setStroke(8, Color.parseColor("#2196F3")) // لون القصة النشطة الأزرق
+                        setStroke(8, Color.parseColor("#2196F3")) 
                         setColor(Color.TRANSPARENT)
                     }
                     it.setPadding(8, 8, 8, 8)
