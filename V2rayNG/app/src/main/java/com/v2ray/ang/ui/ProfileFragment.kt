@@ -1,5 +1,3 @@
-
-
 package com.v2ray.ang.ui
 
 import android.app.Activity.RESULT_OK
