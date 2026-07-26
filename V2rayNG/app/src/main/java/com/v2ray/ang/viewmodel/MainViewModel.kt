@@ -21,6 +21,7 @@ import com.v2ray.ang.extension.serializable
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.AngConfigManager
+import com.v2ray.ang.handler.AuthManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SpeedtestManager
@@ -33,8 +34,12 @@ import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Collections
 import java.util.LinkedList
 
@@ -56,6 +61,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val logBuffer = LinkedList<String>()
 
     private val tcpingTestScope by lazy { CoroutineScope(Dispatchers.IO) }
+    private val BASE_API_URL = "https://education.ashor.shop"
 
     fun startListenBroadcast() {
         isRunning.value = false
@@ -143,6 +149,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         logProcess = null
     }
 
+    // 🌟 دالة الرفع السحابي لربط التحديثات مباشرة بالسيرفر 🌟
+    private fun syncWithCloud() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val userId = AuthManager.getId(getApplication())
+                if (userId.isEmpty()) return@launch
+                
+                val configsJsonStr = MmkvManager.exportAllConfigsForCloud()
+                val configsArray = if (configsJsonStr.isNotBlank() && configsJsonStr != "null") JSONArray(configsJsonStr) else JSONArray()
+                
+                val payload = JSONObject().put("userId", userId).put("configs", configsArray)
+                val conn = URL("$BASE_API_URL/user/backup").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                conn.responseCode 
+            } catch (e: Exception) { e.printStackTrace() }
+        }
+    }
+
     fun reloadServerList() {
         serverList = MmkvManager.decodeServerList()
         updateCache()
@@ -156,6 +183,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (index >= 0) {
             serversCache.removeAt(index)
         }
+        // 🌟 رفع السحابة فوراً بعد الحذف 🌟
+        syncWithCloud()
     }
 
     fun swapServer(fromPosition: Int, toPosition: Int) {
@@ -168,6 +197,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         Collections.swap(serversCache, fromPosition, toPosition)
         MmkvManager.encodeServerList(serverList)
+        // 🌟 رفع السحابة فوراً بعد تغيير الترتيب 🌟
+        syncWithCloud()
     }
 
     @Synchronized
@@ -306,6 +337,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         for (it in deleteServer) {
             MmkvManager.removeServer(it)
         }
+        
+        if (deleteServer.isNotEmpty()) syncWithCloud() // 🌟 مزامنة بعد حذف المكرر 🌟
 
         return deleteServer.count()
     }
@@ -321,6 +354,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 serversCache.toList().count()
             }
+            
+        if (count > 0) syncWithCloud() // 🌟 مزامنة بعد حذف الكل 🌟
         return count
     }
 
@@ -334,6 +369,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 count += MmkvManager.removeInvalidServer(item.guid)
             }
         }
+        
+        if (count > 0) syncWithCloud() // 🌟 مزامنة بعد حذف الميت 🌟
         return count
     }
 
@@ -354,6 +391,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         MmkvManager.encodeServerList(serverList)
+        syncWithCloud() // 🌟 مزامنة بعد الترتيب الذكي 🌟
     }
 
     fun initAssets(assets: AssetManager) {
