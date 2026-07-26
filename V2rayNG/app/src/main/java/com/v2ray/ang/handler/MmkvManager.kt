@@ -14,6 +14,8 @@ import com.v2ray.ang.dto.SubscriptionItem
 import com.v2ray.ang.dto.WebDavConfig
 import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.Utils
+import org.json.JSONArray
+import org.json.JSONObject
 
 object MmkvManager {
 
@@ -181,6 +183,71 @@ object MmkvManager {
 
     fun decodeServerRaw(guid: String): String? {
         return serverRawStorage.decodeString(guid)
+    }
+
+    //endregion
+
+    //region Cloud Sync (نظام المزامنة السحابية الكامل)
+
+    fun clearAllConfigs() {
+        mainStorage.remove(KEY_SELECTED_SERVER)
+        mainStorage.remove(KEY_ANG_CONFIGS)
+        profileFullStorage.clearAll()
+        serverRawStorage.clearAll()
+        serverAffStorage.clearAll()
+    }
+
+    fun exportAllConfigsForCloud(): String {
+        val serverList = decodeServerList()
+        val jsonArray = JSONArray()
+        serverList.forEach { guid ->
+            val profileJsonStr = profileFullStorage.decodeString(guid)
+            val rawStr = serverRawStorage.decodeString(guid)
+            if (!profileJsonStr.isNullOrBlank()) {
+                try {
+                    val obj = JSONObject()
+                    obj.put("guid", guid)
+                    obj.put("profile", JSONObject(profileJsonStr))
+                    if (!rawStr.isNullOrBlank()) {
+                        obj.put("raw", rawStr)
+                    }
+                    jsonArray.put(obj)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+        return jsonArray.toString()
+    }
+
+    fun importCloudConfigs(jsonString: String?) {
+        if (jsonString.isNullOrBlank() || jsonString == "null") return
+        try {
+            clearAllConfigs() // نمسح الموجود حتى نعوضه بمال السيرفر النظيف
+            val jsonArray = JSONArray(jsonString)
+            val newServerList = mutableListOf<String>()
+            
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                val guid = obj.optString("guid")
+                val profileObj = obj.optJSONObject("profile")
+                val raw = obj.optString("raw", "")
+                
+                if (guid.isNotBlank() && profileObj != null) {
+                    profileFullStorage.encode(guid, profileObj.toString())
+                    if (raw.isNotBlank() && raw != "null") {
+                        serverRawStorage.encode(guid, raw)
+                    }
+                    newServerList.add(guid)
+                }
+            }
+            encodeServerList(newServerList)
+            if (newServerList.isNotEmpty()) {
+                setSelectServer(newServerList.first())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     //endregion
