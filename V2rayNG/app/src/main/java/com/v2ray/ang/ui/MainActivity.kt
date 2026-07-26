@@ -94,11 +94,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
     
     private val openEncryptedFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> 
-        if (uri != null) ImportHelper.importEncryptedContentFromUri(this, mainViewModel, uri) 
+        if (uri != null) {
+            ImportHelper.importEncryptedContentFromUri(this, mainViewModel, uri)
+            lifecycleScope.launch(Dispatchers.Main) { delay(1000); forceManualSync() }
+        }
     }
     
     private val openLocalFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> 
-        if (uri != null) ImportHelper.readContentFromUri(this, mainViewModel, uri) 
+        if (uri != null) {
+            ImportHelper.readContentFromUri(this, mainViewModel, uri)
+            lifecycleScope.launch(Dispatchers.Main) { delay(1000); forceManualSync() }
+        }
     }
 
     fun showLoadingDialog() { showLoading() }
@@ -223,7 +229,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                     editor.putString("name_$guid", obj.getString("name"))
                                     editor.putString("pfp_$guid", obj.optString("pfp", ""))
                                     editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
-                                    editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) // 🌟 حفظ حالة التوثيق 🌟
+                                    editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) 
                                 }
                             }
                         } catch (e: Exception) {}
@@ -805,30 +811,37 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         lifecycleScope.launch { delay(500); startV2RayCore() } 
     }
 
-    // 🌟 دالة الرفع السحابي (Cloud Backup) 🌟
+    // 🌟 دالة الرفع السحابي الحقيقية للـ Backup 🌟
     private fun performCloudBackup() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val userId = AuthManager.getId(this@MainActivity)
                 if (userId.isEmpty()) return@launch
                 
-                val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
-                val configsArray = JSONArray()
-                guids.forEach { configsArray.put(it) }
+                // 🌟 الجوهر: جلب كل الملفات مع محتواها الكامل لرفعها للسيرفر 🌟
+                val configsJsonStr = MmkvManager.exportAllConfigsForCloud()
+                val configsArray = if (configsJsonStr.isNotBlank() && configsJsonStr != "null") JSONArray(configsJsonStr) else JSONArray()
                 
                 val payload = JSONObject().put("userId", userId).put("configs", configsArray)
                 val conn = URL("$BASE_API_URL/user/backup").openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
-                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
                 
                 if (conn.responseCode == 200) {
+                    val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
                     val editor = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE).edit()
-                    guids.forEach { editor.putBoolean("cloud_$it", true) } // 🌟 تفعيل علامة السحابة 🌟
+                    guids.forEach { editor.putBoolean("cloud_$it", true) } // 🌟 تفعيل علامة السحابة لجميع الملفات المرفوعة 🌟
                     editor.apply()
+                    
+                    withContext(Dispatchers.Main) {
+                        mainViewModel.reloadServerList()
+                    }
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -836,7 +849,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun forceManualSync() {
         showLoadingDialog()
         
-        // إجراء النسخ الاحتياطي السحابي عند السحب للتحديث
+        // إجراء النسخ الاحتياطي السحابي عند السحب للتحديث أو بعد الإضافة
         performCloudBackup()
 
         lifecycleScope.launch(Dispatchers.IO) {
@@ -864,7 +877,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             editor.putString("name_$guid", obj.getString("name"))
                             editor.putString("pfp_$guid", obj.optString("pfp", ""))
                             editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
-                            editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) // 🌟 حفظ حالة التوثيق 🌟
+                            editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) 
                         }
                     }
                 } catch (e: Exception) {}
@@ -1057,13 +1070,18 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         return true 
     }
     
+    private fun handleIntent(intent: Intent?) { 
+        if (intent?.action == Intent.ACTION_VIEW) {
+            intent.data?.let { 
+                ImportHelper.importEncryptedContentFromUri(this, mainViewModel, it) 
+                lifecycleScope.launch(Dispatchers.Main) { delay(1000); forceManualSync() }
+            } 
+        }
+    }
+
     override fun onNewIntent(intent: Intent) { 
         super.onNewIntent(intent)
         handleIntent(intent) 
-    }
-    
-    private fun handleIntent(intent: Intent?) { 
-        if (intent?.action == Intent.ACTION_VIEW) intent.data?.let { ImportHelper.importEncryptedContentFromUri(this, mainViewModel, it) } 
     }
 
     fun openSubscribersPanel(parentGuid: String) { 
@@ -1075,7 +1093,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     }
     
     fun replaceAndSyncConfigFromClipboard(guid: String) { 
-        AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { mainViewModel.reloadServerList() }, { showLoadingDialog() }, { hideLoadingDialog() }) 
+        AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { 
+            mainViewModel.reloadServerList() 
+            performCloudBackup() // 🌟 المزامنة بعد التعديل 🌟
+        }, { showLoadingDialog() }, { hideLoadingDialog() }) 
     }
 
     override fun onSelectServer(guid: String) { 
