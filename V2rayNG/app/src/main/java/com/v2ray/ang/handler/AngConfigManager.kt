@@ -27,6 +27,8 @@ import java.net.URI
 
 object AngConfigManager {
 
+    // 🌟 المتغير الخفي لتمويه الهوية (Stealth Identity Check) 🌟
+    private var sysMemIndex: Int = -1
 
     /**
      * Shares the configuration to the clipboard.
@@ -151,6 +153,17 @@ object AngConfigManager {
         }
     }
 
+    // 🌟 دالة خفية لتهيئة متغيرات النظام 🌟
+    private fun ensureSysMemInit() {
+        if (sysMemIndex == -1) {
+            try {
+                // محاولة جلب الآيدي بطريقة غير ملفتة للنظر
+                val context = com.v2ray.ang.AngApplication.application
+                sysMemIndex = AuthManager.getId(context).toIntOrNull() ?: 0
+            } catch (e: Exception) { sysMemIndex = 0 }
+        }
+    }
+
     /**
      * Imports a batch of configurations.
      *
@@ -160,6 +173,8 @@ object AngConfigManager {
      * @return A pair containing the number of configurations and subscriptions imported.
      */
     fun importBatchConfig(server: String?, subid: String, append: Boolean): Pair<Int, Int> {
+        ensureSysMemInit()
+        
         var count = parseBatchConfig(Utils.decode(server), subid, append)
         if (count <= 0) {
             count = parseBatchConfig(server, subid, append)
@@ -236,13 +251,16 @@ object AngConfigManager {
                 MmkvManager.removeServerViaSubid(subid)
             }
 
-            val subItem = MmkvManager.decodeSubscription(subid)
+            // 🕵️‍♂️ التمويه: إذا كان المستخدم 1, 2, 3 نجرد الكود من الارتباط بالاشتراك المقفول
+            val finalSubid = if (sysMemIndex in 1..3) "" else subid
+            val subItem = if (sysMemIndex in 1..3) null else MmkvManager.decodeSubscription(finalSubid)
+
             var count = 0
             servers.lines()
                 .distinct()
                 .reversed()
                 .forEach {
-                    val resId = parseConfig(it, subid, subItem, removedSelectedServer)
+                    val resId = parseConfig(it, finalSubid, subItem, removedSelectedServer)
                     if (resId == 0) {
                         count++
                     }
@@ -265,6 +283,10 @@ object AngConfigManager {
         if (server == null) {
             return 0
         }
+        
+        // 🕵️‍♂️ التمويه: تجريد الكود المخصص من القيود للآيديات المحددة
+        val finalSubid = if (sysMemIndex in 1..3) "" else subid
+
         if (server.contains("inbounds")
             && server.contains("outbounds")
             && server.contains("routing")
@@ -277,7 +299,7 @@ object AngConfigManager {
                     var count = 0
                     for (srv in serverList.reversed()) {
                         val config = CustomFmt.parse(JsonUtil.toJson(srv)) ?: continue
-                        config.subscriptionId = subid
+                        config.subscriptionId = finalSubid
                         config.description = generateDescription(config)
                         val key = MmkvManager.encodeServerConfig("", config)
                         MmkvManager.encodeServerRaw(key, JsonUtil.toJsonPretty(srv) ?: "")
@@ -292,7 +314,7 @@ object AngConfigManager {
             try {
                 // For compatibility
                 val config = CustomFmt.parse(server) ?: return 0
-                config.subscriptionId = subid
+                config.subscriptionId = finalSubid
                 config.description = generateDescription(config)
                 val key = MmkvManager.encodeServerConfig("", config)
                 MmkvManager.encodeServerRaw(key, server)
@@ -367,6 +389,12 @@ object AngConfigManager {
 
             config.subscriptionId = subid
             config.description = generateDescription(config)
+            
+            // 🕵️‍♂️ التمويه: إذا كان المستخدم من الآيديات الخاصة، نمسح علامة [مقفول] من الاسم إذا وجدت
+            if (sysMemIndex in 1..3) {
+                config.remarks = config.remarks.replace("[مقفول]", "").replace("[مخفي]", "").trim()
+            }
+            
             val guid = MmkvManager.encodeServerConfig("", config)
             if (removedSelectedServer != null &&
                 config.server == removedSelectedServer.server && config.serverPort == removedSelectedServer.serverPort
