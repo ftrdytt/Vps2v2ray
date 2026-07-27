@@ -216,7 +216,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     }
 
                     for (guid in guids) {
-                        val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
+                        // 🌟 ختم الملكية التلقائي (Self-Healing Ownership) 🌟
+                        var licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
+                        if (licenseId.isEmpty() || licenseId == "LEGACY") {
+                            if (myUserId.isNotEmpty()) {
+                                V2rayCrypt.saveLicenseId(this@MainActivity, guid, myUserId)
+                                licenseId = myUserId
+                            } else {
+                                licenseId = guid
+                            }
+                        }
                         
                         try {
                             val conn = URL("$BASE_API_URL/auth/get_user?id=$licenseId").openConnection() as HttpURLConnection
@@ -818,7 +827,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 val userId = AuthManager.getId(this@MainActivity)
                 if (userId.isEmpty()) return@launch
                 
-                // 🌟 الجوهر: جلب كل الملفات مع محتواها الكامل لرفعها للسيرفر 🌟
+                // الجوهر: جلب كل الملفات مع محتواها الكامل لرفعها للسيرفر
                 val configsJsonStr = MmkvManager.exportAllConfigsForCloud()
                 val configsArray = if (configsJsonStr.isNotBlank() && configsJsonStr != "null") JSONArray(configsJsonStr) else JSONArray()
                 
@@ -832,7 +841,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 if (conn.responseCode == 200) {
                     val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
                     val editor = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE).edit()
-                    guids.forEach { editor.putBoolean("cloud_$it", true) } // 🌟 تفعيل علامة السحابة لجميع الملفات المرفوعة 🌟
+                    guids.forEach { editor.putBoolean("cloud_$it", true) } 
                     editor.apply()
                     
                     withContext(Dispatchers.Main) {
@@ -854,13 +863,30 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
         lifecycleScope.launch(Dispatchers.IO) {
             val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
-            val licenseIds = guids.map { V2rayCrypt.getLicenseId(this@MainActivity, it).takeIf { l -> l.isNotEmpty() && l != "LEGACY" } ?: it }
+            val myUserId = AuthManager.getId(this@MainActivity)
+            
+            // 🌟 ختم الملكية التلقائي (Self-Healing Ownership) 🌟
+            val licenseIds = guids.map { guid ->
+                var lId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
+                if (lId.isEmpty() || lId == "LEGACY") {
+                    if (myUserId.isNotEmpty()) {
+                        V2rayCrypt.saveLicenseId(this@MainActivity, guid, myUserId)
+                        lId = myUserId
+                    } else {
+                        lId = guid
+                    }
+                }
+                lId
+            }
+            
             val batchResults = CloudflareAPI.checkAllLiveConfigs(licenseIds)
             val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             val editor = prefs.edit()
             
-            for (guid in guids) {
-                val licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { l -> l.isNotEmpty() && l != "LEGACY" } ?: guid
+            for (i in guids.indices) {
+                val guid = guids[i]
+                val licenseId = licenseIds[i]
+                
                 val data = batchResults[licenseId]
                 if (data != null) {
                     if (data.first >= 0L) V2rayCrypt.saveExpiryTime(this@MainActivity, guid, data.first)
@@ -1095,7 +1121,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun replaceAndSyncConfigFromClipboard(guid: String) { 
         AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { 
             mainViewModel.reloadServerList() 
-            performCloudBackup() // 🌟 المزامنة بعد التعديل 🌟
+            performCloudBackup() 
         }, { showLoadingDialog() }, { hideLoadingDialog() }) 
     }
 
