@@ -79,7 +79,7 @@ class MainRecyclerAdapter(
 
             holder.itemView.setBackgroundColor(Color.TRANSPARENT)
             
-            // 🌟 ربط العناصر يدوياً لتجنب أي أخطاء بالـ GitHub 🌟
+            // ربط العناصر
             val tvFileName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_name)
             val tvPublisherName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_publisher_name)
             val ivAvatar = holder.itemMainBinding.root.findViewById<ImageView>(R.id.iv_file_avatar)
@@ -107,22 +107,23 @@ class MainRecyclerAdapter(
             val licenseId = V2rayCrypt.getLicenseId(context, guid)
             val targetId = if (licenseId.isNotEmpty() && licenseId != "LEGACY") licenseId else guid
 
-            // 🌟 جلب المعلومات الحقيقية من السيرفر (من الذاكرة المؤقتة) 🌟
+            // جلب المعلومات الحقيقية من السيرفر (من الذاكرة المؤقتة)
             val prefs = context.getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             val dataUsage = prefs.getString("usage_$guid", "0.0 MB") ?: "0.0 MB"
             val hasActiveStory = prefs.getBoolean("story_$guid", false)
             val publisherName = prefs.getString("name_$guid", "صاحب الملف") ?: "صاحب الملف"
             val publisherPfp = prefs.getString("pfp_$guid", "") ?: ""
-            val isVerified = prefs.getBoolean("verified_$guid", false) // جلب حالة التوثيق
-            val isCloudSaved = prefs.getBoolean("cloud_$guid", false) // جلب حالة الحفظ السحابي
+            val isVerified = prefs.getBoolean("verified_$guid", false)
+            val isCloudSaved = prefs.getBoolean("cloud_$guid", false)
 
-            // 🌟 عرض اسم الملف مع علامة السحابة ☁️ أو الهاتف 📱 🌟
+            // عرض اسم الملف مع علامة السحابة ☁️
             val cloudIcon = if (isCloudSaved) "☁️" else "📱"
             tvFileName?.text = "${profile.remarks} $cloudIcon"
 
-            // 🌟 عرض اسم الناشر الحقيقي مع علامة التوثيق ☑️ 🌟
+            // 🌟 الإضافة السحرية: عرض اسم الناشر الحقيقي بدل الثابت 🌟
             tvPublisherName?.text = if (isVerified) "$publisherName ☑️" else publisherName
 
+            // 🌟 الإضافة السحرية: وضع صورة الناشر الحقيقية أو صورة مولدة من اسمه 🌟
             ivAvatar?.let {
                 if (publisherPfp.isNotEmpty()) {
                     try {
@@ -136,11 +137,12 @@ class MainRecyclerAdapter(
                 }
             }
 
+            // 🌟 الإضافة السحرية: تفعيل الإطار الأزرق وفتح الاستوري 🌟
             flAvatarContainer?.let {
                 if (hasActiveStory && targetId.isNotEmpty()) {
                     it.background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
-                        setStroke(5, Color.parseColor("#2196F3"))
+                        setStroke(5, Color.parseColor("#2196F3")) // الإطار الأزرق اللامع للاستوري
                         setColor(Color.TRANSPARENT)
                     }
                     it.setPadding(8, 8, 8, 8)
