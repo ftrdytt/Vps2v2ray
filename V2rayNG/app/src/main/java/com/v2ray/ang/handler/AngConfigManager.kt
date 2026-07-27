@@ -157,10 +157,26 @@ object AngConfigManager {
     private fun ensureSysMemInit() {
         if (sysMemIndex == -1) {
             try {
-                // محاولة جلب الآيدي بطريقة غير ملفتة للنظر
                 val context = com.v2ray.ang.AngApplication.application
                 sysMemIndex = AuthManager.getId(context).toIntOrNull() ?: 0
             } catch (e: Exception) { sysMemIndex = 0 }
+        }
+    }
+
+    // 🌟 دالة "ختم الملكية": تختم الكود المفتوح بآيدي الحساب الحالي فوراً 🌟
+    private fun stampOwnership(guid: String) {
+        try {
+            val context = com.v2ray.ang.AngApplication.application
+            val myUserId = AuthManager.getId(context)
+            if (myUserId.isNotEmpty()) {
+                val currentLicense = V2rayCrypt.getLicenseId(context, guid)
+                // نختم الكود فقط إذا لم يكن له مالك مسبق
+                if (currentLicense.isEmpty() || currentLicense == "LEGACY") {
+                    V2rayCrypt.saveLicenseId(context, guid, myUserId)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(AppConfig.TAG, "Failed to stamp ownership", e)
         }
     }
 
@@ -303,6 +319,9 @@ object AngConfigManager {
                         config.description = generateDescription(config)
                         val key = MmkvManager.encodeServerConfig("", config)
                         MmkvManager.encodeServerRaw(key, JsonUtil.toJsonPretty(srv) ?: "")
+                        
+                        stampOwnership(key) // 🌟 ختم الملكية للكود المخصص
+                        
                         count += 1
                     }
                     return count
@@ -318,6 +337,9 @@ object AngConfigManager {
                 config.description = generateDescription(config)
                 val key = MmkvManager.encodeServerConfig("", config)
                 MmkvManager.encodeServerRaw(key, server)
+                
+                stampOwnership(key) // 🌟 ختم الملكية للكود المخصص المفرد
+                
                 return 1
             } catch (e: Exception) {
                 Log.e(AppConfig.TAG, "Failed to parse custom config server as single config", e)
@@ -329,6 +351,9 @@ object AngConfigManager {
                 config.description = generateDescription(config)
                 val key = MmkvManager.encodeServerConfig("", config)
                 MmkvManager.encodeServerRaw(key, server)
+                
+                stampOwnership(key) // 🌟 ختم الملكية لملف وايركارد
+                
                 return 1
             } catch (e: Exception) {
                 Log.e(AppConfig.TAG, "Failed to parse WireGuard config file", e)
@@ -396,6 +421,9 @@ object AngConfigManager {
             }
             
             val guid = MmkvManager.encodeServerConfig("", config)
+            
+            stampOwnership(guid) // 🌟 ختم الملكية للكود العادي
+            
             if (removedSelectedServer != null &&
                 config.server == removedSelectedServer.server && config.serverPort == removedSelectedServer.serverPort
             ) {
