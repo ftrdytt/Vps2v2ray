@@ -79,7 +79,6 @@ class MainRecyclerAdapter(
 
             holder.itemView.setBackgroundColor(Color.TRANSPARENT)
             
-            // ربط العناصر
             val tvFileName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_name)
             val tvPublisherName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_publisher_name)
             val ivAvatar = holder.itemMainBinding.root.findViewById<ImageView>(R.id.iv_file_avatar)
@@ -107,50 +106,61 @@ class MainRecyclerAdapter(
             val licenseId = V2rayCrypt.getLicenseId(context, guid)
             val targetId = if (licenseId.isNotEmpty() && licenseId != "LEGACY") licenseId else guid
 
-            // جلب المعلومات الحقيقية من السيرفر (من الذاكرة المؤقتة)
             val prefs = context.getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             val dataUsage = prefs.getString("usage_$guid", "0.0 MB") ?: "0.0 MB"
             val hasActiveStory = prefs.getBoolean("story_$guid", false)
-            val publisherName = prefs.getString("name_$guid", "صاحب الملف") ?: "صاحب الملف"
-            val publisherPfp = prefs.getString("pfp_$guid", "") ?: ""
-            val isVerified = prefs.getBoolean("verified_$guid", false)
             val isCloudSaved = prefs.getBoolean("cloud_$guid", false)
 
-            // عرض اسم الملف مع علامة السحابة ☁️
+            var finalPublisherName = prefs.getString("name_$guid", "صاحب الملف") ?: "صاحب الملف"
+            var finalPublisherPfp = prefs.getString("pfp_$guid", "") ?: ""
+            var finalIsVerified = prefs.getBoolean("verified_$guid", false)
+
+            // 🌟 جلب بيانات حسابك الحالي 🌟
+            val myUserId = com.v2ray.ang.handler.AuthManager.getId(context)
+            val myUserName = com.v2ray.ang.handler.AuthManager.getName(context)
+            val myUserPfp = com.v2ray.ang.handler.AuthManager.getPfp(context)
+            val myUserRole = com.v2ray.ang.handler.AuthManager.getRole(context)
+
+            // 🌟 الذكاء التلقائي: إذا الملف مقفول وأنت الأدمن مالته، يسحب صورتك واسمك فوراً من جهازك بدون الحاجة للنت! 🌟
+            if ((targetId == myUserId || isAdmin) && (finalPublisherName == "صاحب الملف" || finalPublisherName.isEmpty())) {
+                finalPublisherName = myUserName
+                finalPublisherPfp = myUserPfp
+                finalIsVerified = (myUserRole == "admin")
+            }
+
+            val actualTargetId = if (isAdmin && targetId.isEmpty()) myUserId else targetId
+
             val cloudIcon = if (isCloudSaved) "☁️" else "📱"
             tvFileName?.text = "${profile.remarks} $cloudIcon"
 
-            // 🌟 الإضافة السحرية: عرض اسم الناشر الحقيقي بدل الثابت 🌟
-            tvPublisherName?.text = if (isVerified) "$publisherName ☑️" else publisherName
+            tvPublisherName?.text = if (finalIsVerified) "$finalPublisherName ☑️" else finalPublisherName
 
-            // 🌟 الإضافة السحرية: وضع صورة الناشر الحقيقية أو صورة مولدة من اسمه 🌟
             ivAvatar?.let {
-                if (publisherPfp.isNotEmpty()) {
+                if (finalPublisherPfp.isNotEmpty()) {
                     try {
-                        val b = Base64.decode(if (publisherPfp.contains(",")) publisherPfp.substringAfter(",") else publisherPfp, Base64.DEFAULT)
+                        val b = Base64.decode(if (finalPublisherPfp.contains(",")) finalPublisherPfp.substringAfter(",") else finalPublisherPfp, Base64.DEFAULT)
                         it.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size))
                     } catch (e: Exception) {
-                        it.setImageBitmap(AvatarGenerator.generateAvatar(publisherName, targetId))
+                        it.setImageBitmap(AvatarGenerator.generateAvatar(finalPublisherName, actualTargetId))
                     }
                 } else {
-                    it.setImageBitmap(AvatarGenerator.generateAvatar(publisherName, targetId))
+                    it.setImageBitmap(AvatarGenerator.generateAvatar(finalPublisherName, actualTargetId))
                 }
             }
 
-            // 🌟 الإضافة السحرية: تفعيل الإطار الأزرق وفتح الاستوري 🌟
             flAvatarContainer?.let {
-                if (hasActiveStory && targetId.isNotEmpty()) {
+                if (hasActiveStory && actualTargetId.isNotEmpty()) {
                     it.background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
-                        setStroke(5, Color.parseColor("#2196F3")) // الإطار الأزرق اللامع للاستوري
+                        setStroke(5, Color.parseColor("#2196F3")) 
                         setColor(Color.TRANSPARENT)
                     }
                     it.setPadding(8, 8, 8, 8)
                     it.setOnClickListener {
                         try {
                             val intent = Intent(context, StoryViewerActivity::class.java)
-                            intent.putExtra("targetUserId", targetId)
-                            intent.putExtra("userId", targetId)
+                            intent.putExtra("targetUserId", actualTargetId)
+                            intent.putExtra("userId", actualTargetId)
                             context.startActivity(intent)
                         } catch (e: Exception) {
                             Toast.makeText(context, "الاستوري غير متوفر", Toast.LENGTH_SHORT).show()
@@ -160,11 +170,13 @@ class MainRecyclerAdapter(
                     it.background = null
                     it.setPadding(0, 0, 0, 0)
                     it.setOnClickListener {
-                        try {
-                            val intent = Intent(context, UserProfileActivity::class.java)
-                            intent.putExtra("targetUserId", targetId)
-                            context.startActivity(intent)
-                        } catch (e: Exception) {}
+                        if (actualTargetId.isNotEmpty()) {
+                            try {
+                                val intent = Intent(context, UserProfileActivity::class.java)
+                                intent.putExtra("targetUserId", actualTargetId)
+                                context.startActivity(intent)
+                            } catch (e: Exception) {}
+                        }
                     }
                 }
             }
@@ -209,10 +221,9 @@ class MainRecyclerAdapter(
                 tvActiveCount?.text = "🟢 $activeCount"
                 
                 tvActiveCount?.setOnClickListener {
-                    val userRole = com.v2ray.ang.handler.AuthManager.getRole(context)
-                    if (isAdmin || userRole == "admin") {
+                    if (isAdmin || myUserRole == "admin") {
                         val intent = Intent(context, FileActiveUsersActivity::class.java)
-                        intent.putExtra("guid", targetId)
+                        intent.putExtra("guid", actualTargetId)
                         context.startActivity(intent)
                     } else {
                         Toast.makeText(context, "غير مصرح لك برؤية تفاصيل المتصلين", Toast.LENGTH_SHORT).show()
