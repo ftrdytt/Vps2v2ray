@@ -225,7 +225,41 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 licenseId = guid
                             }
                         }
+
+                        // 🌟 التجميع الذكي: جلب الأيدي الأساسي + المشتركين لجمع استهلاكهم 🌟
+                        val isAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid)
+                        val idsToCheck = mutableListOf(licenseId)
+                        if (isAdmin) {
+                            val subs = V2rayCrypt.getSubscribers(this@MainActivity, guid)
+                            idsToCheck.addAll(subs.map { it.licenseId })
+                        }
+
+                        var totalUsageBytes = 0L
+                        var totalActiveCount = 0
+
+                        for (id in idsToCheck) {
+                            try {
+                                val checkConn = URL("$BASE_API_URL/check?guid=$id").openConnection() as HttpURLConnection
+                                checkConn.connectTimeout = 4000
+                                checkConn.readTimeout = 4000
+                                if (checkConn.responseCode == 200) {
+                                    val checkResp = BufferedReader(InputStreamReader(checkConn.inputStream)).readText()
+                                    val checkObj = JSONObject(checkResp)
+                                    
+                                    totalUsageBytes += checkObj.optLong("totalUsageBytes", 0L)
+                                    totalActiveCount += checkObj.optInt("activeCount", 0)
+                                    
+                                    if (id == licenseId) {
+                                        editor.putBoolean("locked_$guid", checkObj.optBoolean("isLocked", false))
+                                    }
+                                }
+                            } catch (e: Exception) {}
+                        }
                         
+                        // 🌟 حفظ المجموع الكلي للاستهلاك والمتصلين للملف 🌟
+                        editor.putString("usage_$guid", formatBytes(totalUsageBytes))
+                        V2rayCrypt.saveActiveCount(this@MainActivity, guid, totalActiveCount)
+
                         try {
                             val conn = URL("$BASE_API_URL/auth/get_user?id=$licenseId").openConnection() as HttpURLConnection
                             conn.connectTimeout = 4000
@@ -239,18 +273,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                     editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
                                     editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) 
                                 }
-                            }
-                        } catch (e: Exception) {}
-
-                        try {
-                            val checkConn = URL("$BASE_API_URL/check?guid=$licenseId").openConnection() as HttpURLConnection
-                            checkConn.connectTimeout = 4000
-                            checkConn.readTimeout = 4000
-                            if (checkConn.responseCode == 200) {
-                                val checkResp = BufferedReader(InputStreamReader(checkConn.inputStream)).readText()
-                                val checkObj = JSONObject(checkResp)
-                                editor.putBoolean("locked_$guid", checkObj.optBoolean("isLocked", false))
-                                editor.putString("usage_$guid", formatBytes(checkObj.optLong("totalUsageBytes", 0L)))
                             }
                         } catch (e: Exception) {}
                     }
@@ -853,40 +875,63 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
     fun forceManualSync() {
         showLoadingDialog()
-        
         performCloudBackup()
 
         lifecycleScope.launch(Dispatchers.IO) {
             val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
             val myUserId = AuthManager.getId(this@MainActivity)
-            
-            val licenseIds = guids.map { guid ->
-                var lId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
-                if (lId.isEmpty() || lId == "LEGACY") {
-                    if (myUserId.isNotEmpty()) {
-                        V2rayCrypt.saveLicenseId(this@MainActivity, guid, myUserId)
-                        lId = myUserId
-                    } else {
-                        lId = guid
-                    }
-                }
-                lId
-            }
-            
-            val batchResults = CloudflareAPI.checkAllLiveConfigs(licenseIds)
             val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             val editor = prefs.edit()
             
-            for (i in guids.indices) {
-                val guid = guids[i]
-                val licenseId = licenseIds[i]
-                
-                val data = batchResults[licenseId]
-                if (data != null) {
-                    if (data.first >= 0L) V2rayCrypt.saveExpiryTime(this@MainActivity, guid, data.first)
-                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, data.second)
+            for (guid in guids) {
+                var licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
+                if (licenseId.isEmpty() || licenseId == "LEGACY") {
+                    if (myUserId.isNotEmpty()) {
+                        V2rayCrypt.saveLicenseId(this@MainActivity, guid, myUserId)
+                        licenseId = myUserId
+                    } else {
+                        licenseId = guid
+                    }
                 }
 
+                // 🌟 التجميع الذكي: جلب الأيدي الأساسي + كل المشتركين 🌟
+                val isAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid)
+                val idsToCheck = mutableListOf(licenseId)
+                if (isAdmin) {
+                    val subs = V2rayCrypt.getSubscribers(this@MainActivity, guid)
+                    idsToCheck.addAll(subs.map { it.licenseId })
+                }
+
+                var totalUsageBytes = 0L
+                var totalActiveCount = 0
+                var parentExpiry = -1L
+
+                // 🌟 فحص عبر النت حصراً، وجمع البيانات الكلية 🌟
+                for (id in idsToCheck) {
+                    try {
+                        val checkConn = URL("$BASE_API_URL/check?guid=$id").openConnection() as HttpURLConnection
+                        checkConn.connectTimeout = 3000
+                        checkConn.readTimeout = 3000
+                        if (checkConn.responseCode == 200) {
+                            val checkObj = JSONObject(BufferedReader(InputStreamReader(checkConn.inputStream)).readText())
+                            totalUsageBytes += checkObj.optLong("totalUsageBytes", 0L)
+                            totalActiveCount += checkObj.optInt("activeCount", 0)
+                            
+                            if (id == licenseId) {
+                                editor.putBoolean("locked_$guid", checkObj.optBoolean("isLocked", false))
+                                parentExpiry = checkObj.optLong("expiryTime", -1L)
+                            }
+                        }
+                    } catch (e: Exception) {}
+                }
+                
+                editor.putString("usage_$guid", formatBytes(totalUsageBytes))
+                V2rayCrypt.saveActiveCount(this@MainActivity, guid, totalActiveCount)
+                if (parentExpiry >= 0L) {
+                    V2rayCrypt.saveExpiryTime(this@MainActivity, guid, parentExpiry)
+                }
+
+                // 🌟 جلب الصورة والاستوري للملف الأساسي فقط 🌟
                 try {
                     val conn = URL("$BASE_API_URL/auth/get_user?id=$licenseId").openConnection() as HttpURLConnection
                     conn.connectTimeout = 3000
@@ -899,17 +944,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
                             editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) 
                         }
-                    }
-                } catch (e: Exception) {}
-
-                try {
-                    val checkConn = URL("$BASE_API_URL/check?guid=$licenseId").openConnection() as HttpURLConnection
-                    checkConn.connectTimeout = 3000
-                    checkConn.readTimeout = 3000
-                    if (checkConn.responseCode == 200) {
-                        val checkObj = JSONObject(BufferedReader(InputStreamReader(checkConn.inputStream)).readText())
-                        editor.putBoolean("locked_$guid", checkObj.optBoolean("isLocked", false))
-                        editor.putString("usage_$guid", formatBytes(checkObj.optLong("totalUsageBytes", 0L)))
                     }
                 } catch (e: Exception) {}
             }
@@ -1115,7 +1149,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun replaceAndSyncConfigFromClipboard(guid: String) { 
         AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { 
             mainViewModel.reloadServerList() 
-            performCloudBackup() // 🌟 المزامنة بعد التعديل 🌟
+            performCloudBackup() 
         }, { showLoadingDialog() }, { hideLoadingDialog() }) 
     }
 
