@@ -216,7 +216,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     }
 
                     for (guid in guids) {
-                        // 🌟 ختم الملكية التلقائي (Self-Healing Ownership) 🌟
                         var licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
                         if (licenseId.isEmpty() || licenseId == "LEGACY") {
                             if (myUserId.isNotEmpty()) {
@@ -820,14 +819,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         lifecycleScope.launch { delay(500); startV2RayCore() } 
     }
 
-    // 🌟 دالة الرفع السحابي الحقيقية للـ Backup 🌟
     private fun performCloudBackup() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val userId = AuthManager.getId(this@MainActivity)
                 if (userId.isEmpty()) return@launch
                 
-                // الجوهر: جلب كل الملفات مع محتواها الكامل لرفعها للسيرفر
                 val configsJsonStr = MmkvManager.exportAllConfigsForCloud()
                 val configsArray = if (configsJsonStr.isNotBlank() && configsJsonStr != "null") JSONArray(configsJsonStr) else JSONArray()
                 
@@ -854,18 +851,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // 🌟 التحديث الفوري والشامل عند السحب (Swipe to Refresh) 🌟
     fun forceManualSync() {
         showLoadingDialog()
         
-        // إجراء النسخ الاحتياطي السحابي عند السحب للتحديث أو بعد الإضافة
         performCloudBackup()
 
         lifecycleScope.launch(Dispatchers.IO) {
             val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
             val myUserId = AuthManager.getId(this@MainActivity)
             
-            // 🌟 ختم الملكية التلقائي (Self-Healing Ownership) 🌟
             val licenseIds = guids.map { guid ->
                 var lId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
                 if (lId.isEmpty() || lId == "LEGACY") {
@@ -1121,7 +1115,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
     fun replaceAndSyncConfigFromClipboard(guid: String) { 
         AdminHelper.replaceAndSyncConfigFromClipboard(this, guid, mainViewModel.subscriptionId, { 
             mainViewModel.reloadServerList() 
-            performCloudBackup() 
+            performCloudBackup() // 🌟 المزامنة بعد التعديل 🌟
         }, { showLoadingDialog() }, { hideLoadingDialog() }) 
     }
 
