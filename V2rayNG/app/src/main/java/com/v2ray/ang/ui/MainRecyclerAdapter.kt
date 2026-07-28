@@ -79,6 +79,7 @@ class MainRecyclerAdapter(
 
             holder.itemView.setBackgroundColor(Color.TRANSPARENT)
             
+            // ربط العناصر
             val tvFileName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_name)
             val tvPublisherName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_publisher_name)
             val ivAvatar = holder.itemMainBinding.root.findViewById<ImageView>(R.id.iv_file_avatar)
@@ -106,6 +107,17 @@ class MainRecyclerAdapter(
             val licenseId = V2rayCrypt.getLicenseId(context, guid)
             val targetId = if (licenseId.isNotEmpty() && licenseId != "LEGACY") licenseId else guid
 
+            // 🌟 جلب بيانات حسابك الحالي وتحديد الصلاحيات الحقيقية 🌟
+            val myUserId = com.v2ray.ang.handler.AuthManager.getId(context)
+            val myUserName = com.v2ray.ang.handler.AuthManager.getName(context)
+            val myUserPfp = com.v2ray.ang.handler.AuthManager.getPfp(context)
+            val myUserRole = com.v2ray.ang.handler.AuthManager.getRole(context)
+            
+            // 🌟 هذا السطر هو مفتاح الحل: يعطيك الصلاحية إذا كنت أدمن بالتطبيق أو صاحب الملف الحقيقي 🌟
+            val isSuperAdmin = (myUserRole == "admin")
+            val isOwnerOrAdmin = isAdmin || isSuperAdmin || (targetId == myUserId && myUserId.isNotEmpty())
+
+            // جلب المعلومات الحقيقية من السيرفر (من الذاكرة المؤقتة)
             val prefs = context.getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             val dataUsage = prefs.getString("usage_$guid", "0.0 MB") ?: "0.0 MB"
             val hasActiveStory = prefs.getBoolean("story_$guid", false)
@@ -115,26 +127,23 @@ class MainRecyclerAdapter(
             var finalPublisherPfp = prefs.getString("pfp_$guid", "") ?: ""
             var finalIsVerified = prefs.getBoolean("verified_$guid", false)
 
-            // 🌟 جلب بيانات حسابك الحالي 🌟
-            val myUserId = com.v2ray.ang.handler.AuthManager.getId(context)
-            val myUserName = com.v2ray.ang.handler.AuthManager.getName(context)
-            val myUserPfp = com.v2ray.ang.handler.AuthManager.getPfp(context)
-            val myUserRole = com.v2ray.ang.handler.AuthManager.getRole(context)
-
-            // 🌟 الذكاء التلقائي: إذا الملف مقفول وأنت الأدمن مالته، يسحب صورتك واسمك فوراً من جهازك بدون الحاجة للنت! 🌟
-            if ((targetId == myUserId || isAdmin) && (finalPublisherName == "صاحب الملف" || finalPublisherName.isEmpty())) {
-                finalPublisherName = myUserName
+            // الذكاء التلقائي: إذا الملف مقفول وأنت صاحب الصلاحية، يسحب صورتك واسمك فوراً من جهازك
+            if (isOwnerOrAdmin && (finalPublisherName == "صاحب الملف" || finalPublisherName.isEmpty())) {
+                finalPublisherName = if (myUserName.isNotEmpty()) myUserName else "صاحب الملف"
                 finalPublisherPfp = myUserPfp
-                finalIsVerified = (myUserRole == "admin")
+                finalIsVerified = isSuperAdmin
             }
 
-            val actualTargetId = if (isAdmin && targetId.isEmpty()) myUserId else targetId
+            val actualTargetId = if (isOwnerOrAdmin && targetId.isEmpty()) myUserId else targetId
 
+            // عرض اسم الملف مع علامة السحابة ☁️
             val cloudIcon = if (isCloudSaved) "☁️" else "📱"
             tvFileName?.text = "${profile.remarks} $cloudIcon"
 
+            // عرض اسم الناشر الحقيقي
             tvPublisherName?.text = if (finalIsVerified) "$finalPublisherName ☑️" else finalPublisherName
 
+            // وضع صورة الناشر الحقيقية أو صورة مولدة من اسمه
             ivAvatar?.let {
                 if (finalPublisherPfp.isNotEmpty()) {
                     try {
@@ -148,6 +157,7 @@ class MainRecyclerAdapter(
                 }
             }
 
+            // تفعيل الإطار الأزرق وفتح الاستوري
             flAvatarContainer?.let {
                 if (hasActiveStory && actualTargetId.isNotEmpty()) {
                     it.background = GradientDrawable().apply {
@@ -160,7 +170,7 @@ class MainRecyclerAdapter(
                         try {
                             val intent = Intent(context, StoryViewerActivity::class.java)
                             intent.putExtra("targetUserId", actualTargetId)
-                            intent.putExtra("userId", actualTargetId)
+                            intent.putExtra("userId", myUserId.ifEmpty { actualTargetId })
                             context.startActivity(intent)
                         } catch (e: Exception) {
                             Toast.makeText(context, "الاستوري غير متوفر", Toast.LENGTH_SHORT).show()
@@ -191,11 +201,12 @@ class MainRecyclerAdapter(
                 ivLockStatus?.setTextColor(Color.parseColor("#4CAF50"))
             }
 
-            if (isProtected && !isAdmin) {
+            // 🌟 إعطاء صلاحيات الأزرار والواجهة (هنا رجعتلك الأزرار!) 🌟
+            if (isProtected && !isOwnerOrAdmin) {
                 tvStatistics?.visibility = View.GONE
                 tvType?.text = "Secure Config" 
                 (tvType?.parent as? CardView)?.setCardBackgroundColor(Color.parseColor("#D32F2F"))
-            } else if (isAdmin) {
+            } else if (isOwnerOrAdmin) {
                 tvStatistics?.visibility = View.VISIBLE
                 tvStatistics?.text = getAddress(profile)
                 tvType?.text = "Admin Panel"
@@ -215,13 +226,13 @@ class MainRecyclerAdapter(
                 tvTestResult?.setTextColor(Color.parseColor("#00E676"))
             }
 
-            if (isProtected || isAdmin) {
+            if (isProtected || isOwnerOrAdmin) {
                 val activeCount = V2rayCrypt.getActiveCount(context, guid)
                 tvActiveCount?.visibility = View.VISIBLE
                 tvActiveCount?.text = "🟢 $activeCount"
                 
                 tvActiveCount?.setOnClickListener {
-                    if (isAdmin || myUserRole == "admin") {
+                    if (isOwnerOrAdmin) {
                         val intent = Intent(context, FileActiveUsersActivity::class.java)
                         intent.putExtra("guid", actualTargetId)
                         context.startActivity(intent)
@@ -236,7 +247,7 @@ class MainRecyclerAdapter(
             val expiryTime = V2rayCrypt.getExpiryTime(context, guid)
             holder.countdownJob?.cancel()
 
-            if ((isProtected || isAdmin) && expiryTime > 0L) {
+            if ((isProtected || isOwnerOrAdmin) && expiryTime > 0L) {
                 tvExpiry?.visibility = View.VISIBLE
                 
                 holder.countdownJob = coroutineScope.launch {
@@ -291,12 +302,13 @@ class MainRecyclerAdapter(
             } else {
                 layoutMore?.visibility = View.GONE
 
-                if (isProtected && !isAdmin) {
+                // 🌟 هنا السر اللي يرجعلك الأزرار 🌟
+                if (isProtected && !isOwnerOrAdmin) {
                     layoutShare?.visibility = View.GONE
                     layoutEdit?.visibility = View.GONE
                     layoutAdminControl?.visibility = View.GONE
                     layoutSubscribersBtn?.visibility = View.GONE
-                } else if (isAdmin) {
+                } else if (isOwnerOrAdmin) {
                     layoutShare?.visibility = View.VISIBLE
                     layoutEdit?.visibility = View.VISIBLE
                     layoutAdminControl?.visibility = View.VISIBLE
@@ -321,7 +333,7 @@ class MainRecyclerAdapter(
                 }
 
                 layoutEdit?.setOnClickListener {
-                    if (isAdmin) {
+                    if (isOwnerOrAdmin) {
                         val options = arrayOf("تعديل يدوي للسيرفر", "استبدال السيرفر من الحافظة (السحابة)")
                         AlertDialog.Builder(context)
                             .setTitle("تعديل كود المشتركين")
