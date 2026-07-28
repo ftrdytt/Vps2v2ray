@@ -30,22 +30,13 @@ object AngConfigManager {
     // 🌟 المتغير الخفي لتمويه الهوية (Stealth Identity Check) 🌟
     private var sysMemIndex: Int = -1
 
-    /**
-     * Shares the configuration to the clipboard.
-     *
-     * @param context The context.
-     * @param guid The GUID of the configuration.
-     * @return The result code.
-     */
     fun share2Clipboard(context: Context, guid: String): Int {
         try {
             val conf = shareConfig(guid)
             if (TextUtils.isEmpty(conf)) {
                 return -1
             }
-
             Utils.setClipboard(context, conf)
-
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to share config to clipboard", e)
             return -1
@@ -53,13 +44,6 @@ object AngConfigManager {
         return 0
     }
 
-    /**
-     * Shares non-custom configurations to the clipboard.
-     *
-     * @param context The context.
-     * @param serverList The list of server GUIDs.
-     * @return The number of configurations shared.
-     */
     fun shareNonCustomConfigsToClipboard(context: Context, serverList: List<String>): Int {
         try {
             val sb = StringBuilder()
@@ -81,12 +65,6 @@ object AngConfigManager {
         }
     }
 
-    /**
-     * Shares the configuration as a QR code.
-     *
-     * @param guid The GUID of the configuration.
-     * @return The QR code bitmap.
-     */
     fun share2QRCode(guid: String): Bitmap? {
         try {
             val conf = shareConfig(guid)
@@ -94,20 +72,12 @@ object AngConfigManager {
                 return null
             }
             return QRCodeDecoder.createQRCode(conf)
-
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to share config as QR code", e)
             return null
         }
     }
 
-    /**
-     * Shares the full content of the configuration to the clipboard.
-     *
-     * @param context The context.
-     * @param guid The GUID of the configuration.
-     * @return The result code.
-     */
     fun shareFullContent2Clipboard(context: Context, guid: String?): Int {
         try {
             if (guid == null) return -1
@@ -124,12 +94,6 @@ object AngConfigManager {
         return 0
     }
 
-    /**
-     * Shares the configuration.
-     *
-     * @param guid The GUID of the configuration.
-     * @return The configuration string.
-     */
     private fun shareConfig(guid: String): String {
         try {
             val config = MmkvManager.decodeServerConfig(guid) ?: return ""
@@ -180,14 +144,6 @@ object AngConfigManager {
         }
     }
 
-    /**
-     * Imports a batch of configurations.
-     *
-     * @param server The server string.
-     * @param subid The subscription ID.
-     * @param append Whether to append the configurations.
-     * @return A pair containing the number of configurations and subscriptions imported.
-     */
     fun importBatchConfig(server: String?, subid: String, append: Boolean): Pair<Int, Int> {
         ensureSysMemInit()
         
@@ -210,12 +166,6 @@ object AngConfigManager {
         return count to countSub
     }
 
-    /**
-     * Parses a batch of subscriptions.
-     *
-     * @param servers The servers string.
-     * @return The number of subscriptions parsed.
-     */
     private fun parseBatchSubscription(servers: String?): Int {
         try {
             if (servers == null) {
@@ -237,14 +187,6 @@ object AngConfigManager {
         return 0
     }
 
-    /**
-     * Parses a batch of configurations.
-     *
-     * @param servers The servers string.
-     * @param subid The subscription ID.
-     * @param append Whether to append the configurations.
-     * @return The number of configurations parsed.
-     */
     private fun parseBatchConfig(servers: String?, subid: String, append: Boolean): Int {
         try {
             if (servers == null) {
@@ -288,13 +230,6 @@ object AngConfigManager {
         return 0
     }
 
-    /**
-     * Parses a custom configuration server.
-     *
-     * @param server The server string.
-     * @param subid The subscription ID.
-     * @return The number of configurations parsed.
-     */
     private fun parseCustomConfigServer(server: String?, subid: String): Int {
         if (server == null) {
             return 0
@@ -331,7 +266,6 @@ object AngConfigManager {
             }
 
             try {
-                // For compatibility
                 val config = CustomFmt.parse(server) ?: return 0
                 config.subscriptionId = finalSubid
                 config.description = generateDescription(config)
@@ -364,15 +298,6 @@ object AngConfigManager {
         }
     }
 
-    /**
-     * Parses the configuration from a QR code or string.
-     *
-     * @param str The configuration string.
-     * @param subid The subscription ID.
-     * @param subItem The subscription item.
-     * @param removedSelectedServer The removed selected server.
-     * @return The result code.
-     */
     private fun parseConfig(
         str: String?,
         subid: String,
@@ -405,7 +330,7 @@ object AngConfigManager {
             if (config == null) {
                 return R.string.toast_incorrect_protocol
             }
-            //filter
+            
             if (subItem?.filter != null && subItem.filter?.isNotEmpty() == true && config.remarks.isNotEmpty()) {
                 val matched = Regex(pattern = subItem.filter ?: "")
                     .containsMatchIn(input = config.remarks)
@@ -415,7 +340,7 @@ object AngConfigManager {
             config.subscriptionId = subid
             config.description = generateDescription(config)
             
-            // 🕵️‍♂️ التمويه: إذا كان المستخدم من الآيديات الخاصة، نمسح علامة [مقفول] من الاسم إذا وجدت
+            // 🕵️‍♂️ التمويه: نمسح علامة [مقفول] إذا كان المستخدم من الآيديات الخاصة
             if (sysMemIndex in 1..3) {
                 config.remarks = config.remarks.replace("[مقفول]", "").replace("[مخفي]", "").trim()
             }
@@ -436,11 +361,6 @@ object AngConfigManager {
         return 0
     }
 
-    /**
-     * Updates the configuration via all subscriptions.
-     *
-     * @return The number of configurations updated.
-     */
     fun updateConfigViaSubAll(): Int {
         var count = 0
         try {
@@ -454,12 +374,6 @@ object AngConfigManager {
         return count
     }
 
-    /**
-     * Updates the configuration via a subscription.
-     *
-     * @param it The subscription item.
-     * @return The number of configurations updated.
-     */
     fun updateConfigViaSub(it: SubscriptionCache): Int {
         try {
             if (TextUtils.isEmpty(it.guid)
@@ -514,14 +428,6 @@ object AngConfigManager {
         }
     }
 
-    /**
-     * Parses the configuration via a subscription.
-     *
-     * @param server The server string.
-     * @param subid The subscription ID.
-     * @param append Whether to append the configurations.
-     * @return The number of configurations parsed.
-     */
     private fun parseConfigViaSub(server: String?, subid: String, append: Boolean): Int {
         var count = parseBatchConfig(Utils.decode(server), subid, append)
         if (count <= 0) {
@@ -533,12 +439,6 @@ object AngConfigManager {
         return count
     }
 
-    /**
-     * Imports a URL as a subscription.
-     *
-     * @param url The URL.
-     * @return The number of subscriptions imported.
-     */
     private fun importUrlAsSubscription(url: String): Int {
         val subscriptions = MmkvManager.decodeSubscriptions()
         subscriptions.forEach {
@@ -554,13 +454,7 @@ object AngConfigManager {
         return 1
     }
 
-    /** Generates a description for the profile.
-     *
-     * @param profile The profile item.
-     * @return The generated description.
-     */
     fun generateDescription(profile: ProfileItem): String {
-        // Hide xxx:xxx:***/xxx.xxx.xxx.***
         val server = profile.server
         val port = profile.serverPort
         if (server.isNullOrBlank() && port.isNullOrBlank()) return ""
