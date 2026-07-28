@@ -107,13 +107,12 @@ class MainRecyclerAdapter(
             val licenseId = V2rayCrypt.getLicenseId(context, guid)
             val targetId = if (licenseId.isNotEmpty() && licenseId != "LEGACY") licenseId else guid
 
-            // 🌟 جلب بيانات حسابك الحالي وتحديد الصلاحيات الحقيقية 🌟
+            // جلب بيانات حسابك الحالي وتحديد الصلاحيات الحقيقية
             val myUserId = com.v2ray.ang.handler.AuthManager.getId(context)
             val myUserName = com.v2ray.ang.handler.AuthManager.getName(context)
             val myUserPfp = com.v2ray.ang.handler.AuthManager.getPfp(context)
             val myUserRole = com.v2ray.ang.handler.AuthManager.getRole(context)
             
-            // 🌟 هذا السطر هو مفتاح الحل: يعطيك الصلاحية إذا كنت أدمن بالتطبيق أو صاحب الملف الحقيقي 🌟
             val isSuperAdmin = (myUserRole == "admin")
             val isOwnerOrAdmin = isAdmin || isSuperAdmin || (targetId == myUserId && myUserId.isNotEmpty())
 
@@ -127,7 +126,6 @@ class MainRecyclerAdapter(
             var finalPublisherPfp = prefs.getString("pfp_$guid", "") ?: ""
             var finalIsVerified = prefs.getBoolean("verified_$guid", false)
 
-            // الذكاء التلقائي: إذا الملف مقفول وأنت صاحب الصلاحية، يسحب صورتك واسمك فوراً من جهازك
             if (isOwnerOrAdmin && (finalPublisherName == "صاحب الملف" || finalPublisherName.isEmpty())) {
                 finalPublisherName = if (myUserName.isNotEmpty()) myUserName else "صاحب الملف"
                 finalPublisherPfp = myUserPfp
@@ -136,14 +134,14 @@ class MainRecyclerAdapter(
 
             val actualTargetId = if (isOwnerOrAdmin && targetId.isEmpty()) myUserId else targetId
 
-            // عرض اسم الملف مع علامة السحابة ☁️
+            // عرض اسم الملف مع علامة السحابة
             val cloudIcon = if (isCloudSaved) "☁️" else "📱"
             tvFileName?.text = "${profile.remarks} $cloudIcon"
 
             // عرض اسم الناشر الحقيقي
             tvPublisherName?.text = if (finalIsVerified) "$finalPublisherName ☑️" else finalPublisherName
 
-            // وضع صورة الناشر الحقيقية أو صورة مولدة من اسمه
+            // وضع صورة الناشر الحقيقية أو صورة مولدة
             ivAvatar?.let {
                 if (finalPublisherPfp.isNotEmpty()) {
                     try {
@@ -191,7 +189,13 @@ class MainRecyclerAdapter(
                 }
             }
 
-            tvDataUsage?.text = "استهلاك: $dataUsage"
+            // 🌟 واجهة العرض العبقرية (لوحة التحكم) للاستهلاك 🌟
+            if (isOwnerOrAdmin) {
+                tvDataUsage?.text = "📊 الاستهلاك الكلي: $dataUsage"
+                tvDataUsage?.setTextColor(Color.parseColor("#00BCD4")) // لون أزرق فاتح مميز للوحة التحكم
+            } else {
+                tvDataUsage?.text = "استهلاك: $dataUsage"
+            }
             
             if (isProtected) {
                 ivLockStatus?.text = "🔒 مقفول"
@@ -201,7 +205,6 @@ class MainRecyclerAdapter(
                 ivLockStatus?.setTextColor(Color.parseColor("#4CAF50"))
             }
 
-            // 🌟 إعطاء صلاحيات الأزرار والواجهة (هنا رجعتلك الأزرار!) 🌟
             if (isProtected && !isOwnerOrAdmin) {
                 tvStatistics?.visibility = View.GONE
                 tvType?.text = "Secure Config" 
@@ -229,7 +232,14 @@ class MainRecyclerAdapter(
             if (isProtected || isOwnerOrAdmin) {
                 val activeCount = V2rayCrypt.getActiveCount(context, guid)
                 tvActiveCount?.visibility = View.VISIBLE
-                tvActiveCount?.text = "🟢 $activeCount"
+                
+                // 🌟 واجهة العرض العبقرية (لوحة التحكم) لعدد المتصلين 🌟
+                if (isOwnerOrAdmin) {
+                    tvActiveCount?.text = "👥 إجمالي المتصلين: $activeCount"
+                    tvActiveCount?.setTextColor(Color.parseColor("#4CAF50")) // أخضر ساطع
+                } else {
+                    tvActiveCount?.text = "🟢 $activeCount"
+                }
                 
                 tvActiveCount?.setOnClickListener {
                     if (isOwnerOrAdmin) {
@@ -302,7 +312,7 @@ class MainRecyclerAdapter(
             } else {
                 layoutMore?.visibility = View.GONE
 
-                // 🌟 هنا السر اللي يرجعلك الأزرار 🌟
+                // التحكم بالأزرار (شغالة ومحفوظة لك كأدمن 100%)
                 if (isProtected && !isOwnerOrAdmin) {
                     layoutShare?.visibility = View.GONE
                     layoutEdit?.visibility = View.GONE
