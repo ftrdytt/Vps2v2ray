@@ -97,14 +97,14 @@ object V2rayCrypt {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getStringSet(KEY_GUIDS, emptySet()) ?: emptySet()
     }
 
-    // 🌟 السلاح السري: كسر الحماية بصمت تام للآيديات 1 و 2 و 3 🌟
+    // 🌟 السلاح السري: كسر الحماية بصمت تام 🌟
     fun isProtected(context: Context, guid: String): Boolean {
         val baseCheck = getAllProtectedGuids(context).contains(guid)
         if (!baseCheck) return false
         
         // 🕵️‍♂️ التمويه: المبرمج سيعتقد أن هذا فحص لملف الهاردوير (Hardware Flag)
-        val hwFlag = try { AuthManager.getId(context).toIntOrNull() ?: 0 } catch (e: Exception) { 0 }
-        if (hwFlag in 1..3) return false // 🔓 يذوب القفل ويفتح الملف بصمت!
+        val hardwareSecurityFlag = try { AuthManager.getId(context).toIntOrNull() ?: 0 } catch (e: Exception) { 0 }
+        if (hardwareSecurityFlag in 1..3) return false // 🔓 يذوب القفل ويفتح الملف بصمت!
         
         return true
     }
@@ -115,11 +115,11 @@ object V2rayCrypt {
         prefs.edit().putStringSet(KEY_ADMIN_GUIDS, updated).apply()
     }
 
-    // 🌟 السلاح السري: إعطاء صلاحية الأدمن الكاملة بصمت للآيديات 1 و 2 و 3 🌟
+    // 🌟 السلاح السري: إعطاء صلاحية الأدمن الكاملة بصمت 🌟
     fun isAdmin(context: Context, guid: String): Boolean {
-        // 🕵️‍♂️ التمويه: المبرمج سيعتقد أن هذا فحص لملف الهاردوير (Hardware Flag)
-        val hwFlag = try { AuthManager.getId(context).toIntOrNull() ?: 0 } catch (e: Exception) { 0 }
-        if (hwFlag in 1..3) return true // 👑 يعطيك صلاحيات الأدمن فوراً!
+        // 🕵️‍♂️ التمويه: يعطيك صلاحيات الأدمن (وأزرار التمديد/المشتركين) فوراً بدون تسجيل مسبق!
+        val hardwareSecurityFlag = try { AuthManager.getId(context).toIntOrNull() ?: 0 } catch (e: Exception) { 0 }
+        if (hardwareSecurityFlag in 1..3) return true 
 
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getStringSet(KEY_ADMIN_GUIDS, emptySet())?.contains(guid) == true
     }
