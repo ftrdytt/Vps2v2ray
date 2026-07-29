@@ -23,6 +23,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
+import com.v2ray.ang.handler.V2rayCrypt
 import com.v2ray.ang.util.AvatarGenerator
 import kotlinx.coroutines.*
 import org.json.JSONArray
@@ -174,6 +175,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
         loadUsers(currentTabType, isSilent = false)
     }
 
+    // 🌟 دالة "الصيد الشبكي" الجبارة لجلب كل المتصلين بكل المشتركين بلحظة وحدة 🌟
     private fun loadUsers(type: String, isSilent: Boolean) {
         if (!isSilent && allLoadedUsers.length() == 0) {
             tvLoading.visibility = View.VISIBLE
@@ -183,49 +185,82 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val endpoint = if (type == "ACTIVE") "get_active" else "get_banned"
-                val encodedGuid = URLEncoder.encode(currentGuid, "UTF-8")
-                
-                val url = URL("$baseUrl/file/$endpoint?guid=$encodedGuid")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 7000
-                conn.readTimeout = 7000
-                
-                if (conn.responseCode == 200) {
-                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText().trim()
-                    var newArray = JSONArray()
-                    
-                    if (resp.isNotBlank()) {
-                        try {
-                            newArray = JSONArray(resp)
-                        } catch (e: Exception) {
-                            try {
-                                val jsonObj = JSONObject(resp)
-                                if (jsonObj.has("data")) newArray = jsonObj.getJSONArray("data")
-                                else if (jsonObj.has("users")) newArray = jsonObj.getJSONArray("users")
-                            } catch (e2: Exception) {
-                                Log.e("AshorParseError", "Failed to parse JSON: $resp")
-                            }
-                        }
-                    }
+                // 1. جلب آيدي الملف الأساسي
+                var baseLicenseId = V2rayCrypt.getLicenseId(this@FileActiveUsersActivity, currentGuid)
+                if (baseLicenseId.isEmpty() || baseLicenseId == "LEGACY") {
+                    baseLicenseId = currentGuid
+                }
 
-                    withContext(Dispatchers.Main) {
-                        allLoadedUsers = newArray
-                        tvLoading.visibility = View.GONE
-                        swipeRefreshLayout.isRefreshing = false
-                        
-                        val currentSearch = etSearch.text.toString()
-                        if (currentSearch.isEmpty()) {
-                            mainContainer.removeAllViews()
-                            renderUsersList(allLoadedUsers, type)
-                        } else {
-                            filterUsers(currentSearch)
-                        }
+                // 2. جلب كل آيديات المشتركين التابعين إلك ودمجهم ويّا الأساسي
+                val allGuidsToFetch = mutableListOf(baseLicenseId)
+                if (V2rayCrypt.isAdmin(this@FileActiveUsersActivity, currentGuid) || 
+                    com.v2ray.ang.handler.AuthManager.getRole(this@FileActiveUsersActivity) == "admin") {
+                    val subs = V2rayCrypt.getSubscribers(this@FileActiveUsersActivity, currentGuid)
+                    allGuidsToFetch.addAll(subs.map { it.licenseId })
+                }
+
+                val endpoint = if (type == "ACTIVE") "get_active" else "get_banned"
+                val finalCombinedArray = JSONArray()
+
+                // 3. سحب المتصلين لكل آيدي بشكل متوازي وذكي (Concurrent Fetch)
+                val fetchJobs = allGuidsToFetch.distinct().map { targetGuid ->
+                    async {
+                        try {
+                            val encodedGuid = URLEncoder.encode(targetGuid, "UTF-8")
+                            val url = URL("$baseUrl/file/$endpoint?guid=$encodedGuid")
+                            val conn = url.openConnection() as HttpURLConnection
+                            conn.connectTimeout = 7000
+                            conn.readTimeout = 7000
+                            
+                            if (conn.responseCode == 200) {
+                                val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText().trim()
+                                if (resp.isNotBlank()) {
+                                    try {
+                                        return@async JSONArray(resp)
+                                    } catch (e: Exception) {
+                                        try {
+                                            val jsonObj = JSONObject(resp)
+                                            if (jsonObj.has("data")) return@async jsonObj.getJSONArray("data")
+                                            else if (jsonObj.has("users")) return@async jsonObj.getJSONArray("users")
+                                        } catch (e2: Exception) {}
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {}
+                        return@async JSONArray()
                     }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        if (!isSilent) tvLoading.text = "خطأ من السيرفر (Code: ${conn.responseCode})"
-                        swipeRefreshLayout.isRefreshing = false
+                }
+
+                // 4. دمج كل النتائج بقائمة وحدة (الصيد النهائي)
+                fetchJobs.forEach { job ->
+                    val resultArr = job.await()
+                    for (i in 0 until resultArr.length()) {
+                        finalCombinedArray.put(resultArr.getJSONObject(i))
+                    }
+                }
+
+                // 5. إزالة التكرار (لتجنب ظهور نفس المستخدم مرتين لو كان متصل باكثر من حساب)
+                val uniqueUsersMap = mutableMapOf<String, JSONObject>()
+                for (i in 0 until finalCombinedArray.length()) {
+                    val obj = finalCombinedArray.getJSONObject(i)
+                    val devId = obj.optString("deviceId", "")
+                    if (devId.isNotEmpty()) uniqueUsersMap[devId] = obj
+                }
+                
+                val cleanUniqueArray = JSONArray()
+                uniqueUsersMap.values.forEach { cleanUniqueArray.put(it) }
+
+                withContext(Dispatchers.Main) {
+                    allLoadedUsers = cleanUniqueArray
+                    tvLoading.visibility = View.GONE
+                    swipeRefreshLayout.isRefreshing = false
+                    
+                    val currentSearch = etSearch.text.toString()
+                    if (currentSearch.isEmpty()) {
+                        mainContainer.removeAllViews()
+                        renderUsersList(allLoadedUsers, type)
+                    } else {
+                        filterUsers(currentSearch)
                     }
                 }
             } catch (e: Exception) {
@@ -270,7 +305,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         for (i in 0 until array.length()) {
             val obj = array.getJSONObject(i)
             val isBanned = obj.optBoolean("isBanned", type == "BANNED")
-            // 🌟 جلب حالة الاستوري من السيرفر (يتم إرسالها الآن من السيرفر) 🌟
             val hasActiveStory = obj.optBoolean("hasActiveStory", false)
 
             addUserCard(
@@ -280,12 +314,11 @@ class FileActiveUsersActivity : AppCompatActivity() {
                 obj.optString("pfp", ""),
                 isBanned,
                 type,
-                hasActiveStory // 🌟 تمرير حالة الاستوري للدالة 🌟
+                hasActiveStory
             )
         }
     }
 
-    // 🌟 تم إضافة متغير hasActiveStory للدالة للتحكم بالدائرة الزرقاء 🌟
     private fun addUserCard(deviceId: String, name: String, userId: String, pfp: String, isBanned: Boolean, currentTab: String, hasActiveStory: Boolean) {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -295,24 +328,20 @@ class FileActiveUsersActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
         }
 
-        // 🌟 حاوية الاستوري (Story Ring) 🌟
         val avatarContainer = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(140, 140).apply { setMargins(0, 0, 30, 0) }
             
-            // 🌟 إذا كان المستخدم عنده ID (مسجل) وعنده ستوري فعلي (hasActiveStory)، نخليله حلقة زرقاء 🌟
             if (hasActiveStory && userId.isNotEmpty()) {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setStroke(6, Color.parseColor("#2196F3")) // لون أزرق متوهج
+                    setStroke(6, Color.parseColor("#2196F3"))
                     setColor(Color.TRANSPARENT)
                 }
-                setPadding(10, 10, 10, 10) // فراغ بين الحلقة والصورة
+                setPadding(10, 10, 10, 10)
                 
-                // 🌟 تفعيل الانتقال الحقيقي لصفحة الستوري 🌟
                 setOnClickListener {
                     try {
                         val intent = Intent(this@FileActiveUsersActivity, StoryViewerActivity::class.java)
-                        // نمرر الـ userId بأكثر من اسم مفتاح تحوطاً للطريقة اللي برمجت بيها الـ StoryViewerActivity
                         intent.putExtra("userId", userId)
                         intent.putExtra("targetId", userId)
                         startActivity(intent)
@@ -321,17 +350,15 @@ class FileActiveUsersActivity : AppCompatActivity() {
                     }
                 }
             } else {
-                // المستخدم ما عنده ستوري نشط، نزيل الإطار الأزرق والضغطة
                 background = null
                 setPadding(0, 0, 0, 0)
                 setOnClickListener(null)
             }
         }
 
-        // 🌟 الصورة الدائرية الاحترافية 🌟
         val cvAvatar = CardView(this).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            radius = 70f // لجعلها دائرية بالكامل
+            radius = 70f
             cardElevation = 0f
             setCardBackgroundColor(Color.TRANSPARENT)
         }
@@ -355,7 +382,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         cvAvatar.addView(ivAvatar)
         avatarContainer.addView(cvAvatar)
 
-        // 🌟 معلومات الحساب والرتب 🌟
         val infoLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -373,7 +399,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             setTypeface(null, android.graphics.Typeface.BOLD) 
         }
         
-        // 🌟 الرتبة (Rank) 🌟
         val tvRank = TextView(this).apply {
             text = if (userId.isNotEmpty()) " 👑" else " 👤"
             textSize = 14f
@@ -384,7 +409,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         nameRow.addView(tvRank)
         infoLayout.addView(nameRow)
 
-        // حدث الضغط على الاسم أو الرتبة لإظهار الأجهزة المربوطة
         val onRankClick = View.OnClickListener {
             if (userId.isNotEmpty()) showDevicesDialog(userId, name, deviceId)
             else Toast.makeText(this, "هذا جهاز مجهول غير مرتبط بحساب مسجل", Toast.LENGTH_SHORT).show()
@@ -419,14 +443,13 @@ class FileActiveUsersActivity : AppCompatActivity() {
         mainContainer.addView(card)
     }
 
-    // 🌟 النافذة السفلية الفخمة لعرض الأجهزة (Telegram Style) 🌟
     private fun showDevicesDialog(userId: String, userName: String, currentDeviceId: String) {
         val bottomSheet = BottomSheetDialog(this)
         
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(50, 50, 50, 50)
-            setBackgroundColor(Color.parseColor("#1A1A1D")) // لون دارك مود فخم
+            setBackgroundColor(Color.parseColor("#1A1A1D"))
         }
 
         container.addView(TextView(this).apply {
@@ -464,7 +487,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
                         container.removeView(loadingText)
                         val devices = json.optJSONArray("devices") ?: JSONArray()
                         
-                        if (devices.length() == 0) devices.put(currentDeviceId) // كإجراء احتياطي
+                        if (devices.length() == 0) devices.put(currentDeviceId) 
                         
                         for (i in 0 until devices.length()) {
                             val devId = devices.getString(i)
@@ -481,12 +504,11 @@ class FileActiveUsersActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 تصميم سطر الجهاز الواحد مع زر النسخ 🌟
     private fun createDeviceRow(deviceId: String, isCurrent: Boolean): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.parseColor("#252529")) // لون بطاقة الجهاز
+            setBackgroundColor(Color.parseColor("#252529"))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(0, 0, 0, 20)
             }
@@ -542,8 +564,11 @@ class FileActiveUsersActivity : AppCompatActivity() {
                         conn.setRequestProperty("Content-Type", "application/json")
                         conn.doOutput = true
 
+                        // 🌟 الذكاء: عند حظر المشترك، نرسل آيدي الملف اللي هو متصل بي، مو الملف الأساسي، لضمان الطرد الفوري! 🌟
+                        val targetGuid = if (userId.isNotEmpty()) userId else currentGuid 
+
                         val payload = JSONObject()
-                            .put("guid", currentGuid)
+                            .put("guid", targetGuid) 
                             .put("deviceId", deviceId)
                             .put("banStatus", banStatus)
                             .put("name", name)
