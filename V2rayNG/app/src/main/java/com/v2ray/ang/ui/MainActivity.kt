@@ -175,13 +175,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
-    // 🌟 السلاح السري الجبار: جلب بيانات مئات المشتركين بلحظة واحدة وبشكل متوازي (Concurrently) 🌟
-    private suspend fun fetchAllStatsConcurrently(ids: List<String>): Map<String, JSONObject> {
+    // 🌟 السلاح السري الجبار: جلب بيانات مئات المشتركين بلحظة واحدة وبشكل متوازي ومحمي من الأخطاء 🌟
+    private suspend fun fetchBatchStats(ids: List<String>): Map<String, JSONObject> {
         return withContext(Dispatchers.IO) {
             val resultMap = mutableMapOf<String, JSONObject>()
             val jobs = ids.distinct().map { id ->
                 async {
                     try {
+                        // 🌟 حل مشكلة الأحرف العربية وتشفير الرابط 🌟
                         val encodedId = java.net.URLEncoder.encode(id, "UTF-8")
                         val checkConn = URL("$BASE_API_URL/check?guid=$encodedId").openConnection() as HttpURLConnection
                         checkConn.connectTimeout = 5000
@@ -266,7 +267,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     }
 
                     // سحب بيانات كل الملفات والمشتركين بضربة واحدة من السيرفر!
-                    val batchStats = fetchAllStatsConcurrently(allIdsToFetch.toList())
+                    val batchStats = fetchBatchStats(allIdsToFetch.toList())
 
                     for (guid in guids) {
                         val licenseId = guidToLicenseId[guid]!!
@@ -274,6 +275,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
                         var totalUsageBytes = 0L
                         var totalActiveCount = 0
+                        var parentExpiry = -1L
                         var isLocked = false
 
                         for (id in ids) {
@@ -283,6 +285,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 totalActiveCount += statObj.optInt("activeCount", 0)
                                 if (id == licenseId) {
                                     isLocked = statObj.optBoolean("isLocked", false)
+                                    parentExpiry = statObj.optLong("expiryTime", -1L)
                                 }
                             }
                         }
@@ -290,9 +293,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         editor.putBoolean("locked_$guid", isLocked)
                         editor.putString("usage_$guid", formatBytes(totalUsageBytes))
                         V2rayCrypt.saveActiveCount(this@MainActivity, guid, totalActiveCount)
+                        if (parentExpiry >= 0L) {
+                            V2rayCrypt.saveExpiryTime(this@MainActivity, guid, parentExpiry)
+                        }
                     }
 
-                    // سحب صور وأسماء الناشرين بشكل متوازي
+                    // 🌟 سحب صور وأسماء الناشرين بشكل متوازي (مع تشفير الروابط للأحرف العربية) 🌟
                     val userInfos = guids.map { guid ->
                         async(Dispatchers.IO) {
                             val licenseId = guidToLicenseId[guid]!!
@@ -682,8 +688,18 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     } catch (e: Exception) {}
 
                     delay(1000) 
-                    val updatedData = CloudflareAPI.checkLiveConfig(idToTrack)
-                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, updatedData.third)
+                    val encodedId = java.net.URLEncoder.encode(idToTrack, "UTF-8")
+                    try {
+                        val checkConn = URL("$BASE_API_URL/check?guid=$encodedId").openConnection() as HttpURLConnection
+                        checkConn.connectTimeout = 4000
+                        checkConn.readTimeout = 4000
+                        if (checkConn.responseCode == 200) {
+                            val checkResp = BufferedReader(InputStreamReader(checkConn.inputStream)).readText()
+                            val checkObj = JSONObject(checkResp)
+                            V2rayCrypt.saveActiveCount(this@MainActivity, guid, checkObj.optInt("activeCount", 0))
+                        }
+                    } catch (e: Exception) {}
+                    
                     withContext(Dispatchers.Main) { mainViewModel.reloadServerList() }
                 }
             }
@@ -950,8 +966,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 allIdsToFetch.addAll(ids)
             }
 
-            // سحب بيانات كل الملفات والمشتركين بضربة واحدة!
-            val batchStats = fetchAllStatsConcurrently(allIdsToFetch.toList())
+            // 🌟 سحب بيانات كل الملفات والمشتركين بضربة واحدة ومحمية من أحرف الأخطاء! 🌟
+            val batchStats = fetchBatchStats(allIdsToFetch.toList())
 
             for (guid in guids) {
                 val licenseId = guidToLicenseId[guid]!!
@@ -982,7 +998,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
 
-            // سحب صور وأسماء الناشرين بشكل متوازي
+            // سحب صور وأسماء الناشرين بشكل متوازي (مع تشفير الروابط للأحرف العربية)
             val userInfos = guids.map { guid ->
                 async(Dispatchers.IO) {
                     val licenseId = guidToLicenseId[guid]!!
