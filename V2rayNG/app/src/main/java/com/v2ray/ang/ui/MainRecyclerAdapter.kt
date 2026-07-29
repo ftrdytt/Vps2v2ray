@@ -189,10 +189,10 @@ class MainRecyclerAdapter(
                 }
             }
 
-            // 🌟 واجهة العرض العبقرية (لوحة التحكم) للاستهلاك 🌟
+            // واجهة العرض العبقرية (لوحة التحكم) للاستهلاك
             if (isOwnerOrAdmin) {
                 tvDataUsage?.text = "📊 الاستهلاك الكلي: $dataUsage"
-                tvDataUsage?.setTextColor(Color.parseColor("#00BCD4")) // لون أزرق فاتح مميز للوحة التحكم
+                tvDataUsage?.setTextColor(Color.parseColor("#00BCD4")) 
             } else {
                 tvDataUsage?.text = "استهلاك: $dataUsage"
             }
@@ -233,18 +233,18 @@ class MainRecyclerAdapter(
                 val activeCount = V2rayCrypt.getActiveCount(context, guid)
                 tvActiveCount?.visibility = View.VISIBLE
                 
-                // 🌟 واجهة العرض العبقرية (لوحة التحكم) لعدد المتصلين 🌟
                 if (isOwnerOrAdmin) {
                     tvActiveCount?.text = "👥 إجمالي المتصلين: $activeCount"
-                    tvActiveCount?.setTextColor(Color.parseColor("#4CAF50")) // أخضر ساطع
+                    tvActiveCount?.setTextColor(Color.parseColor("#4CAF50")) 
                 } else {
                     tvActiveCount?.text = "🟢 $activeCount"
                 }
                 
+                // 🌟 الحل السحري هنا: إرسال "guid" الملف الأصلي بدلاً من "actualTargetId" 🌟
                 tvActiveCount?.setOnClickListener {
                     if (isOwnerOrAdmin) {
                         val intent = Intent(context, FileActiveUsersActivity::class.java)
-                        intent.putExtra("guid", actualTargetId)
+                        intent.putExtra("guid", guid) // <-- التعديل الجذري تم هنا ليربط بالملف الأصلي ومشتركيه
                         context.startActivity(intent)
                     } else {
                         Toast.makeText(context, "غير مصرح لك برؤية تفاصيل المتصلين", Toast.LENGTH_SHORT).show()
@@ -312,7 +312,6 @@ class MainRecyclerAdapter(
             } else {
                 layoutMore?.visibility = View.GONE
 
-                // التحكم بالأزرار (شغالة ومحفوظة لك كأدمن 100%)
                 if (isProtected && !isOwnerOrAdmin) {
                     layoutShare?.visibility = View.GONE
                     layoutEdit?.visibility = View.GONE
