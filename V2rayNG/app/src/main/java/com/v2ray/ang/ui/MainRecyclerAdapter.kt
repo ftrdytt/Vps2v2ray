@@ -1,452 +1,602 @@
 package com.v2ray.ang.ui
 
-import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.util.Base64
-import android.view.LayoutInflater
+import android.util.Log
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
-import androidx.core.content.ContextCompat
-import androidx.recyclerview.widget.RecyclerView
-import com.v2ray.ang.AppConfig
-import com.v2ray.ang.R
-import com.v2ray.ang.contracts.MainAdapterListener
-import com.v2ray.ang.databinding.ItemRecyclerFooterBinding
-import com.v2ray.ang.databinding.ItemRecyclerMainBinding
-import com.v2ray.ang.dto.ProfileItem
-import com.v2ray.ang.dto.ServersCache
-import com.v2ray.ang.extension.nullIfBlank
-import com.v2ray.ang.handler.AngConfigManager
-import com.v2ray.ang.handler.MmkvManager
-import com.v2ray.ang.handler.NetworkTime
+import androidx.lifecycle.lifecycleScope
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.handler.V2rayCrypt
-import com.v2ray.ang.helper.ItemTouchHelperAdapter
-import com.v2ray.ang.helper.ItemTouchHelperViewHolder
 import com.v2ray.ang.util.AvatarGenerator
-import com.v2ray.ang.viewmodel.MainViewModel
-import java.util.Collections
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.*
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 
-class MainRecyclerAdapter(
-    private val mainViewModel: MainViewModel,
-    private val adapterListener: MainAdapterListener?
-) : RecyclerView.Adapter<MainRecyclerAdapter.BaseViewHolder>(), ItemTouchHelperAdapter {
-    
-    companion object {
-        private const val VIEW_TYPE_ITEM = 1
-        private const val VIEW_TYPE_FOOTER = 2
-    }
+class FileActiveUsersActivity : AppCompatActivity() {
 
-    private val doubleColumnDisplay = MmkvManager.decodeSettingsBool(AppConfig.PREF_DOUBLE_COLUMN_DISPLAY, false)
-    private var data: MutableList<ServersCache> = mutableListOf()
-    private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var baseUrl: String = "https://education.ashor.shop"
+    private lateinit var mainContainer: LinearLayout
+    private lateinit var tvLoading: TextView
+    private lateinit var etSearch: EditText
+    private lateinit var swipeRefreshLayout: SwipeRefreshLayout
+    private var currentGuid: String = ""
+    private var allLoadedUsers = JSONArray() 
+    private var currentTabType = "ACTIVE"
 
-    @SuppressLint("NotifyDataSetChanged")
-    fun setData(newData: MutableList<ServersCache>?, position: Int = -1) {
-        data = newData?.toMutableList() ?: mutableListOf()
-        if (position >= 0 && position in data.indices) {
-            notifyItemChanged(position)
-        } else {
-            notifyDataSetChanged()
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        currentGuid = intent.getStringExtra("guid") ?: ""
+        baseUrl = intent.getStringExtra("apiUrl") ?: "https://education.ashor.shop"
+
+        if (currentGuid.isEmpty()) {
+            Toast.makeText(this, "خطأ في جلب بيانات الملف", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#0A0A0C"))
+        }
+
+        val header = TextView(this).apply {
+            text = "إدارة المتصلين بالملف"
+            setTextColor(Color.WHITE)
+            textSize = 20f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(20, 40, 20, 40)
+            setBackgroundColor(Color.parseColor("#1A1A1D"))
+        }
+
+        etSearch = EditText(this).apply {
+            hint = "🔍 ابحث بالاسم، ID، أو Device ID..."
+            setHintTextColor(Color.parseColor("#80FFFFFF"))
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#141417"))
+            setPadding(30, 30, 30, 30)
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(20, 20, 20, 20)
+            }
+            
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { filterUsers(s.toString()) }
+                override fun afterTextChanged(s: Editable?) {}
+            })
+        }
+
+        val tabsLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(10, 10, 10, 10) 
+            setBackgroundColor(Color.parseColor("#141417"))
+        }
+
+        val btnActiveTab = MaterialButton(this).apply {
+            text = "النشطين الآن 🟢"
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(5, 0, 5, 0) }
+            setBackgroundColor(Color.parseColor("#4CAF50"))
+            setTextColor(Color.WHITE)
+        }
+
+        val btnBannedTab = MaterialButton(this).apply {
+            text = "المحظورين 🚫"
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(5, 0, 5, 0) }
+            setBackgroundColor(Color.parseColor("#252529"))
+            setTextColor(Color.GRAY)
+        }
+
+        tabsLayout.addView(btnActiveTab)
+        tabsLayout.addView(btnBannedTab)
+
+        tvLoading = TextView(this).apply {
+            text = "جاري تحميل البيانات..."
+            setTextColor(Color.parseColor("#FF9800"))
+            gravity = Gravity.CENTER
+            setPadding(20, 40, 20, 20)
+            visibility = View.GONE
+        }
+
+        swipeRefreshLayout = SwipeRefreshLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            setColorSchemeColors(Color.parseColor("#4CAF50"))
+            setOnRefreshListener {
+                loadUsers(currentTabType, isSilent = false)
+            }
+        }
+
+        val scrollView = ScrollView(this).apply {
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        }
+
+        mainContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 20, 20, 20)
+        }
+
+        scrollView.addView(mainContainer)
+        swipeRefreshLayout.addView(scrollView)
+
+        root.addView(header)
+        root.addView(etSearch)
+        root.addView(tabsLayout)
+        root.addView(tvLoading)
+        root.addView(swipeRefreshLayout)
+
+        setContentView(root)
+
+        btnActiveTab.setOnClickListener {
+            currentTabType = "ACTIVE"
+            etSearch.text.clear()
+            btnActiveTab.setBackgroundColor(Color.parseColor("#4CAF50"))
+            btnActiveTab.setTextColor(Color.WHITE)
+            btnBannedTab.setBackgroundColor(Color.parseColor("#252529"))
+            btnBannedTab.setTextColor(Color.GRAY)
+            loadUsers("ACTIVE", isSilent = false)
+        }
+
+        btnBannedTab.setOnClickListener {
+            currentTabType = "BANNED"
+            etSearch.text.clear()
+            btnBannedTab.setBackgroundColor(Color.parseColor("#F44336"))
+            btnBannedTab.setTextColor(Color.WHITE)
+            btnActiveTab.setBackgroundColor(Color.parseColor("#252529"))
+            btnActiveTab.setTextColor(Color.GRAY)
+            loadUsers("BANNED", isSilent = false)
         }
     }
 
-    override fun getItemCount() = data.size + 1
+    override fun onResume() {
+        super.onResume()
+        loadUsers(currentTabType, isSilent = false)
+    }
 
-    override fun onBindViewHolder(holder: BaseViewHolder, position: Int) {
-        if (holder is MainViewHolder) {
-            val context = holder.itemMainBinding.root.context
-            val guid = data[position].guid
-            val profile = data[position].profile
+    // 🌟 دالة "الصيد الشبكي" الجبارة لجلب كل المتصلين بكل المشتركين بلحظة وحدة 🌟
+    private fun loadUsers(type: String, isSilent: Boolean) {
+        if (!isSilent && allLoadedUsers.length() == 0) {
+            tvLoading.visibility = View.VISIBLE
+            tvLoading.text = "جاري تحميل البيانات..."
+            mainContainer.removeAllViews()
+        }
 
-            holder.itemView.setBackgroundColor(Color.TRANSPARENT)
-            
-            // ربط العناصر
-            val tvFileName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_name)
-            val tvPublisherName = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_publisher_name)
-            val ivAvatar = holder.itemMainBinding.root.findViewById<ImageView>(R.id.iv_file_avatar)
-            val flAvatarContainer = holder.itemMainBinding.root.findViewById<FrameLayout>(R.id.fl_avatar_container)
-            val tvDataUsage = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_data_usage)
-            val ivLockStatus = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_lock_status)
-            val layoutIndicator = holder.itemMainBinding.root.findViewById<View>(R.id.layout_indicator)
-            val tvType = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_type)
-            val tvStatistics = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_statistics)
-            val tvTestResult = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_test_result)
-            val tvActiveCount = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_active_count)
-            val tvExpiry = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_expiry_countdown)
-            
-            val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
-            val layoutAdminControl = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_admin_control)
-            val layoutSubscribersBtn = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_subscribers_btn)
-            val layoutShare = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_share)
-            val layoutEdit = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_edit)
-            val layoutRemove = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_remove)
-            val layoutMore = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_more)
-            val infoContainer = holder.itemMainBinding.root.findViewById<View>(R.id.info_container)
-
-            val isProtected = V2rayCrypt.isProtected(context, guid)
-            val isAdmin = V2rayCrypt.isAdmin(context, guid)
-            val licenseId = V2rayCrypt.getLicenseId(context, guid)
-            val targetId = if (licenseId.isNotEmpty() && licenseId != "LEGACY") licenseId else guid
-
-            // جلب بيانات حسابك الحالي وتحديد الصلاحيات الحقيقية
-            val myUserId = com.v2ray.ang.handler.AuthManager.getId(context)
-            val myUserName = com.v2ray.ang.handler.AuthManager.getName(context)
-            val myUserPfp = com.v2ray.ang.handler.AuthManager.getPfp(context)
-            val myUserRole = com.v2ray.ang.handler.AuthManager.getRole(context)
-            
-            val isSuperAdmin = (myUserRole == "admin")
-            val isOwnerOrAdmin = isAdmin || isSuperAdmin || (targetId == myUserId && myUserId.isNotEmpty())
-
-            // جلب المعلومات الحقيقية من السيرفر (من الذاكرة المؤقتة)
-            val prefs = context.getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
-            val dataUsage = prefs.getString("usage_$guid", "0.0 MB") ?: "0.0 MB"
-            val hasActiveStory = prefs.getBoolean("story_$guid", false)
-            val isCloudSaved = prefs.getBoolean("cloud_$guid", false)
-
-            var finalPublisherName = prefs.getString("name_$guid", "صاحب الملف") ?: "صاحب الملف"
-            var finalPublisherPfp = prefs.getString("pfp_$guid", "") ?: ""
-            var finalIsVerified = prefs.getBoolean("verified_$guid", false)
-
-            if (isOwnerOrAdmin && (finalPublisherName == "صاحب الملف" || finalPublisherName.isEmpty())) {
-                finalPublisherName = if (myUserName.isNotEmpty()) myUserName else "صاحب الملف"
-                finalPublisherPfp = myUserPfp
-                finalIsVerified = isSuperAdmin
-            }
-
-            val actualTargetId = if (isOwnerOrAdmin && targetId.isEmpty()) myUserId else targetId
-
-            // عرض اسم الملف مع علامة السحابة
-            val cloudIcon = if (isCloudSaved) "☁️" else "📱"
-            tvFileName?.text = "${profile.remarks} $cloudIcon"
-
-            // عرض اسم الناشر الحقيقي
-            tvPublisherName?.text = if (finalIsVerified) "$finalPublisherName ☑️" else finalPublisherName
-
-            // وضع صورة الناشر الحقيقية أو صورة مولدة
-            ivAvatar?.let {
-                if (finalPublisherPfp.isNotEmpty()) {
-                    try {
-                        val b = Base64.decode(if (finalPublisherPfp.contains(",")) finalPublisherPfp.substringAfter(",") else finalPublisherPfp, Base64.DEFAULT)
-                        it.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size))
-                    } catch (e: Exception) {
-                        it.setImageBitmap(AvatarGenerator.generateAvatar(finalPublisherName, actualTargetId))
-                    }
-                } else {
-                    it.setImageBitmap(AvatarGenerator.generateAvatar(finalPublisherName, actualTargetId))
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // 1. جلب آيدي الملف الأساسي
+                var baseLicenseId = V2rayCrypt.getLicenseId(this@FileActiveUsersActivity, currentGuid)
+                if (baseLicenseId.isEmpty() || baseLicenseId == "LEGACY") {
+                    baseLicenseId = currentGuid
                 }
-            }
 
-            // تفعيل الإطار الأزرق وفتح الاستوري
-            flAvatarContainer?.let {
-                if (hasActiveStory && actualTargetId.isNotEmpty()) {
-                    it.background = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setStroke(5, Color.parseColor("#2196F3")) 
-                        setColor(Color.TRANSPARENT)
-                    }
-                    it.setPadding(8, 8, 8, 8)
-                    it.setOnClickListener {
+                // 2. جلب كل آيديات المشتركين التابعين إلك ودمجهم ويّا الأساسي
+                val allGuidsToFetch = mutableListOf(baseLicenseId)
+                if (V2rayCrypt.isAdmin(this@FileActiveUsersActivity, currentGuid) || 
+                    com.v2ray.ang.handler.AuthManager.getRole(this@FileActiveUsersActivity) == "admin") {
+                    val subs = V2rayCrypt.getSubscribers(this@FileActiveUsersActivity, currentGuid)
+                    allGuidsToFetch.addAll(subs.map { it.licenseId })
+                }
+
+                val endpoint = if (type == "ACTIVE") "get_active" else "get_banned"
+                val finalCombinedArray = JSONArray()
+
+                // 3. سحب المتصلين لكل آيدي بشكل متوازي وذكي مع تشفير الأحرف العربية
+                val fetchJobs = allGuidsToFetch.distinct().map { targetGuid ->
+                    async {
                         try {
-                            val intent = Intent(context, StoryViewerActivity::class.java)
-                            intent.putExtra("targetUserId", actualTargetId)
-                            intent.putExtra("userId", myUserId.ifEmpty { actualTargetId })
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "الاستوري غير متوفر", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                } else {
-                    it.background = null
-                    it.setPadding(0, 0, 0, 0)
-                    it.setOnClickListener {
-                        if (actualTargetId.isNotEmpty()) {
-                            try {
-                                val intent = Intent(context, UserProfileActivity::class.java)
-                                intent.putExtra("targetUserId", actualTargetId)
-                                context.startActivity(intent)
-                            } catch (e: Exception) {}
-                        }
-                    }
-                }
-            }
-
-            // واجهة العرض العبقرية (لوحة التحكم) للاستهلاك
-            if (isOwnerOrAdmin) {
-                tvDataUsage?.text = "📊 الاستهلاك الكلي: $dataUsage"
-                tvDataUsage?.setTextColor(Color.parseColor("#00BCD4")) 
-            } else {
-                tvDataUsage?.text = "استهلاك: $dataUsage"
-            }
-            
-            if (isProtected) {
-                ivLockStatus?.text = "🔒 مقفول"
-                ivLockStatus?.setTextColor(Color.parseColor("#E53935"))
-            } else {
-                ivLockStatus?.text = "🔓 مفتوح"
-                ivLockStatus?.setTextColor(Color.parseColor("#4CAF50"))
-            }
-
-            if (isProtected && !isOwnerOrAdmin) {
-                tvStatistics?.visibility = View.GONE
-                tvType?.text = "Secure Config" 
-                (tvType?.parent as? CardView)?.setCardBackgroundColor(Color.parseColor("#D32F2F"))
-            } else if (isOwnerOrAdmin) {
-                tvStatistics?.visibility = View.VISIBLE
-                tvStatistics?.text = getAddress(profile)
-                tvType?.text = "Admin Panel"
-                (tvType?.parent as? CardView)?.setCardBackgroundColor(Color.parseColor("#2196F3"))
-            } else {
-                tvStatistics?.visibility = View.VISIBLE
-                tvStatistics?.text = getAddress(profile)
-                tvType?.text = profile.configType.name
-                (tvType?.parent as? CardView)?.setCardBackgroundColor(Color.parseColor("#FF5722"))
-            }
-
-            val aff = MmkvManager.decodeServerAffiliationInfo(guid)
-            tvTestResult?.text = aff?.getTestDelayString().orEmpty()
-            if ((aff?.testDelayMillis ?: 0L) < 0L) {
-                tvTestResult?.setTextColor(ContextCompat.getColor(context, R.color.colorPingRed))
-            } else {
-                tvTestResult?.setTextColor(Color.parseColor("#00E676"))
-            }
-
-            if (isProtected || isOwnerOrAdmin) {
-                val activeCount = V2rayCrypt.getActiveCount(context, guid)
-                tvActiveCount?.visibility = View.VISIBLE
-                
-                if (isOwnerOrAdmin) {
-                    tvActiveCount?.text = "👥 إجمالي المتصلين: $activeCount"
-                    tvActiveCount?.setTextColor(Color.parseColor("#4CAF50")) 
-                } else {
-                    tvActiveCount?.text = "🟢 $activeCount"
-                }
-                
-                // 🌟 الحل السحري هنا: إرسال "guid" الملف الأصلي بدلاً من "actualTargetId" 🌟
-                tvActiveCount?.setOnClickListener {
-                    if (isOwnerOrAdmin) {
-                        val intent = Intent(context, FileActiveUsersActivity::class.java)
-                        intent.putExtra("guid", guid) // <-- التعديل الجذري تم هنا ليربط بالملف الأصلي ومشتركيه
-                        context.startActivity(intent)
-                    } else {
-                        Toast.makeText(context, "غير مصرح لك برؤية تفاصيل المتصلين", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            } else {
-                tvActiveCount?.visibility = View.GONE
-            }
-
-            val expiryTime = V2rayCrypt.getExpiryTime(context, guid)
-            holder.countdownJob?.cancel()
-
-            if ((isProtected || isOwnerOrAdmin) && expiryTime > 0L) {
-                tvExpiry?.visibility = View.VISIBLE
-                
-                holder.countdownJob = coroutineScope.launch {
-                    while (isActive) {
-                        val currentTime = NetworkTime.currentTimeMillis(context)
-                        val diffMs = expiryTime - currentTime
-                        
-                        if (diffMs > 0L) {
-                            val d = diffMs / 86400000L
-                            val h = (diffMs % 86400000L) / 3600000L
-                            val m = (diffMs % 3600000L) / 60000L
+                            val encodedGuid = URLEncoder.encode(targetGuid, "UTF-8")
+                            val url = URL("$baseUrl/file/$endpoint?guid=$encodedGuid")
+                            val conn = url.openConnection() as HttpURLConnection
+                            conn.connectTimeout = 7000
+                            conn.readTimeout = 7000
                             
-                            val timeText = when {
-                                d > 0 -> "$d يوم"
-                                h > 0 -> "$h ساعة"
-                                m > 0 -> "$m دقيقة"
-                                else -> "أقل من دقيقة"
-                            }
-                            
-                            tvExpiry?.text = timeText
-                            tvExpiry?.setTextColor(Color.parseColor("#FF9800")) 
-                        } else {
-                            tvExpiry?.text = "منتهي الصلاحية 🛑"
-                            tvExpiry?.setTextColor(Color.parseColor("#E53935")) 
-                        }
-                        delay(60000L) 
-                    }
-                }
-            } else {
-                tvExpiry?.visibility = View.GONE
-            }
-
-            if (guid == MmkvManager.getSelectServer()) {
-                layoutIndicator?.visibility = View.VISIBLE
-                bottomSection?.setBackgroundColor(Color.parseColor("#1A4CAF50")) 
-            } else {
-                layoutIndicator?.visibility = View.INVISIBLE
-                bottomSection?.setBackgroundColor(Color.TRANSPARENT)
-            }
-
-            if (doubleColumnDisplay) {
-                layoutShare?.visibility = View.GONE
-                layoutEdit?.visibility = View.GONE
-                layoutRemove?.visibility = View.GONE
-                layoutAdminControl?.visibility = View.GONE
-                layoutSubscribersBtn?.visibility = View.GONE
-                layoutMore?.visibility = View.VISIBLE
-
-                layoutMore?.setOnClickListener {
-                    adapterListener?.onShare(guid, profile, position, true)
-                }
-            } else {
-                layoutMore?.visibility = View.GONE
-
-                if (isProtected && !isOwnerOrAdmin) {
-                    layoutShare?.visibility = View.GONE
-                    layoutEdit?.visibility = View.GONE
-                    layoutAdminControl?.visibility = View.GONE
-                    layoutSubscribersBtn?.visibility = View.GONE
-                } else if (isOwnerOrAdmin) {
-                    layoutShare?.visibility = View.VISIBLE
-                    layoutEdit?.visibility = View.VISIBLE
-                    layoutAdminControl?.visibility = View.VISIBLE
-                    layoutSubscribersBtn?.visibility = View.VISIBLE 
-                } else {
-                    layoutShare?.visibility = View.VISIBLE
-                    layoutEdit?.visibility = View.VISIBLE
-                    layoutAdminControl?.visibility = View.GONE
-                    layoutSubscribersBtn?.visibility = View.GONE
-                }
-
-                layoutSubscribersBtn?.setOnClickListener {
-                    if (context is MainActivity) context.openSubscribersPanel(guid)
-                }
-
-                layoutAdminControl?.setOnClickListener {
-                    if (context is MainActivity) context.showExtendLicenseDialog(guid)
-                }
-
-                layoutShare?.setOnClickListener {
-                    adapterListener?.onShare(guid, profile, position, false)
-                }
-
-                layoutEdit?.setOnClickListener {
-                    if (isOwnerOrAdmin) {
-                        val options = arrayOf("تعديل يدوي للسيرفر", "استبدال السيرفر من الحافظة (السحابة)")
-                        AlertDialog.Builder(context)
-                            .setTitle("تعديل كود المشتركين")
-                            .setItems(options) { _, which ->
-                                when (which) {
-                                    0 -> adapterListener?.onEdit(guid, position, profile) 
-                                    1 -> if (context is MainActivity) context.replaceAndSyncConfigFromClipboard(guid)
+                            if (conn.responseCode == 200) {
+                                val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText().trim()
+                                if (resp.isNotBlank()) {
+                                    try {
+                                        return@async JSONArray(resp)
+                                    } catch (e: Exception) {
+                                        try {
+                                            val jsonObj = JSONObject(resp)
+                                            if (jsonObj.has("data")) return@async jsonObj.getJSONArray("data")
+                                            else if (jsonObj.has("users")) return@async jsonObj.getJSONArray("users")
+                                        } catch (e2: Exception) {}
+                                    }
                                 }
                             }
-                            .show()
-                    } else {
-                        adapterListener?.onEdit(guid, position, profile)
+                        } catch (e: Exception) {}
+                        return@async JSONArray()
                     }
                 }
+
+                // 4. دمج كل النتائج بقائمة وحدة
+                fetchJobs.forEach { job ->
+                    val resultArr = job.await()
+                    for (i in 0 until resultArr.length()) {
+                        finalCombinedArray.put(resultArr.getJSONObject(i))
+                    }
+                }
+
+                // 5. إزالة التكرار (لتجنب ظهور نفس المستخدم مرتين لو كان متصل باكثر من حساب)
+                val uniqueUsersMap = mutableMapOf<String, JSONObject>()
+                for (i in 0 until finalCombinedArray.length()) {
+                    val obj = finalCombinedArray.getJSONObject(i)
+                    val devId = obj.optString("deviceId", "")
+                    if (devId.isNotEmpty()) uniqueUsersMap[devId] = obj
+                }
                 
-                layoutRemove?.setOnClickListener {
-                    adapterListener?.onRemove(guid, position)
+                val cleanUniqueArray = JSONArray()
+                uniqueUsersMap.values.forEach { cleanUniqueArray.put(it) }
+
+                withContext(Dispatchers.Main) {
+                    allLoadedUsers = cleanUniqueArray
+                    tvLoading.visibility = View.GONE
+                    swipeRefreshLayout.isRefreshing = false
+                    
+                    val currentSearch = etSearch.text.toString()
+                    if (currentSearch.isEmpty()) {
+                        mainContainer.removeAllViews()
+                        renderUsersList(allLoadedUsers, type)
+                    } else {
+                        filterUsers(currentSearch)
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { 
+                    if (!isSilent) tvLoading.text = "تأكد من اتصالك بالإنترنت، ثم اسحب للتحديث" 
+                    swipeRefreshLayout.isRefreshing = false
                 }
             }
+        }
+    }
 
-            infoContainer?.setOnClickListener {
-                adapterListener?.onSelectServer(guid)
+    private fun filterUsers(query: String) {
+        val filteredArray = JSONArray()
+        val lowerQuery = query.lowercase()
+
+        for (i in 0 until allLoadedUsers.length()) {
+            val obj = allLoadedUsers.getJSONObject(i)
+            val name = obj.optString("name", "مجهول الهوية").lowercase()
+            val userId = obj.optString("userId", "").lowercase()
+            val deviceId = obj.optString("deviceId", "").lowercase()
+
+            if (name.contains(lowerQuery) || userId.contains(lowerQuery) || deviceId.contains(lowerQuery)) {
+                filteredArray.put(obj)
+            }
+        }
+        
+        mainContainer.removeAllViews()
+        renderUsersList(filteredArray, currentTabType)
+    }
+
+    private fun renderUsersList(array: JSONArray, type: String) {
+        if (array.length() == 0) {
+            mainContainer.addView(TextView(this@FileActiveUsersActivity).apply { 
+                text = if (etSearch.text.isNotEmpty()) "لم يتم العثور على نتائج تطابق بحثك" 
+                       else if (type == "ACTIVE") "لا يوجد متصلين حالياً" 
+                       else "لا يوجد محظورين في هذا الملف"
+                setTextColor(Color.GRAY); gravity = Gravity.CENTER; setPadding(0, 50, 0, 0)
+            })
+            return
+        }
+
+        for (i in 0 until array.length()) {
+            val obj = array.getJSONObject(i)
+            val isBanned = obj.optBoolean("isBanned", type == "BANNED")
+            val hasActiveStory = obj.optBoolean("hasActiveStory", false)
+
+            addUserCard(
+                obj.optString("deviceId"),
+                obj.optString("name", "مجهول الهوية"),
+                obj.optString("userId", ""),
+                obj.optString("pfp", ""),
+                isBanned,
+                type,
+                hasActiveStory
+            )
+        }
+    }
+
+    private fun addUserCard(deviceId: String, name: String, userId: String, pfp: String, isBanned: Boolean, currentTab: String, hasActiveStory: Boolean) {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor("#1A1A1D"))
+            setPadding(30, 30, 30, 30)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
+        }
+
+        val avatarContainer = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(140, 140).apply { setMargins(0, 0, 30, 0) }
+            
+            if (hasActiveStory && userId.isNotEmpty()) {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setStroke(6, Color.parseColor("#2196F3"))
+                    setColor(Color.TRANSPARENT)
+                }
+                setPadding(10, 10, 10, 10)
+                
+                setOnClickListener {
+                    try {
+                        val intent = Intent(this@FileActiveUsersActivity, StoryViewerActivity::class.java)
+                        intent.putExtra("userId", userId)
+                        intent.putExtra("targetId", userId)
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(this@FileActiveUsersActivity, "لم يتم العثور على واجهة الاستوري", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else {
+                background = null
+                setPadding(0, 0, 0, 0)
+                setOnClickListener(null)
+            }
+        }
+
+        val cvAvatar = CardView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            radius = 70f
+            cardElevation = 0f
+            setCardBackgroundColor(Color.TRANSPARENT)
+        }
+
+        val ivAvatar = ImageView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+        }
+
+        if (pfp.isNotEmpty()) {
+            try {
+                val bytes = Base64.decode(pfp, Base64.DEFAULT)
+                ivAvatar.setImageBitmap(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+            } catch (e: Exception) { 
+                ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(name, deviceId)) 
+            }
+        } else {
+            ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(name, deviceId))
+        }
+
+        cvAvatar.addView(ivAvatar)
+        avatarContainer.addView(cvAvatar)
+
+        val infoLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val nameRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val tvName = TextView(this).apply { 
+            text = name 
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            setTypeface(null, android.graphics.Typeface.BOLD) 
+        }
+        
+        val tvRank = TextView(this).apply {
+            text = if (userId.isNotEmpty()) " 👑" else " 👤"
+            textSize = 14f
+            setPadding(10, 0, 10, 0)
+        }
+        
+        nameRow.addView(tvName)
+        nameRow.addView(tvRank)
+        infoLayout.addView(nameRow)
+
+        val onRankClick = View.OnClickListener {
+            if (userId.isNotEmpty()) showDevicesDialog(userId, name, deviceId)
+            else Toast.makeText(this, "هذا جهاز مجهول غير مرتبط بحساب مسجل", Toast.LENGTH_SHORT).show()
+        }
+        nameRow.setOnClickListener(onRankClick)
+
+        if (userId.isNotEmpty()) {
+            infoLayout.addView(TextView(this).apply { text = "ID: $userId"; setTextColor(Color.parseColor("#FF9800")); textSize = 12f })
+        } else {
+            infoLayout.addView(TextView(this).apply { text = "غير مسجل (حساب جهاز)"; setTextColor(Color.GRAY); textSize = 12f })
+        }
+        
+        infoLayout.addView(TextView(this).apply { text = "Device: ${deviceId.takeLast(6)}"; setTextColor(Color.parseColor("#4CAF50")); textSize = 10f })
+
+        val btnAction = MaterialButton(this).apply {
+            if (isBanned) {
+                text = "إلغاء الحظر"
+                setBackgroundColor(Color.parseColor("#2196F3"))
+            } else {
+                text = "حظر فوراً"
+                setBackgroundColor(Color.parseColor("#F44336"))
+            }
+            setOnClickListener {
+                toggleBanStatus(deviceId, name, userId, pfp, !isBanned, currentTab)
+            }
+        }
+
+        card.addView(avatarContainer)
+        card.addView(infoLayout)
+        card.addView(btnAction)
+
+        mainContainer.addView(card)
+    }
+
+    private fun showDevicesDialog(userId: String, userName: String, currentDeviceId: String) {
+        val bottomSheet = BottomSheetDialog(this)
+        
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(50, 50, 50, 50)
+            setBackgroundColor(Color.parseColor("#1A1A1D"))
+        }
+
+        container.addView(TextView(this).apply {
+            text = "الأجهزة المربوطة بحساب: $userName"
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 30)
+        })
+
+        val loadingText = TextView(this).apply {
+            text = "جاري جلب بيانات الأجهزة..."
+            setTextColor(Color.GRAY)
+            gravity = Gravity.CENTER
+            setPadding(0, 20, 0, 20)
+        }
+        container.addView(loadingText)
+
+        bottomSheet.setContentView(container)
+        bottomSheet.show()
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val url = URL("$baseUrl/auth/get_user?id=$userId")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 5000
+                
+                if (conn.responseCode == 200) {
+                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                    val json = JSONObject(resp)
+                    
+                    withContext(Dispatchers.Main) {
+                        container.removeView(loadingText)
+                        val devices = json.optJSONArray("devices") ?: JSONArray()
+                        
+                        if (devices.length() == 0) devices.put(currentDeviceId) 
+                        
+                        for (i in 0 until devices.length()) {
+                            val devId = devices.getString(i)
+                            container.addView(createDeviceRow(devId, devId == currentDeviceId))
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    loadingText.text = "فشل الاتصال بالسيرفر!"
+                    loadingText.setTextColor(Color.parseColor("#F44336"))
+                }
             }
         }
     }
 
-    private fun getAddress(profile: ProfileItem): String {
-        return profile.description.nullIfBlank() ?: AngConfigManager.generateDescription(profile)
-    }
-
-    private fun getSubscriptionRemarks(profile: ProfileItem): String {
-        val subRemarks =
-            if (mainViewModel.subscriptionId.isEmpty())
-                MmkvManager.decodeSubscription(profile.subscriptionId)?.remarks?.firstOrNull()
-            else
-                null
-        return subRemarks?.toString() ?: ""
-    }
-
-    fun removeServerSub(guid: String, position: Int) {
-        val idx = data.indexOfFirst { it.guid == guid }
-        if (idx >= 0) {
-            data.removeAt(idx)
-            notifyItemRemoved(idx)
-            notifyItemRangeChanged(idx, data.size - idx)
-        }
-    }
-
-    fun setSelectServer(fromPosition: Int, toPosition: Int) {
-        notifyItemChanged(fromPosition)
-        notifyItemChanged(toPosition)
-    }
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): BaseViewHolder {
-        return when (viewType) {
-            VIEW_TYPE_ITEM ->
-                MainViewHolder(ItemRecyclerMainBinding.inflate(LayoutInflater.from(parent.context), parent, false))
-
-            else ->
-                FooterViewHolder(ItemRecyclerFooterBinding.inflate(LayoutInflater.from(parent.context), parent, false))
-        }
-    }
-
-    override fun getItemViewType(position: Int): Int {
-        return if (position == data.size) {
-            VIEW_TYPE_FOOTER
-        } else {
-            VIEW_TYPE_ITEM
-        }
-    }
-
-    open class BaseViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        var countdownJob: Job? = null
-
-        fun onItemSelected() {
-            itemView.setBackgroundColor(Color.parseColor("#33FFFFFF")) 
+    private fun createDeviceRow(deviceId: String, isCurrent: Boolean): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor("#252529"))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, 20)
+            }
+            setPadding(30, 30, 30, 30)
         }
 
-        fun onItemClear() {
-            itemView.setBackgroundColor(0)
+        val tvDevice = TextView(this).apply {
+            text = if (isCurrent) "✅ $deviceId (النشط الآن)" else "📱 $deviceId"
+            setTextColor(if (isCurrent) Color.parseColor("#4CAF50") else Color.WHITE)
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
+
+        val btnCopy = TextView(this).apply {
+            text = "نسخ"
+            setTextColor(Color.parseColor("#2196F3"))
+            textSize = 14f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(20, 20, 20, 20)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            
+            val outValue = android.util.TypedValue()
+            context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
+            setBackgroundResource(outValue.resourceId)
+            isClickable = true
+            isFocusable = true
+
+            setOnClickListener {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Device ID", deviceId))
+                Toast.makeText(context, "تم نسخ أيدي الجهاز!", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        row.addView(tvDevice)
+        row.addView(btnCopy)
+        return row
     }
 
-    class MainViewHolder(val itemMainBinding: ItemRecyclerMainBinding) :
-        BaseViewHolder(itemMainBinding.root), ItemTouchHelperViewHolder
+    private fun toggleBanStatus(deviceId: String, name: String, userId: String, pfp: String, banStatus: Boolean, currentTab: String) {
+        val actionName = if (banStatus) "حظر" else "إلغاء حظر"
+        AlertDialog.Builder(this)
+            .setTitle("تأكيد العملية")
+            .setMessage("هل أنت متأكد أنك تريد $actionName هذا المستخدم من الملف؟\n(سيتم تطبيق ذلك حتى لو قام بمسح بيانات التطبيق)")
+            .setPositiveButton("نعم") { _, _ ->
+                tvLoading.visibility = View.VISIBLE
+                tvLoading.text = "جاري تنفيذ الأمر..."
+                
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val conn = URL("$baseUrl/file/toggle_ban").openConnection() as HttpURLConnection
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
 
-    class FooterViewHolder(val itemFooterBinding: ItemRecyclerFooterBinding) :
-        BaseViewHolder(itemFooterBinding.root)
+                        // 🌟 الذكاء: نرسل آيدي الملف اللي هو متصل بي، مو الملف الأساسي، لضمان الطرد الفوري! 🌟
+                        val targetGuid = if (userId.isNotEmpty()) userId else currentGuid 
 
-    override fun onItemMove(fromPosition: Int, toPosition: Int): Boolean {
-        mainViewModel.swapServer(fromPosition, toPosition)
-        if (fromPosition < data.size && toPosition < data.size) {
-            Collections.swap(data, fromPosition, toPosition)
-        }
-        notifyItemMoved(fromPosition, toPosition)
-        return true
-    }
+                        val payload = JSONObject()
+                            .put("guid", targetGuid) 
+                            .put("deviceId", deviceId)
+                            .put("banStatus", banStatus)
+                            .put("name", name)
+                            .put("userId", userId)
+                            .put("pfp", pfp)
 
-    override fun onItemMoveCompleted() {}
+                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
-    override fun onItemDismiss(position: Int) {}
-    
-    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
-        super.onDetachedFromRecyclerView(recyclerView)
-        coroutineScope.coroutineContext.cancelChildren()
+                        if (conn.responseCode == 200) {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(this@FileActiveUsersActivity, "تم التنفيذ بنجاح!", Toast.LENGTH_SHORT).show()
+                                loadUsers(currentTab, isSilent = false) 
+                            }
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(this@FileActiveUsersActivity, "فشل التنفيذ، حاول مرة أخرى", Toast.LENGTH_SHORT).show()
+                                tvLoading.visibility = View.GONE
+                            }
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@FileActiveUsersActivity, "خطأ في الاتصال", Toast.LENGTH_SHORT).show()
+                            tvLoading.visibility = View.GONE
+                        }
+                    }
+                }
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
     }
 }
