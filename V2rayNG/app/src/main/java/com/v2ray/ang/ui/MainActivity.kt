@@ -182,7 +182,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val jobs = ids.distinct().map { id ->
                 async {
                     try {
-                        // 🌟 حل مشكلة الأحرف العربية وتشفير الرابط 🌟
                         val encodedId = java.net.URLEncoder.encode(id, "UTF-8")
                         val checkConn = URL("$BASE_API_URL/check?guid=$encodedId").openConnection() as HttpURLConnection
                         checkConn.connectTimeout = 5000
@@ -222,6 +221,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     val activeGuid = MmkvManager.getSelectServer().orEmpty()
                     val myDeviceId = getUniqueHardwareId()
                     val myUserId = AuthManager.getId(this@MainActivity)
+                    val myUserRole = AuthManager.getRole(this@MainActivity) // 🌟 جلب الرتبة 🌟
+                    val isSuperAdmin = (myUserRole == "admin")
 
                     if (activeGuid.isNotEmpty() && mainViewModel.isRunning.value == true && totalDeltaBytes > 0) {
                         val activeLicenseId = V2rayCrypt.getLicenseId(this@MainActivity, activeGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: activeGuid
@@ -241,7 +242,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         } catch (e: Exception) {}
                     }
 
-                    // 🌟 التجميع الذكي الجبار: جمع كل الأيديات للسحب المتوازي 🌟
                     val allIdsToFetch = mutableSetOf<String>()
                     val guidToIds = mutableMapOf<String, List<String>>()
                     val guidToLicenseId = mutableMapOf<String, String>()
@@ -258,10 +258,15 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         }
                         guidToLicenseId[guid] = licenseId
                         val ids = mutableListOf(licenseId)
-                        if (V2rayCrypt.isAdmin(this@MainActivity, guid)) {
+                        
+                        // 🌟 الذكاء الاصطناعي لحل المشكلة: إضافة صلاحية صاحب الملف الحقيقي (Owner) 🌟
+                        val isOwnerOrAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid) || isSuperAdmin || (licenseId == myUserId && myUserId.isNotEmpty())
+                        
+                        if (isOwnerOrAdmin) {
                             val subs = V2rayCrypt.getSubscribers(this@MainActivity, guid)
                             ids.addAll(subs.map { it.licenseId })
                         }
+                        
                         guidToIds[guid] = ids
                         allIdsToFetch.addAll(ids)
                     }
@@ -298,7 +303,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         }
                     }
 
-                    // 🌟 سحب صور وأسماء الناشرين بشكل متوازي (مع تشفير الروابط للأحرف العربية) 🌟
                     val userInfos = guids.map { guid ->
                         async(Dispatchers.IO) {
                             val licenseId = guidToLicenseId[guid]!!
@@ -938,6 +942,8 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         lifecycleScope.launch(Dispatchers.IO) {
             val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
             val myUserId = AuthManager.getId(this@MainActivity)
+            val myUserRole = AuthManager.getRole(this@MainActivity) // 🌟 جلب الرتبة 🌟
+            val isSuperAdmin = (myUserRole == "admin")
             val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             val editor = prefs.edit()
             
@@ -945,7 +951,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val guidToIds = mutableMapOf<String, List<String>>()
             val guidToLicenseId = mutableMapOf<String, String>()
 
-            // 🌟 جمع كل الأيديات للسحب المتوازي الذكي 🌟
             for (guid in guids) {
                 var licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
                 if (licenseId.isEmpty() || licenseId == "LEGACY") {
@@ -958,15 +963,19 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
                 guidToLicenseId[guid] = licenseId
                 val ids = mutableListOf(licenseId)
-                if (V2rayCrypt.isAdmin(this@MainActivity, guid)) {
+                
+                // 🌟 الذكاء الاصطناعي لحل المشكلة: إضافة صلاحية صاحب الملف الحقيقي (Owner) 🌟
+                val isOwnerOrAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid) || isSuperAdmin || (licenseId == myUserId && myUserId.isNotEmpty())
+                
+                if (isOwnerOrAdmin) {
                     val subs = V2rayCrypt.getSubscribers(this@MainActivity, guid)
                     ids.addAll(subs.map { it.licenseId })
                 }
+                
                 guidToIds[guid] = ids
                 allIdsToFetch.addAll(ids)
             }
 
-            // 🌟 سحب بيانات كل الملفات والمشتركين بضربة واحدة ومحمية من أحرف الأخطاء! 🌟
             val batchStats = fetchBatchStats(allIdsToFetch.toList())
 
             for (guid in guids) {
@@ -998,7 +1007,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
 
-            // سحب صور وأسماء الناشرين بشكل متوازي (مع تشفير الروابط للأحرف العربية)
             val userInfos = guids.map { guid ->
                 async(Dispatchers.IO) {
                     val licenseId = guidToLicenseId[guid]!!
