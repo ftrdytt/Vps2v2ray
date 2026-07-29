@@ -175,35 +175,48 @@ class FileActiveUsersActivity : AppCompatActivity() {
         loadUsers(currentTabType, isSilent = false)
     }
 
-    // 🌟 دالة "الصيد الشبكي" الجبارة لجلب كل المتصلين بكل المشتركين بلحظة وحدة 🌟
+    // 🌟 دالة "الصيد الشامل الجبارة" 🌟
     private fun loadUsers(type: String, isSilent: Boolean) {
         if (!isSilent && allLoadedUsers.length() == 0) {
             tvLoading.visibility = View.VISIBLE
-            tvLoading.text = "جاري تحميل البيانات..."
+            tvLoading.text = "جاري تجميع بيانات المتصلين..."
             mainContainer.removeAllViews()
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // 1. جلب آيدي الملف الأساسي
-                var baseLicenseId = V2rayCrypt.getLicenseId(this@FileActiveUsersActivity, currentGuid)
-                if (baseLicenseId.isEmpty() || baseLicenseId == "LEGACY") {
-                    baseLicenseId = currentGuid
+                // 🌟 تجهيز شبكة الصيد (جلب كل احتمالات الآيديات) 🌟
+                val allGuidsToFetch = mutableSetOf<String>()
+                allGuidsToFetch.add(currentGuid) // 1. آيدي الملف الأصلي
+
+                val baseLicenseId = V2rayCrypt.getLicenseId(this@FileActiveUsersActivity, currentGuid)
+                if (baseLicenseId.isNotEmpty() && baseLicenseId != "LEGACY") {
+                    allGuidsToFetch.add(baseLicenseId) // 2. الآيدي المشفر للملف
                 }
 
-                // 2. جلب كل آيديات المشتركين التابعين إلك ودمجهم ويّا الأساسي
-                val allGuidsToFetch = mutableListOf(baseLicenseId)
-                if (V2rayCrypt.isAdmin(this@FileActiveUsersActivity, currentGuid) || 
-                    com.v2ray.ang.handler.AuthManager.getRole(this@FileActiveUsersActivity) == "admin") {
+                val myUserId = com.v2ray.ang.handler.AuthManager.getId(this@FileActiveUsersActivity)
+                val myUserRole = com.v2ray.ang.handler.AuthManager.getRole(this@FileActiveUsersActivity)
+                val isSuperAdmin = (myUserRole == "admin")
+                val isAdmin = V2rayCrypt.isAdmin(this@FileActiveUsersActivity, currentGuid)
+                val isOwner = (baseLicenseId == myUserId && myUserId.isNotEmpty()) || (currentGuid == myUserId)
+
+                if (isOwner && myUserId.isNotEmpty()) {
+                    allGuidsToFetch.add(myUserId) // 3. آيدي حسابك الشخصي
+                }
+
+                // 4. جلب كل المشتركين
+                if (isAdmin || isSuperAdmin || isOwner) {
                     val subs = V2rayCrypt.getSubscribers(this@FileActiveUsersActivity, currentGuid)
-                    allGuidsToFetch.addAll(subs.map { it.licenseId })
+                    subs.forEach { sub ->
+                        if (sub.licenseId.isNotEmpty()) allGuidsToFetch.add(sub.licenseId)
+                    }
                 }
 
                 val endpoint = if (type == "ACTIVE") "get_active" else "get_banned"
                 val finalCombinedArray = JSONArray()
 
-                // 3. سحب المتصلين لكل آيدي بشكل متوازي وذكي (Concurrent Fetch)
-                val fetchJobs = allGuidsToFetch.distinct().map { targetGuid ->
+                // 🌟 إطلاق الطلبات المتوازية لكل الاحتمالات 🌟
+                val fetchJobs = allGuidsToFetch.toList().map { targetGuid ->
                     async {
                         try {
                             val encodedGuid = URLEncoder.encode(targetGuid, "UTF-8")
@@ -215,14 +228,25 @@ class FileActiveUsersActivity : AppCompatActivity() {
                             if (conn.responseCode == 200) {
                                 val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText().trim()
                                 if (resp.isNotBlank()) {
-                                    try {
+                                    // 🌟 محلل ذكي يقرأ أي صيغة JSON يرجعها السيرفر 🌟
+                                    if (resp.startsWith("[")) {
                                         return@async JSONArray(resp)
-                                    } catch (e: Exception) {
-                                        try {
-                                            val jsonObj = JSONObject(resp)
-                                            if (jsonObj.has("data")) return@async jsonObj.getJSONArray("data")
-                                            else if (jsonObj.has("users")) return@async jsonObj.getJSONArray("users")
-                                        } catch (e2: Exception) {}
+                                    } else if (resp.startsWith("{")) {
+                                        val jsonObj = JSONObject(resp)
+                                        val keysToCheck = listOf("data", "users", "activeUsers", "list", "result")
+                                        for (k in keysToCheck) {
+                                            if (jsonObj.has(k)) {
+                                                val arr = jsonObj.optJSONArray(k)
+                                                if (arr != null) return@async arr
+                                            }
+                                        }
+                                        // بحث إجباري عن أي مصفوفة داخل الجواب
+                                        val it = jsonObj.keys()
+                                        while(it.hasNext()) {
+                                            val key = it.next()
+                                            val v = jsonObj.optJSONArray(key)
+                                            if (v != null) return@async v
+                                        }
                                     }
                                 }
                             }
@@ -231,7 +255,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
                     }
                 }
 
-                // 4. دمج كل النتائج بقائمة وحدة (الصيد النهائي)
+                // 🌟 دمج المتصلين وتصفية المكررين 🌟
                 fetchJobs.forEach { job ->
                     val resultArr = job.await()
                     for (i in 0 until resultArr.length()) {
@@ -239,7 +263,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
                     }
                 }
 
-                // 5. إزالة التكرار (لتجنب ظهور نفس المستخدم مرتين لو كان متصل باكثر من حساب)
                 val uniqueUsersMap = mutableMapOf<String, JSONObject>()
                 for (i in 0 until finalCombinedArray.length()) {
                     val obj = finalCombinedArray.getJSONObject(i)
@@ -564,8 +587,12 @@ class FileActiveUsersActivity : AppCompatActivity() {
                         conn.setRequestProperty("Content-Type", "application/json")
                         conn.doOutput = true
 
-                        // 🌟 الذكاء: عند حظر المشترك، نرسل آيدي الملف اللي هو متصل بي، مو الملف الأساسي، لضمان الطرد الفوري! 🌟
-                        val targetGuid = if (userId.isNotEmpty()) userId else currentGuid 
+                        var baseLicenseId = V2rayCrypt.getLicenseId(this@FileActiveUsersActivity, currentGuid)
+                        if (baseLicenseId.isEmpty() || baseLicenseId == "LEGACY") {
+                            baseLicenseId = currentGuid
+                        }
+                        
+                        val targetGuid = if (userId.isNotEmpty()) userId else baseLicenseId 
 
                         val payload = JSONObject()
                             .put("guid", targetGuid) 
