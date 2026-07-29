@@ -50,6 +50,7 @@ import com.v2ray.ang.viewmodel.MainViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -174,6 +175,30 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
+    // 🌟 السلاح السري الجبار: جلب بيانات مئات المشتركين بلحظة واحدة وبشكل متوازي (Concurrently) 🌟
+    private suspend fun fetchAllStatsConcurrently(ids: List<String>): Map<String, JSONObject> {
+        return withContext(Dispatchers.IO) {
+            val resultMap = mutableMapOf<String, JSONObject>()
+            val jobs = ids.distinct().map { id ->
+                async {
+                    try {
+                        val encodedId = java.net.URLEncoder.encode(id, "UTF-8")
+                        val checkConn = URL("$BASE_API_URL/check?guid=$encodedId").openConnection() as HttpURLConnection
+                        checkConn.connectTimeout = 5000
+                        checkConn.readTimeout = 5000
+                        if (checkConn.responseCode == 200) {
+                            val checkResp = BufferedReader(InputStreamReader(checkConn.inputStream)).readText()
+                            return@async Pair(id, JSONObject(checkResp))
+                        }
+                    } catch (e: Exception) {}
+                    null
+                }
+            }
+            jobs.mapNotNull { it.await() }.forEach { resultMap[it.first] = it.second }
+            resultMap
+        }
+    }
+
     private fun startFileStatsSync() {
         fileStatsJob?.cancel()
         fileStatsJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -215,6 +240,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         } catch (e: Exception) {}
                     }
 
+                    // 🌟 التجميع الذكي الجبار: جمع كل الأيديات للسحب المتوازي 🌟
+                    val allIdsToFetch = mutableSetOf<String>()
+                    val guidToIds = mutableMapOf<String, List<String>>()
+                    val guidToLicenseId = mutableMapOf<String, String>()
+
                     for (guid in guids) {
                         var licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
                         if (licenseId.isEmpty() || licenseId == "LEGACY") {
@@ -225,58 +255,70 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 licenseId = guid
                             }
                         }
-
-                        // 🌟 التجميع الذكي: جلب الأيدي الأساسي + المشتركين لجمع استهلاكهم 🌟
-                        val isAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid)
-                        val idsToCheck = mutableListOf(licenseId)
-                        if (isAdmin) {
+                        guidToLicenseId[guid] = licenseId
+                        val ids = mutableListOf(licenseId)
+                        if (V2rayCrypt.isAdmin(this@MainActivity, guid)) {
                             val subs = V2rayCrypt.getSubscribers(this@MainActivity, guid)
-                            idsToCheck.addAll(subs.map { it.licenseId })
+                            ids.addAll(subs.map { it.licenseId })
                         }
+                        guidToIds[guid] = ids
+                        allIdsToFetch.addAll(ids)
+                    }
+
+                    // سحب بيانات كل الملفات والمشتركين بضربة واحدة من السيرفر!
+                    val batchStats = fetchAllStatsConcurrently(allIdsToFetch.toList())
+
+                    for (guid in guids) {
+                        val licenseId = guidToLicenseId[guid]!!
+                        val ids = guidToIds[guid]!!
 
                         var totalUsageBytes = 0L
                         var totalActiveCount = 0
+                        var isLocked = false
 
-                        for (id in idsToCheck) {
-                            try {
-                                val checkConn = URL("$BASE_API_URL/check?guid=$id").openConnection() as HttpURLConnection
-                                checkConn.connectTimeout = 4000
-                                checkConn.readTimeout = 4000
-                                if (checkConn.responseCode == 200) {
-                                    val checkResp = BufferedReader(InputStreamReader(checkConn.inputStream)).readText()
-                                    val checkObj = JSONObject(checkResp)
-                                    
-                                    totalUsageBytes += checkObj.optLong("totalUsageBytes", 0L)
-                                    totalActiveCount += checkObj.optInt("activeCount", 0)
-                                    
-                                    if (id == licenseId) {
-                                        editor.putBoolean("locked_$guid", checkObj.optBoolean("isLocked", false))
-                                    }
-                                }
-                            } catch (e: Exception) {}
-                        }
-                        
-                        // 🌟 حفظ المجموع الكلي للاستهلاك والمتصلين للملف 🌟
-                        editor.putString("usage_$guid", formatBytes(totalUsageBytes))
-                        V2rayCrypt.saveActiveCount(this@MainActivity, guid, totalActiveCount)
-
-                        try {
-                            val conn = URL("$BASE_API_URL/auth/get_user?id=$licenseId").openConnection() as HttpURLConnection
-                            conn.connectTimeout = 4000
-                            conn.readTimeout = 4000
-                            if (conn.responseCode == 200) {
-                                val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                                val obj = JSONObject(resp)
-                                if (obj.getBoolean("success")) {
-                                    editor.putString("name_$guid", obj.getString("name"))
-                                    editor.putString("pfp_$guid", obj.optString("pfp", ""))
-                                    editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
-                                    editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) 
+                        for (id in ids) {
+                            val statObj = batchStats[id]
+                            if (statObj != null) {
+                                totalUsageBytes += statObj.optLong("totalUsageBytes", 0L)
+                                totalActiveCount += statObj.optInt("activeCount", 0)
+                                if (id == licenseId) {
+                                    isLocked = statObj.optBoolean("isLocked", false)
                                 }
                             }
-                        } catch (e: Exception) {}
+                        }
+                        
+                        editor.putBoolean("locked_$guid", isLocked)
+                        editor.putString("usage_$guid", formatBytes(totalUsageBytes))
+                        V2rayCrypt.saveActiveCount(this@MainActivity, guid, totalActiveCount)
+                    }
+
+                    // سحب صور وأسماء الناشرين بشكل متوازي
+                    val userInfos = guids.map { guid ->
+                        async(Dispatchers.IO) {
+                            val licenseId = guidToLicenseId[guid]!!
+                            try {
+                                val encodedLicenseId = java.net.URLEncoder.encode(licenseId, "UTF-8")
+                                val conn = URL("$BASE_API_URL/auth/get_user?id=$encodedLicenseId").openConnection() as HttpURLConnection
+                                conn.connectTimeout = 4000
+                                conn.readTimeout = 4000
+                                if (conn.responseCode == 200) {
+                                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                                    return@async Pair(guid, JSONObject(resp))
+                                }
+                            } catch (e: Exception) {}
+                            null
+                        }
                     }
                     
+                    userInfos.mapNotNull { it.await() }.forEach { (guid, obj) ->
+                        if (obj.getBoolean("success")) {
+                            editor.putString("name_$guid", obj.getString("name"))
+                            editor.putString("pfp_$guid", obj.optString("pfp", ""))
+                            editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
+                            editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) 
+                        }
+                    }
+
                     editor.apply()
                     withContext(Dispatchers.Main) {
                         mainViewModel.reloadServerList() 
@@ -883,6 +925,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             val editor = prefs.edit()
             
+            val allIdsToFetch = mutableSetOf<String>()
+            val guidToIds = mutableMapOf<String, List<String>>()
+            val guidToLicenseId = mutableMapOf<String, String>()
+
+            // 🌟 جمع كل الأيديات للسحب المتوازي الذكي 🌟
             for (guid in guids) {
                 var licenseId = V2rayCrypt.getLicenseId(this@MainActivity, guid)
                 if (licenseId.isEmpty() || licenseId == "LEGACY") {
@@ -893,59 +940,73 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         licenseId = guid
                     }
                 }
-
-                // 🌟 التجميع الذكي: جلب الأيدي الأساسي + كل المشتركين 🌟
-                val isAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid)
-                val idsToCheck = mutableListOf(licenseId)
-                if (isAdmin) {
+                guidToLicenseId[guid] = licenseId
+                val ids = mutableListOf(licenseId)
+                if (V2rayCrypt.isAdmin(this@MainActivity, guid)) {
                     val subs = V2rayCrypt.getSubscribers(this@MainActivity, guid)
-                    idsToCheck.addAll(subs.map { it.licenseId })
+                    ids.addAll(subs.map { it.licenseId })
                 }
+                guidToIds[guid] = ids
+                allIdsToFetch.addAll(ids)
+            }
+
+            // سحب بيانات كل الملفات والمشتركين بضربة واحدة!
+            val batchStats = fetchAllStatsConcurrently(allIdsToFetch.toList())
+
+            for (guid in guids) {
+                val licenseId = guidToLicenseId[guid]!!
+                val ids = guidToIds[guid]!!
 
                 var totalUsageBytes = 0L
                 var totalActiveCount = 0
                 var parentExpiry = -1L
+                var isLocked = false
 
-                // 🌟 فحص عبر النت حصراً، وجمع البيانات الكلية 🌟
-                for (id in idsToCheck) {
-                    try {
-                        val checkConn = URL("$BASE_API_URL/check?guid=$id").openConnection() as HttpURLConnection
-                        checkConn.connectTimeout = 3000
-                        checkConn.readTimeout = 3000
-                        if (checkConn.responseCode == 200) {
-                            val checkObj = JSONObject(BufferedReader(InputStreamReader(checkConn.inputStream)).readText())
-                            totalUsageBytes += checkObj.optLong("totalUsageBytes", 0L)
-                            totalActiveCount += checkObj.optInt("activeCount", 0)
-                            
-                            if (id == licenseId) {
-                                editor.putBoolean("locked_$guid", checkObj.optBoolean("isLocked", false))
-                                parentExpiry = checkObj.optLong("expiryTime", -1L)
-                            }
+                for (id in ids) {
+                    val statObj = batchStats[id]
+                    if (statObj != null) {
+                        totalUsageBytes += statObj.optLong("totalUsageBytes", 0L)
+                        totalActiveCount += statObj.optInt("activeCount", 0)
+                        if (id == licenseId) {
+                            isLocked = statObj.optBoolean("isLocked", false)
+                            parentExpiry = statObj.optLong("expiryTime", -1L)
                         }
-                    } catch (e: Exception) {}
+                    }
                 }
                 
+                editor.putBoolean("locked_$guid", isLocked)
                 editor.putString("usage_$guid", formatBytes(totalUsageBytes))
                 V2rayCrypt.saveActiveCount(this@MainActivity, guid, totalActiveCount)
                 if (parentExpiry >= 0L) {
                     V2rayCrypt.saveExpiryTime(this@MainActivity, guid, parentExpiry)
                 }
+            }
 
-                // 🌟 جلب الصورة والاستوري للملف الأساسي فقط 🌟
-                try {
-                    val conn = URL("$BASE_API_URL/auth/get_user?id=$licenseId").openConnection() as HttpURLConnection
-                    conn.connectTimeout = 3000
-                    conn.readTimeout = 3000
-                    if (conn.responseCode == 200) {
-                        val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                        if (obj.getBoolean("success")) {
-                            editor.putString("name_$guid", obj.getString("name"))
-                            editor.putString("pfp_$guid", obj.optString("pfp", ""))
-                            editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
-                            editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) 
+            // سحب صور وأسماء الناشرين بشكل متوازي
+            val userInfos = guids.map { guid ->
+                async(Dispatchers.IO) {
+                    val licenseId = guidToLicenseId[guid]!!
+                    try {
+                        val encodedLicenseId = java.net.URLEncoder.encode(licenseId, "UTF-8")
+                        val conn = URL("$BASE_API_URL/auth/get_user?id=$encodedLicenseId").openConnection() as HttpURLConnection
+                        conn.connectTimeout = 4000
+                        conn.readTimeout = 4000
+                        if (conn.responseCode == 200) {
+                            val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                            return@async Pair(guid, JSONObject(resp))
                         }
-                    }
-                } catch (e: Exception) {}
+                    } catch (e: Exception) {}
+                    null
+                }
+            }
+            
+            userInfos.mapNotNull { it.await() }.forEach { (guid, obj) ->
+                if (obj.getBoolean("success")) {
+                    editor.putString("name_$guid", obj.getString("name"))
+                    editor.putString("pfp_$guid", obj.optString("pfp", ""))
+                    editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
+                    editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) 
+                }
             }
             
             editor.apply()
