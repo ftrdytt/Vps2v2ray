@@ -134,7 +134,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
         mainContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(20, 20, 20, 20)
+            setPadding(25, 25, 25, 25)
         }
 
         scrollView.addView(mainContainer)
@@ -174,7 +174,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         loadUsers(currentTabType, isSilent = false)
     }
 
-    // دالة تنسيق الاستهلاك من بايت إلى ميكا/كيكا
     private fun formatBytes(bytes: Long): String {
         if (bytes <= 0) return "0.0 MB"
         val kb = bytes / 1024.0
@@ -186,10 +185,11 @@ class FileActiveUsersActivity : AppCompatActivity() {
         return String.format("%.2f MB", mb)
     }
 
+    // 🌟 دالة "الصيد الشامل الجبارة" لتجميع كل أنواع المتصلين واستهلاكهم الفعلي 🌟
     private fun loadUsers(type: String, isSilent: Boolean) {
         if (!isSilent && allLoadedUsers.length() == 0) {
             tvLoading.visibility = View.VISIBLE
-            tvLoading.text = "جاري تجميع بيانات المتصلين..."
+            tvLoading.text = "جاري تجميع البيانات بدقة..."
             mainContainer.removeAllViews()
         }
 
@@ -227,6 +227,20 @@ class FileActiveUsersActivity : AppCompatActivity() {
                     async {
                         try {
                             val encodedGuid = URLEncoder.encode(targetGuid, "UTF-8")
+                            
+                            // 🌟 السحر الأول: سحب الاستهلاك الدقيق لهذا الحساب 🌟
+                            var actualUsageBytes = 0L
+                            try {
+                                val checkConn = URL("$baseUrl/check?guid=$encodedGuid").openConnection() as HttpURLConnection
+                                checkConn.connectTimeout = 4000
+                                checkConn.readTimeout = 4000
+                                if (checkConn.responseCode == 200) {
+                                    val checkResp = BufferedReader(InputStreamReader(checkConn.inputStream)).readText()
+                                    actualUsageBytes = JSONObject(checkResp).optLong("totalUsageBytes", 0L)
+                                }
+                            } catch(e:Exception){}
+
+                            // السحر الثاني: سحب المتصلين
                             val url = URL("$baseUrl/file/$endpoint?guid=$encodedGuid")
                             val conn = url.openConnection() as HttpURLConnection
                             conn.connectTimeout = 7000
@@ -235,23 +249,35 @@ class FileActiveUsersActivity : AppCompatActivity() {
                             if (conn.responseCode == 200) {
                                 val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText().trim()
                                 if (resp.isNotBlank()) {
+                                    var parsedArray: JSONArray? = null
                                     if (resp.startsWith("[")) {
-                                        return@async JSONArray(resp)
+                                        parsedArray = JSONArray(resp)
                                     } else if (resp.startsWith("{")) {
                                         val jsonObj = JSONObject(resp)
                                         val keysToCheck = listOf("data", "users", "activeUsers", "list", "result")
                                         for (k in keysToCheck) {
                                             if (jsonObj.has(k)) {
-                                                val arr = jsonObj.optJSONArray(k)
-                                                if (arr != null) return@async arr
+                                                parsedArray = jsonObj.optJSONArray(k)
+                                                break
                                             }
                                         }
-                                        val it = jsonObj.keys()
-                                        while(it.hasNext()) {
-                                            val key = it.next()
-                                            val v = jsonObj.optJSONArray(key)
-                                            if (v != null) return@async v
+                                        if (parsedArray == null) {
+                                            val it = jsonObj.keys()
+                                            while(it.hasNext()) {
+                                                val key = it.next()
+                                                val v = jsonObj.optJSONArray(key)
+                                                if (v != null) { parsedArray = v; break }
+                                            }
                                         }
+                                    }
+
+                                    if (parsedArray != null) {
+                                        // 🌟 دمج الاستهلاك مع بيانات المستخدم 🌟
+                                        for (i in 0 until parsedArray.length()) {
+                                            val obj = parsedArray.getJSONObject(i)
+                                            obj.put("realUsageBytes", actualUsageBytes) 
+                                        }
+                                        return@async parsedArray
                                     }
                                 }
                             }
@@ -329,46 +355,59 @@ class FileActiveUsersActivity : AppCompatActivity() {
             return
         }
 
+        // جلب الذاكرة المؤقتة للاستهلاك كخطة بديلة للملف الأساسي
+        val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
+        val fallbackMainUsage = prefs.getString("usage_$currentGuid", "0.0 MB") ?: "0.0 MB"
+
         for (i in 0 until array.length()) {
             val obj = array.getJSONObject(i)
             val isBanned = obj.optBoolean("isBanned", type == "BANNED")
             val hasActiveStory = obj.optBoolean("hasActiveStory", false)
-            val usageBytes = obj.optLong("usageBytes", obj.optLong("totalUsageBytes", 0L))
+            val userId = obj.optString("userId", "")
+            val deviceId = obj.optString("deviceId", "")
+            val name = obj.optString("name", "مجهول الهوية")
+            val pfp = obj.optString("pfp", "")
 
-            addUserCard(
-                obj.optString("deviceId"),
-                obj.optString("name", "مجهول الهوية"),
-                obj.optString("userId", ""),
-                obj.optString("pfp", ""),
-                isBanned,
-                type,
-                hasActiveStory,
-                usageBytes
-            )
+            // 🌟 حساب الاستهلاك بالاعتماد على المتغير الجديد اللي حقناه بالسيرفر 🌟
+            val serverUsageBytes = obj.optLong("realUsageBytes", obj.optLong("totalUsageBytes", 0L))
+            var finalUsageStr = formatBytes(serverUsageBytes)
+
+            if (serverUsageBytes == 0L && userId.isEmpty()) {
+                finalUsageStr = fallbackMainUsage 
+            }
+
+            addUserCard(deviceId, name, userId, pfp, isBanned, type, hasActiveStory, finalUsageStr)
         }
     }
 
-    // 🌟 بناء وتصميم الكارت الخنفشاري الـ VIP 🌟
-    private fun addUserCard(deviceId: String, name: String, userId: String, pfp: String, isBanned: Boolean, currentTab: String, hasActiveStory: Boolean, usageBytes: Long) {
+    // 🌟 تصميم الكارت الخنفشاري (VIP) 🌟
+    private fun addUserCard(deviceId: String, name: String, userId: String, pfp: String, isBanned: Boolean, currentTab: String, hasActiveStory: Boolean, usageStr: String) {
         
-        // الكارت الخارجي مع حواف دائرية فخمة
+        // الكارت الخارجي
         val cardView = CardView(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { 
-                setMargins(0, 0, 0, 25) 
+                setMargins(0, 0, 0, 35) 
             }
-            radius = 24f
-            cardElevation = 8f
-            setCardBackgroundColor(Color.parseColor("#252529")) // لون رصاصي داكن احترافي
+            radius = 35f
+            cardElevation = 15f
+            setCardBackgroundColor(Color.parseColor("#1C1C22")) // لون غامق فخم
         }
 
-        val cardContent = LinearLayout(this).apply {
+        // الحاوية الداخلية (عمودية)
+        val mainLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(35, 35, 35, 35)
+        }
+
+        // 1️⃣ الصف العلوي: الصورة + المعلومات الأساسية
+        val topRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(30, 30, 30, 30)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
         val avatarContainer = FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(150, 150).apply { setMargins(0, 0, 30, 0) }
+            layoutParams = LinearLayout.LayoutParams(160, 160).apply { setMargins(0, 0, 35, 0) }
             
             if (hasActiveStory && userId.isNotEmpty()) {
                 background = GradientDrawable().apply {
@@ -397,7 +436,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
         val cvAvatar = CardView(this).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            radius = 75f
+            radius = 80f
             cardElevation = 0f
             setCardBackgroundColor(Color.TRANSPARENT)
         }
@@ -421,13 +460,12 @@ class FileActiveUsersActivity : AppCompatActivity() {
         cvAvatar.addView(ivAvatar)
         avatarContainer.addView(cvAvatar)
 
-        // حاوية المعلومات
-        val infoLayout = LinearLayout(this).apply {
+        // تفاصيل المستخدم (الاسم، الرتبة، الاستهلاك)
+        val detailsLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        // سطر الاسم والرتبة
         val nameRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -436,61 +474,78 @@ class FileActiveUsersActivity : AppCompatActivity() {
         val tvName = TextView(this).apply { 
             text = name 
             setTextColor(Color.WHITE)
-            textSize = 17f
+            textSize = 18f
             setTypeface(null, android.graphics.Typeface.BOLD) 
         }
         
         val tvRank = TextView(this).apply {
             text = if (userId.isNotEmpty()) " 👑" else " 👤"
-            textSize = 15f
+            textSize = 16f
             setPadding(10, 0, 10, 0)
         }
         
         nameRow.addView(tvName)
         nameRow.addView(tvRank)
-        infoLayout.addView(nameRow)
 
-        val onRankClick = View.OnClickListener {
-            if (userId.isNotEmpty()) showDevicesDialog(userId, name, deviceId)
-            else Toast.makeText(this, "هذا جهاز مجهول غير مرتبط بحساب مسجل", Toast.LENGTH_SHORT).show()
-        }
-        nameRow.setOnClickListener(onRankClick)
-
-        // سطر استهلاك البيانات 📊
-        val usageStr = formatBytes(usageBytes)
-        val tvDataUsage = TextView(this).apply {
+        // 🌟 شارة الاستهلاك الخنفشارية 🌟
+        val usagePill = TextView(this).apply {
             text = "📊 الاستهلاك: $usageStr"
-            setTextColor(Color.parseColor("#00BCD4")) // لون سماوي مميز
-            textSize = 12f
-            setPadding(0, 5, 0, 5)
+            setTextColor(Color.parseColor("#00E676")) // أخضر نيون
+            textSize = 13f
             setTypeface(null, android.graphics.Typeface.BOLD)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#1A00E676")) // خلفية خضراء شفافة
+                cornerRadius = 20f
+            }
+            setPadding(25, 10, 25, 10)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 10, 0, 10) }
         }
-        infoLayout.addView(tvDataUsage)
 
-        if (userId.isNotEmpty()) {
-            infoLayout.addView(TextView(this).apply { text = "ID: $userId"; setTextColor(Color.parseColor("#FFC107")); textSize = 11f })
-        } else {
-            infoLayout.addView(TextView(this).apply { text = "غير مسجل (حساب جهاز)"; setTextColor(Color.GRAY); textSize = 11f })
+        val tvId = TextView(this).apply { 
+            text = if (userId.isNotEmpty()) "ID: $userId" else "غير مسجل (حساب جهاز)"
+            setTextColor(if (userId.isNotEmpty()) Color.parseColor("#FFC107") else Color.GRAY)
+            textSize = 12f 
+        }
+
+        detailsLayout.addView(nameRow)
+        detailsLayout.addView(usagePill)
+        detailsLayout.addView(tvId)
+
+        topRow.addView(avatarContainer)
+        topRow.addView(detailsLayout)
+
+        // 2️⃣ الصف الأوسط: صندوق الـ Device ID والأجهزة المرتبطة
+        val deviceBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#25252D")) // لون الصندوق
+                cornerRadius = 20f
+            }
+            setPadding(30, 25, 30, 25)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { 
+                setMargins(0, 25, 0, 25) 
+            }
         }
         
-        // 🌟 سطر Device ID مع زر النسخ السريع 🌟
-        val deviceRow = LinearLayout(this).apply {
+        val currentDeviceRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 5, 0, 0)
         }
         
-        val tvDeviceId = TextView(this).apply { 
-            text = "📱 الجهاز: $deviceId"
+        val tvDevice = TextView(this).apply { 
+            text = "📱 الجهاز المتصل: ${deviceId.takeLast(8)}"
             setTextColor(Color.parseColor("#9E9E9E"))
-            textSize = 11f 
+            textSize = 12f 
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         
+        // أيقونة النسخ المباشر
         val btnCopyInline = TextView(this).apply {
-            text = " 📋" // أيقونة النسخ
+            text = "📋 نسخ"
             setTextColor(Color.parseColor("#2196F3"))
-            textSize = 14f
-            setPadding(15, 0, 15, 0)
+            textSize = 13f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(15, 10, 15, 10)
             isClickable = true
             setOnClickListener {
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -499,33 +554,61 @@ class FileActiveUsersActivity : AppCompatActivity() {
             }
         }
         
-        deviceRow.addView(tvDeviceId)
-        deviceRow.addView(btnCopyInline)
-        infoLayout.addView(deviceRow)
+        currentDeviceRow.addView(tvDevice)
+        currentDeviceRow.addView(btnCopyInline)
+        deviceBox.addView(currentDeviceRow)
 
-        // زر الحظر / الإلغاء (زر دائري فخم)
+        // 🌟 زر عرض كافة الأجهزة إذا كان الحساب مسجل 🌟
+        if (userId.isNotEmpty()) {
+            val divider = View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 2).apply {
+                    setMargins(0, 15, 0, 15)
+                }
+                setBackgroundColor(Color.parseColor("#333333"))
+            }
+            val allDevicesRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(0, 10, 0, 10)
+                isClickable = true
+                setOnClickListener { showDevicesDialog(userId, name, deviceId) }
+            }
+            val tvAllDevices = TextView(this).apply {
+                text = "🔗 عرض كل الأجهزة المرتبطة بالحساب"
+                setTextColor(Color.parseColor("#FFC107"))
+                textSize = 12f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+            allDevicesRow.addView(tvAllDevices)
+            deviceBox.addView(divider)
+            deviceBox.addView(allDevicesRow)
+        }
+
+        // 3️⃣ الصف السفلي: زر الحظر والطرد الفوري
         val btnAction = MaterialButton(this).apply {
             if (isBanned) {
-                text = "إلغاء الحظر"
+                text = "إلغاء الحظر وإرجاع الاتصال"
                 setBackgroundColor(Color.parseColor("#2196F3"))
             } else {
-                text = "حظر فوراً"
+                text = "حظر وطرد فوراً 🛑"
                 setBackgroundColor(Color.parseColor("#E53935"))
             }
-            cornerRadius = 20
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            cornerRadius = 25
             setOnClickListener {
                 toggleBanStatus(deviceId, name, userId, pfp, !isBanned, currentTab)
             }
         }
 
-        cardContent.addView(avatarContainer)
-        cardContent.addView(infoLayout)
-        cardContent.addView(btnAction)
-
-        cardView.addView(cardContent)
+        mainLayout.addView(topRow)
+        mainLayout.addView(deviceBox)
+        mainLayout.addView(btnAction)
+        
+        cardView.addView(mainLayout)
         mainContainer.addView(cardView)
     }
 
+    // 🌟 واجهة عرض الأجهزة (السلايد السفلي) 🌟
     private fun showDevicesDialog(userId: String, userName: String, currentDeviceId: String) {
         val bottomSheet = BottomSheetDialog(this)
         
@@ -617,7 +700,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
             setBackgroundResource(outValue.resourceId)
             isClickable = true
-            isFocusable = true
 
             setOnClickListener {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -666,14 +748,14 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
                         val responseOk = conn.responseCode == 200
 
-                        // 🌟 الذكاء الصناعي: إرسال أمر (الطرد الفوري / Force Disconnect) للسيرفر ليفصل اتصاله حالاً! 🌟
+                        // 🌟 الطرد الفوري (الضربة القاضية) لقطع الاتصال حالاً 🌟
                         if (responseOk && banStatus) {
                             try {
                                 val pingPayload = JSONObject()
                                     .put("guid", targetGuid)
                                     .put("deviceId", deviceId)
                                     .put("userId", userId)
-                                    .put("disconnect", true) // سر الطرد الفوري
+                                    .put("disconnect", true) 
                                 
                                 val pingConn = URL("$baseUrl/file/ping").openConnection() as HttpURLConnection
                                 pingConn.requestMethod = "POST"
@@ -681,9 +763,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
                                 pingConn.doOutput = true
                                 pingConn.outputStream.use { it.write(pingPayload.toString().toByteArray(Charsets.UTF_8)) }
                                 pingConn.responseCode
-                            } catch (e: Exception) {
-                                // نتجاهل الأخطاء الجانبية للطرد إذا تم الحظر بنجاح
-                            }
+                            } catch (e: Exception) {}
                         }
 
                         if (responseOk) {
