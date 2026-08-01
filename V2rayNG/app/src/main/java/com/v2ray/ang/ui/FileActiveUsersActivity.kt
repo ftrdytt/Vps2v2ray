@@ -134,7 +134,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
         mainContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(25, 25, 25, 25)
+            setPadding(20, 20, 20, 20)
         }
 
         scrollView.addView(mainContainer)
@@ -185,11 +185,10 @@ class FileActiveUsersActivity : AppCompatActivity() {
         return String.format("%.2f MB", mb)
     }
 
-    // 🌟 دالة "الصيد الشامل الجبارة" لتجميع كل أنواع المتصلين واستهلاكهم الفعلي 🌟
     private fun loadUsers(type: String, isSilent: Boolean) {
         if (!isSilent && allLoadedUsers.length() == 0) {
             tvLoading.visibility = View.VISIBLE
-            tvLoading.text = "جاري تجميع البيانات بدقة..."
+            tvLoading.text = "جاري تجميع بيانات المتصلين..."
             mainContainer.removeAllViews()
         }
 
@@ -228,7 +227,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
                         try {
                             val encodedGuid = URLEncoder.encode(targetGuid, "UTF-8")
                             
-                            // 🌟 السحر الأول: سحب الاستهلاك الدقيق لهذا الحساب 🌟
                             var actualUsageBytes = 0L
                             try {
                                 val checkConn = URL("$baseUrl/check?guid=$encodedGuid").openConnection() as HttpURLConnection
@@ -240,7 +238,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
                                 }
                             } catch(e:Exception){}
 
-                            // السحر الثاني: سحب المتصلين
                             val url = URL("$baseUrl/file/$endpoint?guid=$encodedGuid")
                             val conn = url.openConnection() as HttpURLConnection
                             conn.connectTimeout = 7000
@@ -272,7 +269,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
                                     }
 
                                     if (parsedArray != null) {
-                                        // 🌟 دمج الاستهلاك مع بيانات المستخدم 🌟
                                         for (i in 0 until parsedArray.length()) {
                                             val obj = parsedArray.getJSONObject(i)
                                             obj.put("realUsageBytes", actualUsageBytes) 
@@ -355,7 +351,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             return
         }
 
-        // جلب الذاكرة المؤقتة للاستهلاك كخطة بديلة للملف الأساسي
         val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
         val fallbackMainUsage = prefs.getString("usage_$currentGuid", "0.0 MB") ?: "0.0 MB"
 
@@ -368,7 +363,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             val name = obj.optString("name", "مجهول الهوية")
             val pfp = obj.optString("pfp", "")
 
-            // 🌟 حساب الاستهلاك بالاعتماد على المتغير الجديد اللي حقناه بالسيرفر 🌟
             val serverUsageBytes = obj.optLong("realUsageBytes", obj.optLong("totalUsageBytes", 0L))
             var finalUsageStr = formatBytes(serverUsageBytes)
 
@@ -380,43 +374,41 @@ class FileActiveUsersActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 تصميم الكارت الخنفشاري (VIP) 🌟
+    // 🌟 تصميم الكارت المضغوط الـ VIP (السهم المنزلق) 🌟
     private fun addUserCard(deviceId: String, name: String, userId: String, pfp: String, isBanned: Boolean, currentTab: String, hasActiveStory: Boolean, usageStr: String) {
         
-        // الكارت الخارجي
         val cardView = CardView(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { 
-                setMargins(0, 0, 0, 35) 
+                setMargins(0, 0, 0, 20) // مسافات أقل لضغط الكارت
             }
-            radius = 35f
-            cardElevation = 15f
-            setCardBackgroundColor(Color.parseColor("#1C1C22")) // لون غامق فخم
+            radius = 25f
+            cardElevation = 10f
+            setCardBackgroundColor(Color.parseColor("#1C1C22"))
         }
 
-        // الحاوية الداخلية (عمودية)
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(35, 35, 35, 35)
+            setPadding(25, 25, 25, 25)
         }
 
-        // 1️⃣ الصف العلوي: الصورة + المعلومات الأساسية
-        val topRow = LinearLayout(this).apply {
+        // 1️⃣ القسم المرئي دائمًا (الصورة، الاسم، الاستهلاك، السهم)
+        val visibleSection = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
+        // الصورة الشخصية
         val avatarContainer = FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(160, 160).apply { setMargins(0, 0, 35, 0) }
+            layoutParams = LinearLayout.LayoutParams(110, 110).apply { setMargins(0, 0, 20, 0) }
             
             if (hasActiveStory && userId.isNotEmpty()) {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setStroke(6, Color.parseColor("#2196F3"))
+                    setStroke(4, Color.parseColor("#2196F3"))
                     setColor(Color.TRANSPARENT)
                 }
-                setPadding(10, 10, 10, 10)
-                
+                setPadding(6, 6, 6, 6)
                 setOnClickListener {
                     try {
                         val intent = Intent(this@FileActiveUsersActivity, StoryViewerActivity::class.java)
@@ -424,19 +416,18 @@ class FileActiveUsersActivity : AppCompatActivity() {
                         intent.putExtra("targetId", userId)
                         startActivity(intent)
                     } catch (e: Exception) {
-                        Toast.makeText(this@FileActiveUsersActivity, "لم يتم العثور على واجهة الاستوري", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@FileActiveUsersActivity, "الاستوري غير متوفر", Toast.LENGTH_SHORT).show()
                     }
                 }
             } else {
                 background = null
                 setPadding(0, 0, 0, 0)
-                setOnClickListener(null)
             }
         }
 
         val cvAvatar = CardView(this).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            radius = 80f
+            radius = 55f
             cardElevation = 0f
             setCardBackgroundColor(Color.TRANSPARENT)
         }
@@ -460,10 +451,10 @@ class FileActiveUsersActivity : AppCompatActivity() {
         cvAvatar.addView(ivAvatar)
         avatarContainer.addView(cvAvatar)
 
-        // تفاصيل المستخدم (الاسم، الرتبة، الاستهلاك)
+        // تفاصيل المستخدم (الاسم، ID، الاستهلاك) بجانب الصورة
         val detailsLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) // يأخذ المساحة المتبقية
         }
 
         val nameRow = LinearLayout(this).apply {
@@ -474,79 +465,65 @@ class FileActiveUsersActivity : AppCompatActivity() {
         val tvName = TextView(this).apply { 
             text = name 
             setTextColor(Color.WHITE)
-            textSize = 18f
+            textSize = 15f
             setTypeface(null, android.graphics.Typeface.BOLD) 
         }
         
         val tvRank = TextView(this).apply {
-            text = if (userId.isNotEmpty()) " 👑" else " 👤"
-            textSize = 16f
-            setPadding(10, 0, 10, 0)
+            text = if (userId.isNotEmpty()) " 👑 " else " 👤 "
+            textSize = 12f
         }
         
-        nameRow.addView(tvName)
-        nameRow.addView(tvRank)
-
-        // 🌟 شارة الاستهلاك الخنفشارية 🌟
-        val usagePill = TextView(this).apply {
-            text = "📊 الاستهلاك: $usageStr"
-            setTextColor(Color.parseColor("#00E676")) // أخضر نيون
-            textSize = 13f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#1A00E676")) // خلفية خضراء شفافة
-                cornerRadius = 20f
-            }
-            setPadding(25, 10, 25, 10)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 10, 0, 10) }
+        val tvId = TextView(this).apply { 
+            text = if (userId.isNotEmpty()) "($userId)" else "(غير مسجل)"
+            setTextColor(if (userId.isNotEmpty()) Color.parseColor("#FFC107") else Color.GRAY)
+            textSize = 10f 
         }
 
-        val tvId = TextView(this).apply { 
-            text = if (userId.isNotEmpty()) "ID: $userId" else "غير مسجل (حساب جهاز)"
-            setTextColor(if (userId.isNotEmpty()) Color.parseColor("#FFC107") else Color.GRAY)
-            textSize = 12f 
+        nameRow.addView(tvName)
+        nameRow.addView(tvRank)
+        nameRow.addView(tvId)
+
+        val usagePill = TextView(this).apply {
+            text = "📊 $usageStr"
+            setTextColor(Color.parseColor("#00E676"))
+            textSize = 11f
+            setTypeface(null, android.graphics.Typeface.BOLD)
         }
 
         detailsLayout.addView(nameRow)
         detailsLayout.addView(usagePill)
-        detailsLayout.addView(tvId)
 
-        topRow.addView(avatarContainer)
-        topRow.addView(detailsLayout)
-
-        // 2️⃣ الصف الأوسط: صندوق الـ Device ID والأجهزة المرتبطة
-        val deviceBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#25252D")) // لون الصندوق
-                cornerRadius = 20f
-            }
-            setPadding(30, 25, 30, 25)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { 
-                setMargins(0, 25, 0, 25) 
-            }
+        // السهم القابل للطي (Expand Arrow)
+        val tvArrow = TextView(this).apply {
+            text = "▼"
+            setTextColor(Color.GRAY)
+            textSize = 18f
+            setPadding(15, 15, 15, 15)
         }
-        
-        val currentDeviceRow = LinearLayout(this).apply {
+
+        visibleSection.addView(avatarContainer)
+        visibleSection.addView(detailsLayout)
+        visibleSection.addView(tvArrow)
+
+        // 2️⃣ القسم المخفي (ينفتح عند الضغط)
+        val hiddenSection = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE // مخفي افتراضياً
+            setPadding(0, 15, 0, 0)
+        }
+
+        val deviceBox = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-        }
-        
-        val tvDevice = TextView(this).apply { 
-            text = "📱 الجهاز المتصل: ${deviceId.takeLast(8)}"
-            setTextColor(Color.parseColor("#9E9E9E"))
-            textSize = 12f 
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        
-        // أيقونة النسخ المباشر
-        val btnCopyInline = TextView(this).apply {
-            text = "📋 نسخ"
-            setTextColor(Color.parseColor("#2196F3"))
-            textSize = 13f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            setPadding(15, 10, 15, 10)
-            isClickable = true
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#25252D"))
+                cornerRadius = 15f
+            }
+            setPadding(20, 15, 20, 15)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { 
+                setMargins(0, 10, 0, 10) 
+            }
             setOnClickListener {
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("Device ID", deviceId))
@@ -554,18 +531,25 @@ class FileActiveUsersActivity : AppCompatActivity() {
             }
         }
         
-        currentDeviceRow.addView(tvDevice)
-        currentDeviceRow.addView(btnCopyInline)
-        deviceBox.addView(currentDeviceRow)
+        val tvDevice = TextView(this).apply { 
+            text = "📱 الجهاز: ${deviceId.takeLast(10)}"
+            setTextColor(Color.parseColor("#9E9E9E"))
+            textSize = 11f 
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        
+        val btnCopyInline = TextView(this).apply {
+            text = "📋 نسخ"
+            setTextColor(Color.parseColor("#2196F3"))
+            textSize = 11f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        
+        deviceBox.addView(tvDevice)
+        deviceBox.addView(btnCopyInline)
+        hiddenSection.addView(deviceBox)
 
-        // 🌟 زر عرض كافة الأجهزة إذا كان الحساب مسجل 🌟
         if (userId.isNotEmpty()) {
-            val divider = View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 2).apply {
-                    setMargins(0, 15, 0, 15)
-                }
-                setBackgroundColor(Color.parseColor("#333333"))
-            }
             val allDevicesRow = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
@@ -576,39 +560,48 @@ class FileActiveUsersActivity : AppCompatActivity() {
             val tvAllDevices = TextView(this).apply {
                 text = "🔗 عرض كل الأجهزة المرتبطة بالحساب"
                 setTextColor(Color.parseColor("#FFC107"))
-                textSize = 12f
+                textSize = 11f
                 setTypeface(null, android.graphics.Typeface.BOLD)
             }
             allDevicesRow.addView(tvAllDevices)
-            deviceBox.addView(divider)
-            deviceBox.addView(allDevicesRow)
+            hiddenSection.addView(allDevicesRow)
         }
 
-        // 3️⃣ الصف السفلي: زر الحظر والطرد الفوري
+        // 3️⃣ زر الحظر المرئي دائمًا (حجم مضغوط)
         val btnAction = MaterialButton(this).apply {
             if (isBanned) {
-                text = "إلغاء الحظر وإرجاع الاتصال"
+                text = "إلغاء الحظر"
                 setBackgroundColor(Color.parseColor("#2196F3"))
             } else {
-                text = "حظر وطرد فوراً 🛑"
+                text = "حظر وطرد 🛑"
                 setBackgroundColor(Color.parseColor("#E53935"))
             }
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            cornerRadius = 25
+            textSize = 11f
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 100).apply { 
+                setMargins(0, 15, 0, 0)
+            }
+            cornerRadius = 15
             setOnClickListener {
                 toggleBanStatus(deviceId, name, userId, pfp, !isBanned, currentTab)
             }
         }
 
-        mainLayout.addView(topRow)
-        mainLayout.addView(deviceBox)
-        mainLayout.addView(btnAction)
+        // حركة الانزلاق عند الضغط على القسم العلوي
+        var isExpanded = false
+        visibleSection.setOnClickListener {
+            isExpanded = !isExpanded
+            hiddenSection.visibility = if (isExpanded) View.VISIBLE else View.GONE
+            tvArrow.rotation = if (isExpanded) 180f else 0f
+        }
+
+        mainLayout.addView(visibleSection)
+        mainLayout.addView(hiddenSection)
+        mainLayout.addView(btnAction) // زر الحظر دائماً ظاهر أسفل الكارت
         
         cardView.addView(mainLayout)
         mainContainer.addView(cardView)
     }
 
-    // 🌟 واجهة عرض الأجهزة (السلايد السفلي) 🌟
     private fun showDevicesDialog(userId: String, userName: String, currentDeviceId: String) {
         val bottomSheet = BottomSheetDialog(this)
         
@@ -694,7 +687,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             textSize = 14f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(20, 20, 20, 20)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             
             val outValue = android.util.TypedValue()
             context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
@@ -745,10 +737,9 @@ class FileActiveUsersActivity : AppCompatActivity() {
                             .put("pfp", pfp)
 
                         conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-
+                        
                         val responseOk = conn.responseCode == 200
 
-                        // 🌟 الطرد الفوري (الضربة القاضية) لقطع الاتصال حالاً 🌟
                         if (responseOk && banStatus) {
                             try {
                                 val pingPayload = JSONObject()
