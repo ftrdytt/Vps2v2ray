@@ -175,7 +175,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
-    // 🌟 السلاح السري الجبار: جلب بيانات مئات المشتركين بلحظة واحدة وبشكل متوازي ومحمي من الأخطاء 🌟
     private suspend fun fetchBatchStats(ids: List<String>): Map<String, JSONObject> {
         return withContext(Dispatchers.IO) {
             val resultMap = mutableMapOf<String, JSONObject>()
@@ -199,6 +198,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    // 🌟 المعادلة الجبارة لتصفية التضاعف الوهمي للـ VPN Loopback 🌟
+    private fun calculateRealDeltaBytes(rxDelta: Long, txDelta: Long): Long {
+        val totalDeltaBytes = rxDelta + txDelta
+        if (totalDeltaBytes <= 0) return 0L
+        
+        // الأندرويد يضاعف الاستهلاك الفعلي مرتين ونص (2.5) بسبب توجيه الـ VPN
+        val realDelta = (totalDeltaBytes / 2.5).toLong()
+        return if (realDelta > 0) realDelta else totalDeltaBytes 
+    }
+
     private fun startFileStatsSync() {
         fileStatsJob?.cancel()
         fileStatsJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -213,7 +222,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     
                     val rxDelta = if (currentRx > globalLastRxBytes) currentRx - globalLastRxBytes else 0L
                     val txDelta = if (currentTx > globalLastTxBytes) currentTx - globalLastTxBytes else 0L
-                    val totalDeltaBytes = rxDelta + txDelta
+                    
+                    // استخدام دالة التصفية الدقيقة لتجنب الأرقام المبالغ بيها
+                    val realDeltaBytes = calculateRealDeltaBytes(rxDelta, txDelta)
                     
                     globalLastRxBytes = currentRx
                     globalLastTxBytes = currentTx
@@ -221,17 +232,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     val activeGuid = MmkvManager.getSelectServer().orEmpty()
                     val myDeviceId = getUniqueHardwareId()
                     val myUserId = AuthManager.getId(this@MainActivity)
-                    val myUserRole = AuthManager.getRole(this@MainActivity) // 🌟 جلب الرتبة 🌟
+                    val myUserRole = AuthManager.getRole(this@MainActivity)
                     val isSuperAdmin = (myUserRole == "admin")
 
-                    if (activeGuid.isNotEmpty() && mainViewModel.isRunning.value == true && totalDeltaBytes > 0) {
+                    if (activeGuid.isNotEmpty() && mainViewModel.isRunning.value == true && realDeltaBytes > 0) {
                         val activeLicenseId = V2rayCrypt.getLicenseId(this@MainActivity, activeGuid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: activeGuid
                         try {
                             val payload = JSONObject()
                                 .put("guid", activeLicenseId)
                                 .put("deviceId", myDeviceId)
                                 .put("userId", myUserId)
-                                .put("usageBytes", totalDeltaBytes) 
+                                .put("usageBytes", realDeltaBytes) 
                             
                             val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
                             conn.requestMethod = "POST"
@@ -259,7 +270,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         guidToLicenseId[guid] = licenseId
                         val ids = mutableListOf(licenseId)
                         
-                        // 🌟 الذكاء الاصطناعي لحل المشكلة: إضافة صلاحية صاحب الملف الحقيقي (Owner) 🌟
                         val isOwnerOrAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid) || isSuperAdmin || (licenseId == myUserId && myUserId.isNotEmpty())
                         
                         if (isOwnerOrAdmin) {
@@ -271,7 +281,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         allIdsToFetch.addAll(ids)
                     }
 
-                    // سحب بيانات كل الملفات والمشتركين بضربة واحدة من السيرفر!
                     val batchStats = fetchBatchStats(allIdsToFetch.toList())
 
                     for (guid in guids) {
@@ -741,7 +750,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         
                         val rxDelta = if (currentRx > globalLastRxBytes) currentRx - globalLastRxBytes else 0L
                         val txDelta = if (currentTx > globalLastTxBytes) currentTx - globalLastTxBytes else 0L
-                        val totalDeltaBytes = rxDelta + txDelta
+                        
+                        // استخدام معادلة الفلترة المباشرة داخل حلقة الـ Ping
+                        val realDeltaBytes = calculateRealDeltaBytes(rxDelta, txDelta)
                         
                         globalLastRxBytes = currentRx
                         globalLastTxBytes = currentTx
@@ -753,7 +764,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             .put("userId", userId)
                             .put("name", if (userId.isNotEmpty()) AuthManager.getName(appContext) else "مجهول الهوية")
                             .put("pfp", if (userId.isNotEmpty()) AuthManager.getPfp(appContext) else "")
-                            .put("usageBytes", totalDeltaBytes) 
+                            .put("usageBytes", realDeltaBytes) 
                             .put("disconnect", false)
 
                         val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
@@ -942,7 +953,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         lifecycleScope.launch(Dispatchers.IO) {
             val guids = MmkvManager.decodeServerList()?.toList() ?: emptyList()
             val myUserId = AuthManager.getId(this@MainActivity)
-            val myUserRole = AuthManager.getRole(this@MainActivity) // 🌟 جلب الرتبة 🌟
+            val myUserRole = AuthManager.getRole(this@MainActivity)
             val isSuperAdmin = (myUserRole == "admin")
             val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             val editor = prefs.edit()
@@ -964,7 +975,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 guidToLicenseId[guid] = licenseId
                 val ids = mutableListOf(licenseId)
                 
-                // 🌟 الذكاء الاصطناعي لحل المشكلة: إضافة صلاحية صاحب الملف الحقيقي (Owner) 🌟
                 val isOwnerOrAdmin = V2rayCrypt.isAdmin(this@MainActivity, guid) || isSuperAdmin || (licenseId == myUserId && myUserId.isNotEmpty())
                 
                 if (isOwnerOrAdmin) {
