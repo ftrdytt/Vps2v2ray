@@ -23,8 +23,8 @@ object V2rayCrypt {
     private const val KEY_LICENSE_PREFIX = "License_"
     private const val KEY_SUBSCRIBERS_LIST_PREFIX = "Subscribers_" 
 
-    // 🌟 حاوية البيانات المشفرة الجديدة (تشمل آيدي الناشر) 🌟
-    data class DecryptedPayload(val configData: String, val expiryTimeMs: Long, val licenseId: String, val pubId: String)
+    // 🌟 حاوية البيانات المشفرة الجديدة (تم إضافة pubName ليعمل بدون نت) 🌟
+    data class DecryptedPayload(val configData: String, val expiryTimeMs: Long, val licenseId: String, val pubId: String, val pubName: String)
 
     fun saveActiveCount(context: Context, guid: String, count: Int) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -46,10 +46,10 @@ object V2rayCrypt {
         return prefs.getInt("Hash_$guid", 0)
     }
 
-    // 🌟 تم تحديث دالة التشفير لدمج آيدي الناشر (pubId) بداخل الملف المشفر 🌟
-    fun encrypt(data: String, expiryTimeMs: Long, licenseId: String, pubId: String = ""): String {
+    // 🌟 التشفير الجديد: يدمج آيدي واسم صاحب الحساب بداخل النص المشفر 🌟
+    fun encrypt(data: String, expiryTimeMs: Long, licenseId: String, pubId: String = "", pubName: String = ""): String {
         return try {
-            val payload = "$expiryTimeMs||$licenseId||$pubId||$data"
+            val payload = "$expiryTimeMs||$licenseId||$pubId||$pubName||$data"
             val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
             val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
             cipher.init(Cipher.ENCRYPT_MODE, keySpec)
@@ -58,7 +58,7 @@ object V2rayCrypt {
         } catch (e: Exception) { "" }
     }
 
-    // 🌟 دالة الاستخراج الشاملة (لجلب بيانات الناشر عند الاستيراد) 🌟
+    // 🌟 استخراج البيانات الذكي عند إضافة الكود (يدعم الاسم والآيدي) 🌟
     fun decryptPayload(data: String): DecryptedPayload? {
         return try {
             if (!data.startsWith("ENC://")) return null
@@ -69,17 +69,17 @@ object V2rayCrypt {
             val decryptedBytes = cipher.doFinal(Base64.decode(actualData, Base64.NO_WRAP))
             val decryptedString = String(decryptedBytes)
 
-            val parts = decryptedString.split("||", limit = 4)
+            val parts = decryptedString.split("||", limit = 5)
             when (parts.size) {
-                4 -> DecryptedPayload(parts[3], parts[0].toLongOrNull() ?: 0L, parts[1], parts[2]) // التشفير الجديد مع pubId
-                3 -> DecryptedPayload(parts[2], parts[0].toLongOrNull() ?: 0L, parts[1], "") // التشفير القديم
-                2 -> DecryptedPayload(parts[1], parts[0].toLongOrNull() ?: 0L, "LEGACY", "") // التشفير الأقدم
+                5 -> DecryptedPayload(parts[4], parts[0].toLongOrNull() ?: 0L, parts[1], parts[2], parts[3]) // الكود الجديد مع الاسم
+                4 -> DecryptedPayload(parts[3], parts[0].toLongOrNull() ?: 0L, parts[1], parts[2], "")
+                3 -> DecryptedPayload(parts[2], parts[0].toLongOrNull() ?: 0L, parts[1], "", "")
+                2 -> DecryptedPayload(parts[1], parts[0].toLongOrNull() ?: 0L, "LEGACY", "", "")
                 else -> null
             }
         } catch (e: Exception) { null }
     }
 
-    // 🌟 بقاء هذه الدالة كما هي لحماية محرك الـ VPN الداخلي من الأخطاء البرمجية 🌟
     fun decryptAndCheckExpiry(data: String): Triple<String, Long, String>? {
         val payload = decryptPayload(data) ?: return null
         return Triple(payload.configData, payload.expiryTimeMs, payload.licenseId)
