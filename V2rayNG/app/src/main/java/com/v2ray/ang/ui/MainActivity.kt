@@ -198,13 +198,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // 🌟 المعادلة الجبارة لتصفية التضاعف الوهمي للـ VPN Loopback والتشفير 🌟
     private fun calculateRealDeltaBytes(rxDelta: Long, txDelta: Long): Long {
         val totalDeltaBytes = rxDelta + txDelta
         if (totalDeltaBytes <= 0) return 0L
-        
-        // الأندرويد يضاعف الاستهلاك الفعلي (بسبب توجيه الـ VPN + وزن التشفير)
-        // قسمناه على 3.2 حتى نصفي كل الزيادات الوهمية وينطيك الصافي الحقيقي بالملي!
         val realDelta = (totalDeltaBytes / 3.2).toLong()
         return if (realDelta > 0) realDelta else totalDeltaBytes 
     }
@@ -224,7 +220,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     val rxDelta = if (currentRx > globalLastRxBytes) currentRx - globalLastRxBytes else 0L
                     val txDelta = if (currentTx > globalLastTxBytes) currentTx - globalLastTxBytes else 0L
                     
-                    // استخدام دالة التصفية الدقيقة لتجنب الأرقام المبالغ بيها
                     val realDeltaBytes = calculateRealDeltaBytes(rxDelta, txDelta)
                     
                     globalLastRxBytes = currentRx
@@ -313,6 +308,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         }
                     }
 
+                    // 🌟 جلب بيانات الناشر الأصلي للملف وتخزينها للمشتركين 🌟
                     val userInfos = guids.map { guid ->
                         async(Dispatchers.IO) {
                             val licenseId = guidToLicenseId[guid]!!
@@ -331,11 +327,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     }
                     
                     userInfos.mapNotNull { it.await() }.forEach { (guid, obj) ->
-                        if (obj.getBoolean("success")) {
-                            editor.putString("name_$guid", obj.getString("name"))
+                        if (obj.optBoolean("success", false)) {
+                            val pName = obj.optString("name", "")
+                            if (pName.isNotBlank()) editor.putString("name_$guid", pName)
                             editor.putString("pfp_$guid", obj.optString("pfp", ""))
                             editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
-                            editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) 
+                            editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false))
+                            // 🌟 حفظ آيدي الناشر الحقيقي حتى يفتح استورياته هو مو استورياتنا 🌟
+                            editor.putString("pubId_$guid", obj.optString("id", guidToLicenseId[guid]!!)) 
                         }
                     }
 
@@ -752,7 +751,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val rxDelta = if (currentRx > globalLastRxBytes) currentRx - globalLastRxBytes else 0L
                         val txDelta = if (currentTx > globalLastTxBytes) currentTx - globalLastTxBytes else 0L
                         
-                        // استخدام معادلة الفلترة المباشرة داخل حلقة الـ Ping
                         val realDeltaBytes = calculateRealDeltaBytes(rxDelta, txDelta)
                         
                         globalLastRxBytes = currentRx
@@ -1018,6 +1016,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
 
+            // 🌟 جلب بيانات الناشر الأصلي للملف وتخزينها للمشتركين 🌟
             val userInfos = guids.map { guid ->
                 async(Dispatchers.IO) {
                     val licenseId = guidToLicenseId[guid]!!
@@ -1036,11 +1035,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             }
             
             userInfos.mapNotNull { it.await() }.forEach { (guid, obj) ->
-                if (obj.getBoolean("success")) {
-                    editor.putString("name_$guid", obj.getString("name"))
+                if (obj.optBoolean("success", false)) {
+                    val pName = obj.optString("name", "")
+                    if (pName.isNotBlank()) editor.putString("name_$guid", pName)
                     editor.putString("pfp_$guid", obj.optString("pfp", ""))
                     editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
-                    editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false)) 
+                    editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false))
+                    // 🌟 حفظ آيدي الناشر الحقيقي حتى يفتح استورياته هو مو استورياتنا 🌟
+                    editor.putString("pubId_$guid", obj.optString("id", guidToLicenseId[guid]!!)) 
                 }
             }
             
