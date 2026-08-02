@@ -308,12 +308,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         }
                     }
 
-                    // 🌟 جلب بيانات الناشر الأصلي للملف وتخزينها للمشتركين 🌟
+                    // 🌟 السحر الجديد: سحب بيانات "الناشر الأصلي" باستخدام pubId المدمج مع الملف 🌟
                     val userInfos = guids.map { guid ->
                         async(Dispatchers.IO) {
-                            val licenseId = guidToLicenseId[guid]!!
+                            // نجيب آيدي الناشر الأصلي إذا كان موجود بالتشفير، وإذا ماكو نرجع لـ licenseId
+                            var targetFetchId = prefs.getString("pubId_$guid", "") ?: ""
+                            if (targetFetchId.isEmpty()) {
+                                targetFetchId = guidToLicenseId[guid]!!
+                            }
+
                             try {
-                                val encodedLicenseId = java.net.URLEncoder.encode(licenseId, "UTF-8")
+                                val encodedLicenseId = java.net.URLEncoder.encode(targetFetchId, "UTF-8")
                                 val conn = URL("$BASE_API_URL/auth/get_user?id=$encodedLicenseId").openConnection() as HttpURLConnection
                                 conn.connectTimeout = 4000
                                 conn.readTimeout = 4000
@@ -333,8 +338,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             editor.putString("pfp_$guid", obj.optString("pfp", ""))
                             editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
                             editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false))
-                            // 🌟 حفظ آيدي الناشر الحقيقي حتى يفتح استورياته هو مو استورياتنا 🌟
-                            editor.putString("pubId_$guid", obj.optString("id", guidToLicenseId[guid]!!)) 
+                            
+                            // نحتفظ بآيدي الناشر حتى استورياته تنفتح مضبوط
+                            val currentPubId = prefs.getString("pubId_$guid", "") ?: ""
+                            if (currentPubId.isEmpty()) {
+                                editor.putString("pubId_$guid", obj.optString("id", guidToLicenseId[guid]!!)) 
+                            }
                         }
                     }
 
@@ -1016,12 +1025,17 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
 
-            // 🌟 جلب بيانات الناشر الأصلي للملف وتخزينها للمشتركين 🌟
+            // 🌟 السحر الجديد: سحب بيانات "الناشر الأصلي" باستخدام pubId المدمج مع الملف 🌟
             val userInfos = guids.map { guid ->
                 async(Dispatchers.IO) {
-                    val licenseId = guidToLicenseId[guid]!!
+                    // نجيب آيدي الناشر الأصلي إذا كان موجود بالتشفير، وإذا ماكو نرجع لـ licenseId
+                    var targetFetchId = prefs.getString("pubId_$guid", "") ?: ""
+                    if (targetFetchId.isEmpty()) {
+                        targetFetchId = guidToLicenseId[guid]!!
+                    }
+
                     try {
-                        val encodedLicenseId = java.net.URLEncoder.encode(licenseId, "UTF-8")
+                        val encodedLicenseId = java.net.URLEncoder.encode(targetFetchId, "UTF-8")
                         val conn = URL("$BASE_API_URL/auth/get_user?id=$encodedLicenseId").openConnection() as HttpURLConnection
                         conn.connectTimeout = 4000
                         conn.readTimeout = 4000
@@ -1041,8 +1055,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     editor.putString("pfp_$guid", obj.optString("pfp", ""))
                     editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
                     editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false))
-                    // 🌟 حفظ آيدي الناشر الحقيقي حتى يفتح استورياته هو مو استورياتنا 🌟
-                    editor.putString("pubId_$guid", obj.optString("id", guidToLicenseId[guid]!!)) 
+                    
+                    // نحتفظ بآيدي الناشر حتى استورياته تنفتح مضبوط
+                    val currentPubId = prefs.getString("pubId_$guid", "") ?: ""
+                    if (currentPubId.isEmpty()) {
+                        editor.putString("pubId_$guid", obj.optString("id", guidToLicenseId[guid]!!)) 
+                    }
                 }
             }
             
