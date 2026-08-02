@@ -1,6 +1,7 @@
 package com.v2ray.ang.handler
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -21,7 +22,6 @@ import com.v2ray.ang.ui.MainActivity
 import com.v2ray.ang.ui.ScannerActivity
 import com.v2ray.ang.ui.ServerActivity
 import com.v2ray.ang.ui.ServerAshorActivity
-import com.v2ray.ang.ui.ServerGroupActivity
 import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.MainViewModel
 import kotlinx.coroutines.*
@@ -71,18 +71,20 @@ object ImportHelper {
 
     fun importClipboard(activity: MainActivity, vm: MainViewModel) { try { importBatchConfig(activity, vm, Utils.getClipboard(activity)) } catch (e: Exception) {} }
     
+    // 🌟 التعديل السحري الأول: قراءة بيانات الناشر (pubId) من الحافظة المشفرة 🌟
     fun importClipboardEncrypted(activity: MainActivity, vm: MainViewModel) {
         try {
             val clip = Utils.getClipboard(activity); if (clip.isNullOrEmpty()) { activity.toast("الحافظة فارغة"); return }
-            val res = V2rayCrypt.decryptAndCheckExpiry(clip); if (res == null) { activity.toast("الكود غير صالح"); return }
-            importEncryptedBatchConfig(activity, vm, res.first, res.second, res.third)
+            val res = V2rayCrypt.decryptPayload(clip); if (res == null) { activity.toast("الكود غير صالح"); return }
+            importEncryptedBatchConfig(activity, vm, res.configData, res.expiryTimeMs, res.licenseId, res.pubId)
         } catch (e: Exception) {}
     }
 
+    // 🌟 التعديل السحري الثاني: قراءة بيانات الناشر (pubId) من الملف المشفر (.ashor) 🌟
     fun importEncryptedContentFromUri(activity: MainActivity, vm: MainViewModel, uri: Uri) {
         try {
             val content = activity.contentResolver.openInputStream(uri)?.use { BufferedReader(InputStreamReader(it)).readText() } ?: return
-            val res = V2rayCrypt.decryptAndCheckExpiry(content); if (res != null) importEncryptedBatchConfig(activity, vm, res.first, res.second, res.third)
+            val res = V2rayCrypt.decryptPayload(content); if (res != null) importEncryptedBatchConfig(activity, vm, res.configData, res.expiryTimeMs, res.licenseId, res.pubId)
         } catch (e: Exception) { activity.toast("خطأ في الملف") }
     }
 
@@ -90,7 +92,8 @@ object ImportHelper {
         try { activity.contentResolver.openInputStream(uri).use { importBatchConfig(activity, vm, it?.bufferedReader()?.readText()) } } catch (e: Exception) {}
     }
 
-    private fun importEncryptedBatchConfig(activity: MainActivity, vm: MainViewModel, server: String?, expiry: Long, licenseId: String) {
+    // 🌟 دالة الاستيراد الشاملة المحدثة لحفظ وحقن هوية الناشر الأصلي في جهاز المشترك 🌟
+    private fun importEncryptedBatchConfig(activity: MainActivity, vm: MainViewModel, server: String?, expiry: Long, licenseId: String, pubId: String = "") {
         activity.showLoadingDialog()
         GlobalScope.launch(Dispatchers.IO) {
             val before = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
@@ -99,22 +102,35 @@ object ImportHelper {
                 if (count > 0) {
                     val newGuids = (MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()) - before
 
-                    // 🕵️‍♂️ التمويه الذكي (Obfuscation):
-                    // المبرمج سيعتقد أن هذا الكود يخص تحسين استهلاك الذاكرة للتطبيق (Memory Allocation)
-                    // لكنه في الحقيقة يفحص هل المستخدم هو أحد الأدمنية (1 أو 2 أو 3) لكسر القفل عنه!
+                    // التمويه الذكي (لحماية الملف من المستخدمين العاديين وكسر القفل للأدمن)
                     val memAllocBlock = AuthManager.getId(activity).toIntOrNull() ?: 0
                     if (memAllocBlock !in 1..3) {
-                        // يتم قفل الملفات للمستخدمين العاديين فقط
                         V2rayCrypt.addProtectedGuids(activity, newGuids)
                     }
+
+                    // 🌟 فتح ذاكرة التطبيق الخاصة ببيانات الملفات 🌟
+                    val prefsEditor = activity.getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE).edit()
 
                     newGuids.forEach { guid ->
                         if (expiry > 0L) V2rayCrypt.saveExpiryTime(activity, guid, expiry)
                         if (licenseId.isNotEmpty()) V2rayCrypt.saveLicenseId(activity, guid, licenseId)
                         if (server != null) V2rayCrypt.saveLastConfigHash(activity, guid, Base64.encodeToString(server.toByteArray(), Base64.NO_WRAP).hashCode())
+                        
+                        // 🌟 ختم هوية وبصمة الناشر الأصلي بداخل جهاز المشترك للأبد 🌟
+                        if (pubId.isNotEmpty()) {
+                            prefsEditor.putString("pubId_$guid", pubId)
+                        }
                     }
-                    vm.reloadServerList(); activity.toast("تم استيراد التكوين!")
-                } else activity.toastError(R.string.toast_failure)
+                    prefsEditor.apply()
+
+                    vm.reloadServerList()
+                    activity.toast("تم استيراد التكوين!")
+                    
+                    // 🌟 ضربة النهاية: إجبار التطبيق يسوي Sync حتى تظهر صورتك واستورياتك فوراً بدون انتظار 🌟
+                    activity.forceManualSync() 
+                } else {
+                    activity.toastError(R.string.toast_failure)
+                }
                 activity.hideLoadingDialog()
             }
         }
