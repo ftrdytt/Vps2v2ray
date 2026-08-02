@@ -122,17 +122,31 @@ class MainRecyclerAdapter(
             val hasActiveStory = prefs.getBoolean("story_$guid", false)
             val isCloudSaved = prefs.getBoolean("cloud_$guid", false)
 
-            var finalPublisherName = prefs.getString("name_$guid", "صاحب الملف") ?: "صاحب الملف"
+            // 🌟 السحر هنا: قراءة بيانات "الناشر الأصلي" اللي سحبناها من السيرفر 🌟
+            var finalPublisherName = prefs.getString("name_$guid", "") ?: ""
             var finalPublisherPfp = prefs.getString("pfp_$guid", "") ?: ""
             var finalIsVerified = prefs.getBoolean("verified_$guid", false)
+            val pubId = prefs.getString("pubId_$guid", "") ?: ""
 
-            if (isOwnerOrAdmin && (finalPublisherName == "صاحب الملف" || finalPublisherName.isEmpty())) {
-                finalPublisherName = if (myUserName.isNotEmpty()) myUserName else "صاحب الملف"
-                finalPublisherPfp = myUserPfp
-                finalIsVerified = isSuperAdmin
+            // الذكاء التلقائي: إذا الملف إلك (مالك) واسمك ما مسجل بالسحابة، يعرض اسمك وصورتك، 
+            // وإلا يعرض بيانات "الناشر الأصلي" حتى للمشتركين العاديين
+            if (finalPublisherName.isEmpty() || finalPublisherName == "صاحب الملف") {
+                if (isOwnerOrAdmin && myUserName.isNotEmpty()) {
+                    finalPublisherName = myUserName
+                    finalPublisherPfp = myUserPfp
+                    finalIsVerified = isSuperAdmin
+                } else {
+                    finalPublisherName = "صاحب الملف"
+                }
             }
 
-            val actualTargetId = if (isOwnerOrAdmin && targetId.isEmpty()) myUserId else targetId
+            // تحديد الآيدي الصحيح لفتح الاستوري والبروفايل (الأولوية لآيدي الناشر من السيرفر، ثم LicenseId، ثم آيديك)
+            val actualTargetId = when {
+                pubId.isNotEmpty() -> pubId
+                targetId.isNotEmpty() -> targetId
+                isOwnerOrAdmin -> myUserId
+                else -> ""
+            }
 
             // عرض اسم الملف مع علامة السحابة
             val cloudIcon = if (isCloudSaved) "☁️" else "📱"
@@ -155,7 +169,7 @@ class MainRecyclerAdapter(
                 }
             }
 
-            // تفعيل الإطار الأزرق وفتح الاستوري
+            // تفعيل الإطار الأزرق وفتح الاستوري لـ (صاحب الكود الأصلي)
             flAvatarContainer?.let {
                 if (hasActiveStory && actualTargetId.isNotEmpty()) {
                     it.background = GradientDrawable().apply {
@@ -167,7 +181,7 @@ class MainRecyclerAdapter(
                     it.setOnClickListener {
                         try {
                             val intent = Intent(context, StoryViewerActivity::class.java)
-                            intent.putExtra("targetUserId", actualTargetId)
+                            intent.putExtra("targetUserId", actualTargetId) // راح يفتح استوري صاحب الملف حصراً
                             intent.putExtra("userId", myUserId.ifEmpty { actualTargetId })
                             context.startActivity(intent)
                         } catch (e: Exception) {
@@ -181,7 +195,7 @@ class MainRecyclerAdapter(
                         if (actualTargetId.isNotEmpty()) {
                             try {
                                 val intent = Intent(context, UserProfileActivity::class.java)
-                                intent.putExtra("targetUserId", actualTargetId)
+                                intent.putExtra("targetUserId", actualTargetId) // راح يفتح بروفايل صاحب الملف
                                 context.startActivity(intent)
                             } catch (e: Exception) {}
                         }
@@ -240,7 +254,6 @@ class MainRecyclerAdapter(
                     tvActiveCount?.text = "🟢 $activeCount"
                 }
                 
-                // 🌟 الحل الجذري تم هنا: إرسال الـ guid الصحيح للصفحة 🌟
                 tvActiveCount?.setOnClickListener {
                     if (isOwnerOrAdmin) {
                         val intent = Intent(context, FileActiveUsersActivity::class.java)
