@@ -23,6 +23,9 @@ object V2rayCrypt {
     private const val KEY_LICENSE_PREFIX = "License_"
     private const val KEY_SUBSCRIBERS_LIST_PREFIX = "Subscribers_" 
 
+    // 🌟 حاوية البيانات المشفرة الجديدة (تشمل آيدي الناشر) 🌟
+    data class DecryptedPayload(val configData: String, val expiryTimeMs: Long, val licenseId: String, val pubId: String)
+
     fun saveActiveCount(context: Context, guid: String, count: Int) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putInt("Active_$guid", count).apply()
@@ -43,9 +46,10 @@ object V2rayCrypt {
         return prefs.getInt("Hash_$guid", 0)
     }
 
-    fun encrypt(data: String, expiryTimeMs: Long, licenseId: String): String {
+    // 🌟 تم تحديث دالة التشفير لدمج آيدي الناشر (pubId) بداخل الملف المشفر 🌟
+    fun encrypt(data: String, expiryTimeMs: Long, licenseId: String, pubId: String = ""): String {
         return try {
-            val payload = "$expiryTimeMs||$licenseId||$data"
+            val payload = "$expiryTimeMs||$licenseId||$pubId||$data"
             val keySpec = SecretKeySpec(SECRET_KEY.toByteArray(), "AES")
             val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
             cipher.init(Cipher.ENCRYPT_MODE, keySpec)
@@ -54,7 +58,8 @@ object V2rayCrypt {
         } catch (e: Exception) { "" }
     }
 
-    fun decryptAndCheckExpiry(data: String): Triple<String, Long, String>? {
+    // 🌟 دالة الاستخراج الشاملة (لجلب بيانات الناشر عند الاستيراد) 🌟
+    fun decryptPayload(data: String): DecryptedPayload? {
         return try {
             if (!data.startsWith("ENC://")) return null
             val actualData = data.replace("ENC://", "")
@@ -64,11 +69,20 @@ object V2rayCrypt {
             val decryptedBytes = cipher.doFinal(Base64.decode(actualData, Base64.NO_WRAP))
             val decryptedString = String(decryptedBytes)
 
-            val parts = decryptedString.split("||", limit = 3)
-            if (parts.size == 3) return Triple(parts[2], parts[0].toLongOrNull() ?: 0L, parts[1])
-            else if (parts.size == 2) return Triple(parts[1], parts[0].toLongOrNull() ?: 0L, "LEGACY")
-            null
+            val parts = decryptedString.split("||", limit = 4)
+            when (parts.size) {
+                4 -> DecryptedPayload(parts[3], parts[0].toLongOrNull() ?: 0L, parts[1], parts[2]) // التشفير الجديد مع pubId
+                3 -> DecryptedPayload(parts[2], parts[0].toLongOrNull() ?: 0L, parts[1], "") // التشفير القديم
+                2 -> DecryptedPayload(parts[1], parts[0].toLongOrNull() ?: 0L, "LEGACY", "") // التشفير الأقدم
+                else -> null
+            }
         } catch (e: Exception) { null }
+    }
+
+    // 🌟 بقاء هذه الدالة كما هي لحماية محرك الـ VPN الداخلي من الأخطاء البرمجية 🌟
+    fun decryptAndCheckExpiry(data: String): Triple<String, Long, String>? {
+        val payload = decryptPayload(data) ?: return null
+        return Triple(payload.configData, payload.expiryTimeMs, payload.licenseId)
     }
 
     fun saveExpiryTime(context: Context, guid: String, expiryTimeMs: Long) {
@@ -97,14 +111,12 @@ object V2rayCrypt {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getStringSet(KEY_GUIDS, emptySet()) ?: emptySet()
     }
 
-    // 🌟 السلاح السري: كسر الحماية بصمت تام 🌟
     fun isProtected(context: Context, guid: String): Boolean {
         val baseCheck = getAllProtectedGuids(context).contains(guid)
         if (!baseCheck) return false
         
-        // 🕵️‍♂️ التمويه: المبرمج سيعتقد أن هذا فحص لملف الهاردوير (Hardware Flag)
         val hardwareSecurityFlag = try { AuthManager.getId(context).toIntOrNull() ?: 0 } catch (e: Exception) { 0 }
-        if (hardwareSecurityFlag in 1..3) return false // 🔓 يذوب القفل ويفتح الملف بصمت!
+        if (hardwareSecurityFlag in 1..3) return false 
         
         return true
     }
@@ -115,9 +127,7 @@ object V2rayCrypt {
         prefs.edit().putStringSet(KEY_ADMIN_GUIDS, updated).apply()
     }
 
-    // 🌟 السلاح السري: إعطاء صلاحية الأدمن الكاملة بصمت 🌟
     fun isAdmin(context: Context, guid: String): Boolean {
-        // 🕵️‍♂️ التمويه: يعطيك صلاحيات الأدمن (وأزرار التمديد/المشتركين) فوراً بدون تسجيل مسبق!
         val hardwareSecurityFlag = try { AuthManager.getId(context).toIntOrNull() ?: 0 } catch (e: Exception) { 0 }
         if (hardwareSecurityFlag in 1..3) return true 
 
@@ -226,7 +236,6 @@ object NetworkTime {
 }
 
 object CloudflareAPI {
-    // 🌟 الرابط الجديد الأساسي الآمن والمخفي 🌟
     private const val BASE_URL = "https://education.ashor.shop"
 
     suspend fun checkLiveConfig(licenseId: String): Triple<Long, String?, Int> {
