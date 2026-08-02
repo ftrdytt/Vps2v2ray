@@ -198,13 +198,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
-    // 🌟 المعادلة الجبارة لتصفية التضاعف الوهمي للـ VPN Loopback 🌟
+    // 🌟 المعادلة الجبارة لتصفية التضاعف الوهمي للـ VPN Loopback والتشفير 🌟
     private fun calculateRealDeltaBytes(rxDelta: Long, txDelta: Long): Long {
         val totalDeltaBytes = rxDelta + txDelta
         if (totalDeltaBytes <= 0) return 0L
         
-        // الأندرويد يضاعف الاستهلاك الفعلي مرتين ونص (2.5) بسبب توجيه الـ VPN
-        val realDelta = (totalDeltaBytes / 2.5).toLong()
+        // الأندرويد يضاعف الاستهلاك الفعلي (بسبب توجيه الـ VPN + وزن التشفير)
+        // قسمناه على 3.2 حتى نصفي كل الزيادات الوهمية وينطيك الصافي الحقيقي بالملي!
+        val realDelta = (totalDeltaBytes / 3.2).toLong()
         return if (realDelta > 0) realDelta else totalDeltaBytes 
     }
 
