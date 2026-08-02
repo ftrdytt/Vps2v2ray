@@ -41,6 +41,7 @@ import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.NetworkTime
 import com.v2ray.ang.handler.V2rayCrypt
 import com.v2ray.ang.handler.CloudflareAPI
+import com.v2ray.ang.handler.AuthManager
 import com.v2ray.ang.helper.SimpleItemTouchHelperCallback
 import com.v2ray.ang.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
@@ -248,7 +249,11 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
     }
 
     private fun askToShareSubscriberCode(conf: String, expiryTimeMs: Long, licenseId: String, subName: String) {
-        val encryptedConf = V2rayCrypt.encrypt(conf, expiryTimeMs, licenseId)
+        // 🌟 التعديل هنا: حقن الهوية والاسم عند إنشاء مشترك جديد 🌟
+        val myPubId = AuthManager.getId(ownerActivity)
+        val myPubName = AuthManager.getName(ownerActivity)
+        val encryptedConf = V2rayCrypt.encrypt(conf, expiryTimeMs, licenseId, myPubId, myPubName)
+
         if (encryptedConf.isNotEmpty()) {
             val options = arrayOf("نسخ الكود إلى الحافظة", "حفظ كملف (.ashor)")
             AlertDialog.Builder(ownerActivity).setTitle("مشاركة المشترك ($subName)").setItems(options) { _, which ->
@@ -302,19 +307,21 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                     withContext(Dispatchers.Main) {
                         ownerActivity.hideLoadingDialog()
                         if (uploaded) {
-                            // حماية وإعطاء هوية للملف الأصلي إذا كان جديداً
                             if (V2rayCrypt.getLicenseId(ownerActivity, guid).isEmpty()) {
                                 V2rayCrypt.addAdminGuid(ownerActivity, guid)
                                 V2rayCrypt.saveLicenseId(ownerActivity, guid, "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16))
                                 V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
                             }
                             
-                            val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, childLicenseId)
+                            // 🌟 السطر السحري: حقن الآيدي واسم الحساب بداخل الملف المشفر 🌟
+                            val myPubId = AuthManager.getId(ownerActivity)
+                            val myPubName = AuthManager.getName(ownerActivity)
+                            val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, childLicenseId, myPubId, myPubName)
+
                             if (encryptedConf.isNotEmpty()) {
                                 pendingEncryptedConfigToSave = encryptedConf
                                 val configName = "ملف_مستخرج_${(1000..9999).random()}"
                                 
-                                // 🌟 السطر السحري: ربط الملف المستخرج بالملف الأصلي لكي يظهر بقائمة التمديد
                                 V2rayCrypt.saveSubscriberLocally(ownerActivity, guid, childLicenseId, configName, expiryTime)
                                 
                                 saveEncryptedFileLauncher.launch("$configName.ashor")
@@ -348,11 +355,14 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                                 V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
                             }
 
-                            val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, childLicenseId)
+                            // 🌟 السطر السحري: حقن الآيدي واسم الحساب بداخل النص المشفر للحافظة 🌟
+                            val myPubId = AuthManager.getId(ownerActivity)
+                            val myPubName = AuthManager.getName(ownerActivity)
+                            val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, childLicenseId, myPubId, myPubName)
+
                             if (encryptedConf.isNotEmpty()) {
                                 val configName = "نسخة_حافظة_${(1000..9999).random()}"
                                 
-                                // 🌟 السطر السحري
                                 V2rayCrypt.saveSubscriberLocally(ownerActivity, guid, childLicenseId, configName, expiryTime)
 
                                 clipboard.setPrimaryClip(ClipData.newPlainText("Encrypted V2ray Config", encryptedConf))
