@@ -71,20 +71,21 @@ object ImportHelper {
 
     fun importClipboard(activity: MainActivity, vm: MainViewModel) { try { importBatchConfig(activity, vm, Utils.getClipboard(activity)) } catch (e: Exception) {} }
     
-    // 🌟 التعديل السحري الأول: قراءة بيانات الناشر (pubId) من الحافظة المشفرة 🌟
+    // 🌟 التعديل السحري الأول: قراءة بيانات الناشر (الآيدي + الاسم) من الحافظة المشفرة 🌟
     fun importClipboardEncrypted(activity: MainActivity, vm: MainViewModel) {
         try {
             val clip = Utils.getClipboard(activity); if (clip.isNullOrEmpty()) { activity.toast("الحافظة فارغة"); return }
             val res = V2rayCrypt.decryptPayload(clip); if (res == null) { activity.toast("الكود غير صالح"); return }
-            importEncryptedBatchConfig(activity, vm, res.configData, res.expiryTimeMs, res.licenseId, res.pubId)
+            // نمرر الاسم (pubName) المدمج بالتشفير
+            importEncryptedBatchConfig(activity, vm, res.configData, res.expiryTimeMs, res.licenseId, res.pubId, res.pubName)
         } catch (e: Exception) {}
     }
 
-    // 🌟 التعديل السحري الثاني: قراءة بيانات الناشر (pubId) من الملف المشفر (.ashor) 🌟
+    // 🌟 التعديل السحري الثاني: قراءة بيانات الناشر (الآيدي + الاسم) من الملف المشفر (.ashor) 🌟
     fun importEncryptedContentFromUri(activity: MainActivity, vm: MainViewModel, uri: Uri) {
         try {
             val content = activity.contentResolver.openInputStream(uri)?.use { BufferedReader(InputStreamReader(it)).readText() } ?: return
-            val res = V2rayCrypt.decryptPayload(content); if (res != null) importEncryptedBatchConfig(activity, vm, res.configData, res.expiryTimeMs, res.licenseId, res.pubId)
+            val res = V2rayCrypt.decryptPayload(content); if (res != null) importEncryptedBatchConfig(activity, vm, res.configData, res.expiryTimeMs, res.licenseId, res.pubId, res.pubName)
         } catch (e: Exception) { activity.toast("خطأ في الملف") }
     }
 
@@ -92,8 +93,8 @@ object ImportHelper {
         try { activity.contentResolver.openInputStream(uri).use { importBatchConfig(activity, vm, it?.bufferedReader()?.readText()) } } catch (e: Exception) {}
     }
 
-    // 🌟 دالة الاستيراد الشاملة المحدثة لحفظ وحقن هوية الناشر الأصلي في جهاز المشترك 🌟
-    private fun importEncryptedBatchConfig(activity: MainActivity, vm: MainViewModel, server: String?, expiry: Long, licenseId: String, pubId: String = "") {
+    // 🌟 دالة الاستيراد الشاملة المحدثة لختم هوية الناشر واسمه في جهاز المشترك فوراً وبدون نت 🌟
+    private fun importEncryptedBatchConfig(activity: MainActivity, vm: MainViewModel, server: String?, expiry: Long, licenseId: String, pubId: String = "", pubName: String = "") {
         activity.showLoadingDialog()
         GlobalScope.launch(Dispatchers.IO) {
             val before = MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()
@@ -102,7 +103,6 @@ object ImportHelper {
                 if (count > 0) {
                     val newGuids = (MmkvManager.decodeServerList()?.toSet() ?: emptySet<String>()) - before
 
-                    // التمويه الذكي (لحماية الملف من المستخدمين العاديين وكسر القفل للأدمن)
                     val memAllocBlock = AuthManager.getId(activity).toIntOrNull() ?: 0
                     if (memAllocBlock !in 1..3) {
                         V2rayCrypt.addProtectedGuids(activity, newGuids)
@@ -116,17 +116,14 @@ object ImportHelper {
                         if (licenseId.isNotEmpty()) V2rayCrypt.saveLicenseId(activity, guid, licenseId)
                         if (server != null) V2rayCrypt.saveLastConfigHash(activity, guid, Base64.encodeToString(server.toByteArray(), Base64.NO_WRAP).hashCode())
                         
-                        // 🌟 ختم هوية وبصمة الناشر الأصلي بداخل جهاز المشترك للأبد 🌟
-                        if (pubId.isNotEmpty()) {
-                            prefsEditor.putString("pubId_$guid", pubId)
-                        }
+                        // 🌟 ختم آيدي واسم الناشر الأصلي بداخل جهاز المشترك للأبد (يظهر فوراً بدون نت) 🌟
+                        if (pubId.isNotEmpty()) prefsEditor.putString("pubId_$guid", pubId)
+                        if (pubName.isNotEmpty()) prefsEditor.putString("name_$guid", pubName)
                     }
                     prefsEditor.apply()
 
                     vm.reloadServerList()
                     activity.toast("تم استيراد التكوين!")
-                    
-                    // 🌟 ضربة النهاية: إجبار التطبيق يسوي Sync حتى تظهر صورتك واستورياتك فوراً بدون انتظار 🌟
                     activity.forceManualSync() 
                 } else {
                     activity.toastError(R.string.toast_failure)
