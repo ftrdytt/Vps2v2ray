@@ -47,24 +47,29 @@ class CommentsActivity : AppCompatActivity() {
         guid = intent.getStringExtra("guid") ?: return finish()
         isOwnerOrAdmin = intent.getBooleanExtra("isOwnerOrAdmin", false)
 
-        setupProgrammaticUI()
-        loadComments()
+        setupPremiumUI()
+        
+        // 🌟 استدعاء التعليقات من الذاكرة (بدون نت) لتسريع الفتح 🌟
+        loadCachedComments()
+        
+        // 🌟 مزامنة التعليقات الجديدة من السيرفر 🌟
+        fetchCommentsFromServer()
     }
 
-    // 🌟 السحر: بناء الواجهة بالكامل برمجياً بدون الحاجة لملف XML 🌟
-    private fun setupProgrammaticUI() {
+    // 🌟 بناء واجهة فخمة جداً برمجياً (VIP Dark Theme) 🌟
+    private fun setupPremiumUI() {
         val rootLayout = RelativeLayout(this).apply {
-            setBackgroundColor(Color.parseColor("#141417"))
+            setBackgroundColor(Color.parseColor("#0D0D11")) // لون أسود عميق جداً وراقي
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
 
-        // 1. الشريط العلوي (Toolbar)
+        // 1. الشريط العلوي
         val topBar = LinearLayout(this).apply {
             id = View.generateViewId()
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#1A1A1D"))
+            setBackgroundColor(Color.parseColor("#0D0D11"))
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(40, 40, 40, 40)
+            setPadding(50, 50, 50, 40)
         }
         val btnBack = ImageView(this).apply {
             setImageResource(androidx.appcompat.R.drawable.abc_ic_ab_back_material)
@@ -73,7 +78,7 @@ class CommentsActivity : AppCompatActivity() {
             setPadding(0, 0, 40, 0)
         }
         val tvTitle = TextView(this).apply {
-            text = "التعليقات 💬"
+            text = "التعليقات"
             setTextColor(Color.WHITE)
             textSize = 20f
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -81,68 +86,77 @@ class CommentsActivity : AppCompatActivity() {
         topBar.addView(btnBack)
         topBar.addView(tvTitle)
 
-        // 2. حقل الإدخال السفلي
-        val inputArea = LinearLayout(this).apply {
+        // 2. حقل الإدخال السفلي (تصميم عائم مثل تيليجرام)
+        val inputAreaContainer = LinearLayout(this).apply {
             id = View.generateViewId()
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#0D0D11"))
+            setPadding(40, 20, 40, 40)
+        }
+        val inputWrapper = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#1A1A1D"))
             gravity = Gravity.BOTTOM or Gravity.CENTER_VERTICAL
-            setPadding(30, 30, 30, 30)
-            elevation = 10f
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#1C1C23")) // لون رمادي أنيق لحقل النص
+                cornerRadius = 60f
+                setStroke(2, Color.parseColor("#2A2A35")) // حواف شفافة راقية
+            }
+            setPadding(20, 10, 20, 10)
         }
         etComment = EditText(this).apply {
-            hint = "أضف تعليقاً..."
-            setHintTextColor(Color.GRAY)
+            hint = "اكتب تعليقاً..."
+            setHintTextColor(Color.parseColor("#757575"))
             setTextColor(Color.WHITE)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#252529"))
-                cornerRadius = 50f
-            }
-            setPadding(40, 30, 40, 30)
+            background = null // إخفاء الخط السفلي الافتراضي
+            setPadding(40, 25, 20, 25)
+            textSize = 15f
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         btnSend = ImageView(this).apply {
             setImageResource(android.R.drawable.ic_menu_send)
-            setColorFilter(Color.parseColor("#2196F3"))
-            setPadding(30, 0, 10, 0)
-            layoutParams = LinearLayout.LayoutParams(120, 120)
+            setColorFilter(Color.parseColor("#0088FF")) // أزرق راقي لزر الإرسال
+            setPadding(20, 20, 30, 20)
+            layoutParams = LinearLayout.LayoutParams(110, 110)
             setOnClickListener { postComment() }
         }
-        inputArea.addView(etComment)
-        inputArea.addView(btnSend)
+        inputWrapper.addView(etComment)
+        inputWrapper.addView(btnSend)
+        inputAreaContainer.addView(inputWrapper)
 
-        // 3. منطقة عرض التعليقات (RecyclerView)
+        // 3. منطقة عرض التعليقات
         swipeRefresh = SwipeRefreshLayout(this).apply {
-            setColorSchemeColors(Color.parseColor("#2196F3"))
-            setOnRefreshListener { loadComments() }
+            setColorSchemeColors(Color.parseColor("#0088FF"))
+            setOnRefreshListener { fetchCommentsFromServer() }
         }
         recyclerView = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@CommentsActivity).apply {
-                stackFromEnd = true // التعليقات تظهر من الأسفل
+                stackFromEnd = true // عرض أحدث التعليقات بالأسفل
             }
+            setPadding(0, 0, 0, 20)
+            clipToPadding = false
         }
         swipeRefresh.addView(recyclerView)
 
         // 4. حالة لا توجد تعليقات
         tvEmptyState = TextView(this).apply {
-            text = "لا توجد تعليقات حتى الآن.\nكن أول من يعلق! ✨"
-            setTextColor(Color.GRAY)
-            textSize = 16f
+            text = "لا توجد تعليقات حتى الآن.\nكن أول من يعلق!"
+            setTextColor(Color.parseColor("#666666"))
+            textSize = 15f
             gravity = Gravity.CENTER
             visibility = View.GONE
         }
 
-        // ترتيب العناصر في الشاشة
+        // ترتيب العناصر
         val lpTopBar = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { addRule(RelativeLayout.ALIGN_PARENT_TOP) }
         val lpInputArea = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { addRule(RelativeLayout.ALIGN_PARENT_BOTTOM) }
         val lpSwipe = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
             addRule(RelativeLayout.BELOW, topBar.id)
-            addRule(RelativeLayout.ABOVE, inputArea.id)
+            addRule(RelativeLayout.ABOVE, inputAreaContainer.id)
         }
         val lpEmptyState = RelativeLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { addRule(RelativeLayout.CENTER_IN_PARENT) }
 
         rootLayout.addView(topBar, lpTopBar)
-        rootLayout.addView(inputArea, lpInputArea)
+        rootLayout.addView(inputAreaContainer, lpInputArea)
         rootLayout.addView(swipeRefresh, lpSwipe)
         rootLayout.addView(tvEmptyState, lpEmptyState)
 
@@ -152,14 +166,47 @@ class CommentsActivity : AppCompatActivity() {
         recyclerView.adapter = adapter
     }
 
-    private fun loadComments() {
+    // 🌟 ميزة الخزن المؤقت (العمل بدون نت) 🌟
+    private fun loadCachedComments() {
+        val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
+        val cachedStr = prefs.getString("cached_comments_$guid", "[]") ?: "[]"
+        try {
+            val jsonArray = JSONArray(cachedStr)
+            commentsList.clear()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                commentsList.add(CommentData(
+                    id = obj.optString("commentId", ""),
+                    userId = obj.optString("userId", ""),
+                    userName = obj.optString("userName", "مجهول"),
+                    userPfp = obj.optString("userPfp", ""),
+                    text = obj.optString("text", ""),
+                    timestamp = obj.optString("timestamp", "الآن")
+                ))
+            }
+            if (commentsList.isNotEmpty()) {
+                tvEmptyState.visibility = View.GONE
+                adapter.notifyDataSetChanged()
+                recyclerView.scrollToPosition(commentsList.size - 1)
+            }
+        } catch (e: Exception) {}
+    }
+
+    // 🌟 المزامنة مع السيرفر 🌟
+    private fun fetchCommentsFromServer() {
         swipeRefresh.isRefreshing = true
         lifecycleScope.launch(Dispatchers.IO) {
             val jsonArray = CloudflareAPI.getComments(guid)
             withContext(Dispatchers.Main) {
                 swipeRefresh.isRefreshing = false
-                commentsList.clear()
-                if (jsonArray != null && jsonArray.length() > 0) {
+                if (jsonArray != null) {
+                    // حفظ التعليقات لتفتح بدون نت بالمستقبل
+                    getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
+                        .edit()
+                        .putString("cached_comments_$guid", jsonArray.toString())
+                        .apply()
+                        
+                    commentsList.clear()
                     for (i in 0 until jsonArray.length()) {
                         val obj = jsonArray.getJSONObject(i)
                         commentsList.add(CommentData(
@@ -171,12 +218,10 @@ class CommentsActivity : AppCompatActivity() {
                             timestamp = obj.optString("timestamp", "الآن")
                         ))
                     }
-                    tvEmptyState.visibility = View.GONE
-                } else {
-                    tvEmptyState.visibility = View.VISIBLE
+                    tvEmptyState.visibility = if (commentsList.isEmpty()) View.VISIBLE else View.GONE
+                    adapter.notifyDataSetChanged()
+                    if (commentsList.isNotEmpty()) recyclerView.scrollToPosition(commentsList.size - 1)
                 }
-                adapter.notifyDataSetChanged()
-                if (commentsList.isNotEmpty()) recyclerView.scrollToPosition(commentsList.size - 1)
             }
         }
     }
@@ -199,16 +244,16 @@ class CommentsActivity : AppCompatActivity() {
                 etComment.isEnabled = true
                 if (success) {
                     etComment.text.clear()
-                    loadComments() // إعادة التحميل لإظهار التعليق الجديد
+                    fetchCommentsFromServer() 
                 } else {
-                    Toast.makeText(this@CommentsActivity, "فشل إرسال التعليق، حاول مجدداً.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@CommentsActivity, "تحقق من اتصال الإنترنت", Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
 
     private fun deleteComment(comment: CommentData) {
-        AlertDialog.Builder(this)
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("حذف التعليق")
             .setMessage("هل أنت متأكد من حذف هذا التعليق نهائياً؟")
             .setPositiveButton("حذف") { _, _ ->
@@ -219,8 +264,8 @@ class CommentsActivity : AppCompatActivity() {
                     withContext(Dispatchers.Main) {
                         swipeRefresh.isRefreshing = false
                         if (success) {
-                            Toast.makeText(this@CommentsActivity, "تم حذف التعليق بنجاح!", Toast.LENGTH_SHORT).show()
-                            loadComments()
+                            Toast.makeText(this@CommentsActivity, "تم حذف التعليق!", Toast.LENGTH_SHORT).show()
+                            fetchCommentsFromServer()
                         } else {
                             Toast.makeText(this@CommentsActivity, "حدث خطأ أثناء الحذف.", Toast.LENGTH_SHORT).show()
                         }
@@ -234,7 +279,7 @@ class CommentsActivity : AppCompatActivity() {
 
 data class CommentData(val id: String, val userId: String, val userName: String, val userPfp: String, val text: String, val timestamp: String)
 
-// 🌟 المحول الخاص بعرض التعليقات 🌟
+// 🌟 المحول الخاص بتصميم فقاعات التعليقات (Premium Bubbles) 🌟
 class CommentsAdapter(
     private val comments: List<CommentData>,
     private val isAdmin: Boolean,
@@ -250,44 +295,56 @@ class CommentsAdapter(
         }
 
         val ivAvatar = ImageView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(110, 110).apply { setMargins(0, 0, 30, 0) }
+            layoutParams = LinearLayout.LayoutParams(100, 100).apply { setMargins(0, 0, 30, 0) }
         }
 
+        // تصميم الفقاعة
         val bubbleLayout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#252529"))
-                cornerRadius = 30f
+                setColor(Color.parseColor("#1C1C23")) // لون راقي للفقاعة
+                cornerRadius = 35f // حواف ناعمة دائرية
             }
-            setPadding(35, 25, 35, 25)
+            setPadding(40, 25, 40, 25)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        val tvName = TextView(context).apply {
-            setTextColor(Color.parseColor("#2196F3"))
-            textSize = 14f
-            setTypeface(null, android.graphics.Typeface.BOLD)
+        // الحاوية لاسم المستخدم والوقت
+        val nameTimeLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
 
-        val tvText = TextView(context).apply {
-            setTextColor(Color.WHITE)
-            textSize = 15f
-            setPadding(0, 10, 0, 10)
+        val tvName = TextView(context).apply {
+            setTextColor(Color.parseColor("#E0E0E0"))
+            textSize = 13f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         val tvTime = TextView(context).apply {
-            setTextColor(Color.GRAY)
-            textSize = 11f
+            setTextColor(Color.parseColor("#666666"))
+            textSize = 10f
+        }
+        
+        nameTimeLayout.addView(tvName)
+        nameTimeLayout.addView(tvTime)
+
+        val tvText = TextView(context).apply {
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setPadding(0, 10, 0, 5)
+            setLineSpacing(0f, 1.2f)
         }
 
-        bubbleLayout.addView(tvName)
+        bubbleLayout.addView(nameTimeLayout)
         bubbleLayout.addView(tvText)
-        bubbleLayout.addView(tvTime)
 
         val btnDelete = ImageView(context).apply {
             setImageResource(android.R.drawable.ic_menu_delete)
-            setColorFilter(Color.parseColor("#E53935"))
-            setPadding(20, 20, 20, 20)
+            setColorFilter(Color.parseColor("#FF3B30")) // لون أحمر طوخ خاص للآدمن
+            setPadding(25, 25, 25, 25)
+            layoutParams = LinearLayout.LayoutParams(100, 100).apply { setMargins(20, 0, 0, 0) }
             visibility = if (isAdmin) View.VISIBLE else View.GONE
         }
 
@@ -302,7 +359,10 @@ class CommentsAdapter(
         val comment = comments[position]
         holder.tvName.text = comment.userName
         holder.tvText.text = comment.text
-        holder.tvTime.text = comment.timestamp
+        
+        // تنسيق الوقت
+        val timeParts = comment.timestamp.split(" ")
+        holder.tvTime.text = if(timeParts.isNotEmpty()) timeParts.last() else comment.timestamp
 
         // تحميل صورة الحساب أو توليد صورة افتراضية
         if (comment.userPfp.isNotEmpty()) {
@@ -310,10 +370,10 @@ class CommentsAdapter(
                 val b = Base64.decode(if (comment.userPfp.contains(",")) comment.userPfp.substringAfter(",") else comment.userPfp, Base64.DEFAULT)
                 holder.ivAvatar.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size))
             } catch (e: Exception) {
-                holder.ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(comment.userName, comment.userId, 110))
+                holder.ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(comment.userName, comment.userId, 100))
             }
         } else {
-            holder.ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(comment.userName, comment.userId, 110))
+            holder.ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(comment.userName, comment.userId, 100))
         }
 
         if (isAdmin) {
