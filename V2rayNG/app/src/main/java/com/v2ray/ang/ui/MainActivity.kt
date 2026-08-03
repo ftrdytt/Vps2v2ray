@@ -277,7 +277,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         guidToIds[guid] = ids
                         allIdsToFetch.addAll(ids)
 
-                        // 🌟 السحر الجديد: إرسال مشاهدة خفية للسيرفر لكل ملف يظهر عندك 🌟
+                        // 🌟 السحر الجديد: إرسال إشعار المشاهدة بصمت 🌟
                         launch(Dispatchers.IO) {
                             try {
                                 val viewPayload = JSONObject()
