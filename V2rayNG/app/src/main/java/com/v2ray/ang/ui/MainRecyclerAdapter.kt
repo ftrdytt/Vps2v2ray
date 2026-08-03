@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.util.Base64
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -92,8 +93,8 @@ class MainRecyclerAdapter(
             val tvTestResult = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_test_result)
             val tvActiveCount = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_active_count)
             val tvExpiry = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_expiry_countdown)
-            
             val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
+            
             val layoutAdminControl = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_admin_control)
             val layoutSubscribersBtn = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_subscribers_btn)
             val layoutShare = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_share)
@@ -107,7 +108,6 @@ class MainRecyclerAdapter(
             val licenseId = V2rayCrypt.getLicenseId(context, guid)
             val targetId = if (licenseId.isNotEmpty() && licenseId != "LEGACY") licenseId else guid
 
-            // جلب بيانات حسابك الحالي وتحديد الصلاحيات الحقيقية
             val myUserId = com.v2ray.ang.handler.AuthManager.getId(context)
             val myUserName = com.v2ray.ang.handler.AuthManager.getName(context)
             val myUserPfp = com.v2ray.ang.handler.AuthManager.getPfp(context)
@@ -116,20 +116,22 @@ class MainRecyclerAdapter(
             val isSuperAdmin = (myUserRole == "admin")
             val isOwnerOrAdmin = isAdmin || isSuperAdmin || (targetId == myUserId && myUserId.isNotEmpty())
 
-            // جلب المعلومات الحقيقية من السيرفر (من الذاكرة المؤقتة)
             val prefs = context.getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             val dataUsage = prefs.getString("usage_$guid", "0.0 MB") ?: "0.0 MB"
             val hasActiveStory = prefs.getBoolean("story_$guid", false)
             val isCloudSaved = prefs.getBoolean("cloud_$guid", false)
 
-            // 🌟 السحر هنا: قراءة بيانات "الناشر الأصلي" اللي سحبناها من السيرفر 🌟
             var finalPublisherName = prefs.getString("name_$guid", "") ?: ""
             var finalPublisherPfp = prefs.getString("pfp_$guid", "") ?: ""
             var finalIsVerified = prefs.getBoolean("verified_$guid", false)
             val pubId = prefs.getString("pubId_$guid", "") ?: ""
 
-            // الذكاء التلقائي: إذا الملف إلك (مالك) واسمك ما مسجل بالسحابة، يعرض اسمك وصورتك، 
-            // وإلا يعرض بيانات "الناشر الأصلي" حتى للمشتركين العاديين
+            // جلب أرقام التفاعل (المشاهدات، اللايكات، التعليقات)
+            val viewsCount = prefs.getInt("views_$guid", 0)
+            val likesCount = prefs.getInt("likes_$guid", 0)
+            val commentsCount = prefs.getInt("comments_$guid", 0)
+            val isLikedByMe = prefs.getBoolean("isLiked_$guid", false)
+
             if (finalPublisherName.isEmpty() || finalPublisherName == "صاحب الملف") {
                 if (isOwnerOrAdmin && myUserName.isNotEmpty()) {
                     finalPublisherName = myUserName
@@ -140,7 +142,6 @@ class MainRecyclerAdapter(
                 }
             }
 
-            // تحديد الآيدي الصحيح لفتح الاستوري والبروفايل (الأولوية لآيدي الناشر من السيرفر، ثم LicenseId، ثم آيديك)
             val actualTargetId = when {
                 pubId.isNotEmpty() -> pubId
                 targetId.isNotEmpty() -> targetId
@@ -148,14 +149,79 @@ class MainRecyclerAdapter(
                 else -> ""
             }
 
-            // عرض اسم الملف مع علامة السحابة
+            // 🌟 السحر هنا: بناء شريط التفاعل برمجياً وزرعه في الكارت 🌟
+            if (bottomSection != null) {
+                var socialBar = bottomSection.findViewWithTag<LinearLayout>("social_bar_$guid")
+                if (socialBar == null) {
+                    socialBar = LinearLayout(context).apply {
+                        tag = "social_bar_$guid"
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(40, 15, 40, 15)
+                        }
+                        gravity = Gravity.CENTER_VERTICAL
+                    }
+
+                    // أيقونة المشاهدات
+                    val tvViews = TextView(context).apply {
+                        text = "👁️ $viewsCount"
+                        setTextColor(Color.LTGRAY)
+                        textSize = 13f
+                        setPadding(0, 0, 40, 0)
+                    }
+
+                    // أيقونة اللايكات
+                    val tvLikes = TextView(context).apply {
+                        text = if (isLikedByMe) "❤️ $likesCount" else "🤍 $likesCount"
+                        setTextColor(if (isLikedByMe) Color.parseColor("#E53935") else Color.LTGRAY)
+                        textSize = 13f
+                        setPadding(0, 0, 40, 0)
+                        setOnClickListener {
+                            // سيتم إضافة الكود الخاص بتسجيل اللايك لاحقاً
+                            Toast.makeText(context, "تم تسجيل الإعجاب ❤️", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+
+                    // أيقونة التعليقات
+                    val tvComments = TextView(context).apply {
+                        text = "💬 $commentsCount"
+                        setTextColor(Color.LTGRAY)
+                        textSize = 13f
+                        setOnClickListener {
+                            // فتح شاشة التعليقات (التي سنصممها لاحقاً) وإرسال صلاحية الأدمن
+                            try {
+                                val intent = Intent(context, Class.forName("com.v2ray.ang.ui.CommentsActivity"))
+                                intent.putExtra("guid", guid)
+                                intent.putExtra("isOwnerOrAdmin", isOwnerOrAdmin) // حتى نعطيه صلاحية الحذف
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "جاري تجهيز شاشة التعليقات...", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+
+                    socialBar.addView(tvViews)
+                    socialBar.addView(tvLikes)
+                    socialBar.addView(tvComments)
+
+                    // زرعه فوق أزرار الإدارة مباشرة
+                    bottomSection.addView(socialBar, 0)
+                } else {
+                    // تحديث الأرقام إذا كان الشريط موجوداً مسبقاً
+                    (socialBar.getChildAt(0) as? TextView)?.text = "👁️ $viewsCount"
+                    (socialBar.getChildAt(1) as? TextView)?.apply {
+                        text = if (isLikedByMe) "❤️ $likesCount" else "🤍 $likesCount"
+                        setTextColor(if (isLikedByMe) Color.parseColor("#E53935") else Color.LTGRAY)
+                    }
+                    (socialBar.getChildAt(2) as? TextView)?.text = "💬 $commentsCount"
+                }
+            }
+
             val cloudIcon = if (isCloudSaved) "☁️" else "📱"
             tvFileName?.text = "${profile.remarks} $cloudIcon"
 
-            // عرض اسم الناشر الحقيقي
             tvPublisherName?.text = if (finalIsVerified) "$finalPublisherName ☑️" else finalPublisherName
 
-            // وضع صورة الناشر الحقيقية أو صورة مولدة
             ivAvatar?.let {
                 if (finalPublisherPfp.isNotEmpty()) {
                     try {
@@ -169,7 +235,6 @@ class MainRecyclerAdapter(
                 }
             }
 
-            // تفعيل الإطار الأزرق وفتح الاستوري لـ (صاحب الكود الأصلي)
             flAvatarContainer?.let {
                 if (hasActiveStory && actualTargetId.isNotEmpty()) {
                     it.background = GradientDrawable().apply {
@@ -181,7 +246,7 @@ class MainRecyclerAdapter(
                     it.setOnClickListener {
                         try {
                             val intent = Intent(context, StoryViewerActivity::class.java)
-                            intent.putExtra("targetUserId", actualTargetId) // راح يفتح استوري صاحب الملف حصراً
+                            intent.putExtra("targetUserId", actualTargetId) 
                             intent.putExtra("userId", myUserId.ifEmpty { actualTargetId })
                             context.startActivity(intent)
                         } catch (e: Exception) {
@@ -195,7 +260,7 @@ class MainRecyclerAdapter(
                         if (actualTargetId.isNotEmpty()) {
                             try {
                                 val intent = Intent(context, UserProfileActivity::class.java)
-                                intent.putExtra("targetUserId", actualTargetId) // راح يفتح بروفايل صاحب الملف
+                                intent.putExtra("targetUserId", actualTargetId)
                                 context.startActivity(intent)
                             } catch (e: Exception) {}
                         }
@@ -203,7 +268,6 @@ class MainRecyclerAdapter(
                 }
             }
 
-            // واجهة العرض العبقرية (لوحة التحكم) للاستهلاك
             if (isOwnerOrAdmin) {
                 tvDataUsage?.text = "📊 الاستهلاك الكلي: $dataUsage"
                 tvDataUsage?.setTextColor(Color.parseColor("#00BCD4")) 
