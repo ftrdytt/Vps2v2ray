@@ -155,6 +155,11 @@ class SubscribersActivity : AppCompatActivity() {
                             val actCount = data.optInt("activeCount", 0) 
                             val totalUsageBytes = data.optLong("totalUsageBytes", 0L) 
                             
+                            // 🌟 السحر الجديد: سحب أرقام التفاعل (المشاهدات، اللايكات، التعليقات) من السيرفر 🌟
+                            val views = data.optInt("views", 0)
+                            val likes = data.optInt("likes", 0)
+                            val comments = data.optInt("comments", 0)
+                            
                             if (exp >= 0L) {
                                 V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, exp, actCount)
                                 
@@ -164,6 +169,9 @@ class SubscribersActivity : AppCompatActivity() {
                                 prefs.edit()
                                     .putLong("raw_usage_${sub.licenseId}", totalUsageBytes)
                                     .putString("usage_${sub.licenseId}", formatBytes(actualUsage))
+                                    .putInt("views_${sub.licenseId}", views)
+                                    .putInt("likes_${sub.licenseId}", likes)
+                                    .putInt("comments_${sub.licenseId}", comments)
                                     .apply()
                                     
                                 isChanged = true
@@ -556,6 +564,11 @@ class SubscribersAdapter(
             val hasStory = prefs.getBoolean("story_${item.licenseId}", false)
             val usage = prefs.getString("usage_${item.licenseId}", "0.0 MB") ?: "0.0 MB"
 
+            // 🌟 استدعاء أرقام التفاعل من الذاكرة 🌟
+            val viewsCount = prefs.getInt("views_${item.licenseId}", 0)
+            val likesCount = prefs.getInt("likes_${item.licenseId}", 0)
+            val commentsCount = prefs.getInt("comments_${item.licenseId}", 0)
+
             tvName.text = if (isVerified) "$realName ☑️" else realName
             
             tvName.setOnClickListener {
@@ -608,12 +621,76 @@ class SubscribersAdapter(
             tvDataUsage?.visibility = View.VISIBLE
 
             tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
-            
             tvActiveCount.setOnClickListener {
                 val intent = Intent(itemView.context, FileActiveUsersActivity::class.java)
                 intent.putExtra("guid", item.licenseId)
                 intent.putExtra("apiUrl", apiUrl) 
                 itemView.context.startActivity(intent)
+            }
+
+            // 🌟 السحر هنا: بناء شريط التفاعل برمجياً وزرعه أسفل حالة النشاط 🌟
+            val parentLayout = tvActiveCount.parent as? ViewGroup
+            if (parentLayout != null) {
+                var socialBar = parentLayout.findViewWithTag<LinearLayout>("social_bar_${item.licenseId}")
+                if (socialBar == null) {
+                    socialBar = LinearLayout(itemView.context).apply {
+                        tag = "social_bar_${item.licenseId}"
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(0, 15, 0, 15)
+                        }
+                        gravity = Gravity.CENTER_VERTICAL
+                    }
+
+                    // أيقونة المشاهدات
+                    val tvViews = TextView(itemView.context).apply {
+                        text = "👁️ $viewsCount"
+                        setTextColor(Color.LTGRAY)
+                        textSize = 13f
+                        setPadding(0, 0, 40, 0)
+                    }
+
+                    // أيقونة اللايكات
+                    val tvLikes = TextView(itemView.context).apply {
+                        text = "❤️ $likesCount"
+                        setTextColor(Color.LTGRAY)
+                        textSize = 13f
+                        setPadding(0, 0, 40, 0)
+                        setOnClickListener {
+                            Toast.makeText(itemView.context, "سيتم عرض قائمة المعجبين قريباً!", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+
+                    // أيقونة التعليقات
+                    val tvComments = TextView(itemView.context).apply {
+                        text = "💬 $commentsCount"
+                        setTextColor(Color.LTGRAY)
+                        textSize = 13f
+                        setOnClickListener {
+                            // فتح شاشة التعليقات مع إعطاء صلاحية الأدمن الكاملة للحذف
+                            try {
+                                val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.CommentsActivity"))
+                                intent.putExtra("guid", item.licenseId)
+                                intent.putExtra("isOwnerOrAdmin", true) // بصفتك الأدمن عندك صلاحية الحذف
+                                itemView.context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(itemView.context, "جاري تجهيز شاشة التعليقات...", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+
+                    socialBar.addView(tvViews)
+                    socialBar.addView(tvLikes)
+                    socialBar.addView(tvComments)
+
+                    val index = parentLayout.indexOfChild(tvActiveCount)
+                    parentLayout.addView(socialBar, index + 1)
+                } else {
+                    // تحديث الأرقام
+                    (socialBar.getChildAt(0) as? TextView)?.text = "👁️ $viewsCount"
+                    (socialBar.getChildAt(1) as? TextView)?.text = "❤️ $likesCount"
+                    (socialBar.getChildAt(2) as? TextView)?.text = "💬 $commentsCount"
+                }
             }
             
             btnExtend.setOnClickListener { onExtend(item) }
