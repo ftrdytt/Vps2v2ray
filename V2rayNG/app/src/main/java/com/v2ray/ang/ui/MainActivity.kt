@@ -175,7 +175,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
-    // 🌟 التعديل السحري: تمرير (myUserId) حتى السيرفر يعرف إذا أنت مسوي لايك وتلون الأيقونة أحمر 🌟
     private suspend fun fetchBatchStats(ids: List<String>, myUserId: String): Map<String, JSONObject> {
         return withContext(Dispatchers.IO) {
             val resultMap = mutableMapOf<String, JSONObject>()
@@ -277,6 +276,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         
                         guidToIds[guid] = ids
                         allIdsToFetch.addAll(ids)
+
+                        // 🌟 السحر الجديد: إرسال مشاهدة خفية للسيرفر لكل ملف يظهر عندك 🌟
+                        launch(Dispatchers.IO) {
+                            try {
+                                val viewPayload = JSONObject()
+                                    .put("guid", licenseId)
+                                    .put("viewerId", myUserId.ifEmpty { myDeviceId })
+                                val vConn = URL("$BASE_API_URL/social/file/view").openConnection() as HttpURLConnection
+                                vConn.requestMethod = "POST"
+                                vConn.setRequestProperty("Content-Type", "application/json")
+                                vConn.connectTimeout = 3000
+                                vConn.doOutput = true
+                                vConn.outputStream.use { it.write(viewPayload.toString().toByteArray(Charsets.UTF_8)) }
+                                vConn.responseCode
+                            } catch (e: Exception) {}
+                        }
                     }
 
                     val batchStats = fetchBatchStats(allIdsToFetch.toList(), myUserId)
@@ -290,7 +305,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         var parentExpiry = -1L
                         var isLocked = false
                         
-                        // متغيرات التفاعل
                         var viewsCount = 0
                         var likesCount = 0
                         var commentsCount = 0
@@ -305,7 +319,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                     isLocked = statObj.optBoolean("isLocked", false)
                                     parentExpiry = statObj.optLong("expiryTime", -1L)
                                     
-                                    // 🌟 استخراج أرقام التفاعل من السيرفر 🌟
                                     viewsCount = statObj.optInt("views", 0)
                                     likesCount = statObj.optInt("likes", 0)
                                     commentsCount = statObj.optInt("comments", 0)
@@ -317,7 +330,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         editor.putBoolean("locked_$guid", isLocked)
                         editor.putString("usage_$guid", formatBytes(totalUsageBytes))
                         
-                        // 🌟 حفظ أرقام التفاعل بالذاكرة لكي يقرأها الـ Adapter 🌟
                         editor.putInt("views_$guid", viewsCount)
                         editor.putInt("likes_$guid", likesCount)
                         editor.putInt("comments_$guid", commentsCount)
@@ -984,6 +996,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             val isSuperAdmin = (myUserRole == "admin")
             val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
             val editor = prefs.edit()
+            val myDeviceId = getUniqueHardwareId()
             
             val allIdsToFetch = mutableSetOf<String>()
             val guidToIds = mutableMapOf<String, List<String>>()
@@ -1011,6 +1024,22 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 
                 guidToIds[guid] = ids
                 allIdsToFetch.addAll(ids)
+
+                // 🌟 السحر الجديد: إرسال إشعار المشاهدة بصمت بمجرد ظهور الملف 🌟
+                launch(Dispatchers.IO) {
+                    try {
+                        val viewPayload = JSONObject()
+                            .put("guid", licenseId)
+                            .put("viewerId", myUserId.ifEmpty { myDeviceId })
+                        val vConn = URL("$BASE_API_URL/social/file/view").openConnection() as HttpURLConnection
+                        vConn.requestMethod = "POST"
+                        vConn.setRequestProperty("Content-Type", "application/json")
+                        vConn.connectTimeout = 3000
+                        vConn.doOutput = true
+                        vConn.outputStream.use { it.write(viewPayload.toString().toByteArray(Charsets.UTF_8)) }
+                        vConn.responseCode
+                    } catch (e: Exception) {}
+                }
             }
 
             val batchStats = fetchBatchStats(allIdsToFetch.toList(), myUserId)
