@@ -344,7 +344,7 @@ object CloudflareAPI {
         }
     }
 
-    // 🌟 السحر الجديد: إضافة وتعديل اللايكات والتعليقات من السيرفر 🌟
+    // 🌟 التفاعل الخاص بالملفات (لايكات الملف) 🌟
 
     suspend fun toggleLike(guid: String, userId: String, isLiked: Boolean): Boolean {
         return withContext(Dispatchers.IO) {
@@ -365,6 +365,8 @@ object CloudflareAPI {
         }
     }
 
+    // 🌟 نظام التعليقات المتطور (الردود، التعديل، اللايكات، החذف) 🌟
+
     suspend fun getComments(guid: String): JSONArray? {
         return withContext(Dispatchers.IO) {
             try {
@@ -384,7 +386,7 @@ object CloudflareAPI {
         }
     }
 
-    suspend fun addComment(guid: String, userId: String, userName: String, userPfp: String, text: String): Boolean {
+    suspend fun addComment(guid: String, userId: String, userName: String, userPfp: String, text: String, replyToName: String = ""): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val url = URL("$BASE_URL/social/comment/add")
@@ -398,6 +400,46 @@ object CloudflareAPI {
                     put("userName", userName)
                     put("userPfp", userPfp)
                     put("text", text)
+                    put("replyToName", replyToName)
+                }
+                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                conn.responseCode == 200
+            } catch (e: Exception) { false }
+        }
+    }
+
+    suspend fun editComment(guid: String, commentId: String, userId: String, text: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("$BASE_URL/social/comment/edit")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                val payload = JSONObject().apply {
+                    put("guid", guid)
+                    put("commentId", commentId)
+                    put("userId", userId)
+                    put("text", text)
+                }
+                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                conn.responseCode == 200
+            } catch (e: Exception) { false }
+        }
+    }
+
+    suspend fun likeComment(guid: String, commentId: String, userId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("$BASE_URL/social/comment/like")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                val payload = JSONObject().apply {
+                    put("guid", guid)
+                    put("commentId", commentId)
+                    put("userId", userId)
                 }
                 conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                 conn.responseCode == 200
