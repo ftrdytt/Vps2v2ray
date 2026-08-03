@@ -93,9 +93,12 @@
             android:name=".ui.UserProfileActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
-        <!-- 🌟 شاشة التعليقات الجديدة 🌟 -->
         <activity
             android:name=".ui.CommentsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".ui.ConnectionsActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
         <!-- 🌟 نهاية الواجهات الجديدة 🌟 -->
