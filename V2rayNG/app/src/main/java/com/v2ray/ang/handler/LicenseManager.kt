@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -23,7 +24,6 @@ object V2rayCrypt {
     private const val KEY_LICENSE_PREFIX = "License_"
     private const val KEY_SUBSCRIBERS_LIST_PREFIX = "Subscribers_" 
 
-    // 🌟 حاوية البيانات المشفرة الجديدة (تم إضافة pubName ليعمل بدون نت) 🌟
     data class DecryptedPayload(val configData: String, val expiryTimeMs: Long, val licenseId: String, val pubId: String, val pubName: String)
 
     fun saveActiveCount(context: Context, guid: String, count: Int) {
@@ -46,7 +46,6 @@ object V2rayCrypt {
         return prefs.getInt("Hash_$guid", 0)
     }
 
-    // 🌟 التشفير الجديد: يدمج آيدي واسم صاحب الحساب بداخل النص المشفر 🌟
     fun encrypt(data: String, expiryTimeMs: Long, licenseId: String, pubId: String = "", pubName: String = ""): String {
         return try {
             val payload = "$expiryTimeMs||$licenseId||$pubId||$pubName||$data"
@@ -58,7 +57,6 @@ object V2rayCrypt {
         } catch (e: Exception) { "" }
     }
 
-    // 🌟 استخراج البيانات الذكي عند إضافة الكود (يدعم الاسم والآيدي) 🌟
     fun decryptPayload(data: String): DecryptedPayload? {
         return try {
             if (!data.startsWith("ENC://")) return null
@@ -71,7 +69,7 @@ object V2rayCrypt {
 
             val parts = decryptedString.split("||", limit = 5)
             when (parts.size) {
-                5 -> DecryptedPayload(parts[4], parts[0].toLongOrNull() ?: 0L, parts[1], parts[2], parts[3]) // الكود الجديد مع الاسم
+                5 -> DecryptedPayload(parts[4], parts[0].toLongOrNull() ?: 0L, parts[1], parts[2], parts[3]) 
                 4 -> DecryptedPayload(parts[3], parts[0].toLongOrNull() ?: 0L, parts[1], parts[2], "")
                 3 -> DecryptedPayload(parts[2], parts[0].toLongOrNull() ?: 0L, parts[1], "", "")
                 2 -> DecryptedPayload(parts[1], parts[0].toLongOrNull() ?: 0L, "LEGACY", "", "")
@@ -138,7 +136,7 @@ object V2rayCrypt {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val key = KEY_SUBSCRIBERS_LIST_PREFIX + parentGuid
         try {
-            val jsonArray = org.json.JSONArray(prefs.getString(key, "[]") ?: "[]")
+            val jsonArray = JSONArray(prefs.getString(key, "[]") ?: "[]")
             val newSub = JSONObject().apply {
                 put("licenseId", subscriberLicenseId)
                 put("name", subscriberName)
@@ -155,7 +153,7 @@ object V2rayCrypt {
         val key = KEY_SUBSCRIBERS_LIST_PREFIX + parentGuid
         val list = mutableListOf<SubscriberData>()
         try {
-            val jsonArray = org.json.JSONArray(prefs.getString(key, "[]") ?: "[]")
+            val jsonArray = JSONArray(prefs.getString(key, "[]") ?: "[]")
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
                 list.add(SubscriberData(
@@ -173,7 +171,7 @@ object V2rayCrypt {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val key = KEY_SUBSCRIBERS_LIST_PREFIX + parentGuid
         try {
-            val jsonArray = org.json.JSONArray(prefs.getString(key, "[]") ?: "[]")
+            val jsonArray = JSONArray(prefs.getString(key, "[]") ?: "[]")
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
                 if (obj.getString("licenseId") == subscriberLicenseId) {
@@ -190,8 +188,8 @@ object V2rayCrypt {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val key = KEY_SUBSCRIBERS_LIST_PREFIX + parentGuid
         try {
-            val jsonArray = org.json.JSONArray(prefs.getString(key, "[]") ?: "[]")
-            val newArray = org.json.JSONArray()
+            val jsonArray = JSONArray(prefs.getString(key, "[]") ?: "[]")
+            val newArray = JSONArray()
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
                 if (obj.getString("licenseId") != subscriberLicenseId) newArray.put(obj)
@@ -265,7 +263,7 @@ object CloudflareAPI {
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
                 val payload = JSONObject().apply {
-                    put("guids", org.json.JSONArray(guids))
+                    put("guids", JSONArray(guids))
                 }
                 conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                 
@@ -342,6 +340,86 @@ object CloudflareAPI {
                 }
                 conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                 return@withContext conn.responseCode == 200
+            } catch (e: Exception) { false }
+        }
+    }
+
+    // 🌟 السحر الجديد: إضافة وتعديل اللايكات والتعليقات من السيرفر 🌟
+
+    suspend fun toggleLike(guid: String, userId: String, isLiked: Boolean): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val action = if (isLiked) "like" else "unlike"
+                val url = URL("$BASE_URL/social/$action")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                val payload = JSONObject().apply {
+                    put("guid", guid)
+                    put("userId", userId)
+                }
+                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                conn.responseCode == 200
+            } catch (e: Exception) { false }
+        }
+    }
+
+    suspend fun getComments(guid: String): JSONArray? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val encodedGuid = URLEncoder.encode(guid, "UTF-8")
+                val url = URL("$BASE_URL/social/comments?guid=$encodedGuid")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                if (conn.responseCode == 200) {
+                    val response = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                    val obj = JSONObject(response)
+                    if (obj.optBoolean("success", false)) {
+                        obj.optJSONArray("comments")
+                    } else null
+                } else null
+            } catch (e: Exception) { null }
+        }
+    }
+
+    suspend fun addComment(guid: String, userId: String, userName: String, userPfp: String, text: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("$BASE_URL/social/comment/add")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                val payload = JSONObject().apply {
+                    put("guid", guid)
+                    put("userId", userId)
+                    put("userName", userName)
+                    put("userPfp", userPfp)
+                    put("text", text)
+                }
+                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                conn.responseCode == 200
+            } catch (e: Exception) { false }
+        }
+    }
+
+    suspend fun deleteComment(guid: String, commentId: String, adminId: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = URL("$BASE_URL/social/comment/delete")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                val payload = JSONObject().apply {
+                    put("guid", guid)
+                    put("commentId", commentId)
+                    put("adminId", adminId) 
+                }
+                conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                conn.responseCode == 200
             } catch (e: Exception) { false }
         }
     }
