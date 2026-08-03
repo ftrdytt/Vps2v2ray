@@ -95,7 +95,6 @@ class MainRecyclerAdapter(
             val tvExpiry = holder.itemMainBinding.root.findViewById<TextView>(R.id.tv_expiry_countdown)
             val bottomSection = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_bottom_section)
             
-            // أزرار الإدارة الأصلية
             val layoutAdminControl = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_admin_control)
             val layoutSubscribersBtn = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_subscribers_btn)
             val layoutShare = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_share)
@@ -103,7 +102,6 @@ class MainRecyclerAdapter(
             val layoutRemove = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_remove)
             val layoutMore = holder.itemMainBinding.root.findViewById<LinearLayout>(R.id.layout_more)
             
-            // الكونتينر الخاص بالنصوص (هنا راح نزرع التفاعل حتى ما يخرب الأزرار اللي جوه)
             val infoContainer = holder.itemMainBinding.root.findViewById<View>(R.id.info_container) as? ViewGroup
 
             val isProtected = V2rayCrypt.isProtected(context, guid)
@@ -145,10 +143,11 @@ class MainRecyclerAdapter(
             }
 
             // ==========================================
-            // 🌟 تصميم التفاعل (VIP Design) - راقي وصغير 🌟
+            // 🌟 شريط التفاعل - تم حل التكرار وتصغير الحجم 🌟
             // ==========================================
             if (infoContainer != null) {
-                var socialBar = infoContainer.findViewWithTag<LinearLayout>("social_bar_$guid")
+                // 💡 الحل السحري للتكرار: نستخدم Tag ثابت للشريط بدل الآيدي
+                var socialBar = infoContainer.findViewWithTag<LinearLayout>("social_bar_view")
                 
                 val viewsCount = prefs.getInt("views_$guid", 0)
                 var likesCount = prefs.getInt("likes_$guid", 0)
@@ -157,89 +156,89 @@ class MainRecyclerAdapter(
 
                 if (socialBar == null) {
                     socialBar = LinearLayout(context).apply {
-                        tag = "social_bar_$guid"
+                        tag = "social_bar_view" // Tag ثابت يمنع التكرار
                         orientation = LinearLayout.HORIZONTAL
                         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 15, 0, 5)
+                            setMargins(0, 5, 0, 0) // تقليل الهوامش لأقصى حد
                         }
                         gravity = Gravity.CENTER_VERTICAL
                         
-                        // خلفية راقية جداً (مثل الانستكرام)
                         background = GradientDrawable().apply {
-                            setColor(Color.parseColor("#15FFFFFF")) // لون رمادي شفاف نازك
-                            cornerRadius = 40f
-                            setStroke(1, Color.parseColor("#33FFFFFF"))
+                            setColor(Color.parseColor("#15FFFFFF"))
+                            cornerRadius = 30f
+                            setStroke(1, Color.parseColor("#22FFFFFF"))
                         }
-                        setPadding(35, 12, 35, 12)
+                        setPadding(25, 8, 25, 8) // تصغير الحجم الداخلي جداً
                     }
 
-                    // 👁 المشاهدات (تصميم نقي)
                     val tvViews = TextView(context).apply {
                         text = "👁 $viewsCount"
                         setTextColor(Color.parseColor("#B0B0B0"))
-                        textSize = 12f
+                        textSize = 11f // تصغير الخط
                         setTypeface(null, android.graphics.Typeface.BOLD)
-                        setPadding(0, 0, 40, 0)
+                        setPadding(0, 0, 30, 0)
                     }
 
-                    // ♥ اللايكات (تصميم نقي وتفاعل فوري)
                     val tvLikes = TextView(context).apply {
                         text = if (isLikedByMe) "♥ $likesCount" else "♡ $likesCount"
                         setTextColor(if (isLikedByMe) Color.parseColor("#E91E63") else Color.parseColor("#B0B0B0"))
-                        textSize = 12f
+                        textSize = 11f
                         setTypeface(null, android.graphics.Typeface.BOLD)
-                        setPadding(0, 0, 40, 0)
-                        
-                        setOnClickListener {
-                            isLikedByMe = !isLikedByMe
-                            likesCount = if (isLikedByMe) likesCount + 1 else maxOf(0, likesCount - 1)
-                            
-                            // تحديث فوري وسريع
-                            text = if (isLikedByMe) "♥ $likesCount" else "♡ $likesCount"
-                            setTextColor(if (isLikedByMe) Color.parseColor("#E91E63") else Color.parseColor("#B0B0B0"))
-                            
-                            prefs.edit().putBoolean("isLiked_$guid", isLikedByMe).putInt("likes_$guid", likesCount).apply()
-                            
-                            // إرسال للسيرفر بالخفاء
-                            coroutineScope.launch(Dispatchers.IO) {
-                                CloudflareAPI.toggleLike(targetId, myUserId, isLikedByMe)
-                            }
-                        }
+                        setPadding(0, 0, 30, 0)
                     }
 
-                    // 💬 التعليقات (تصميم نقي)
                     val tvComments = TextView(context).apply {
                         text = "💬 $commentsCount"
                         setTextColor(Color.parseColor("#B0B0B0"))
-                        textSize = 12f
+                        textSize = 11f
                         setTypeface(null, android.graphics.Typeface.BOLD)
-                        
-                        setOnClickListener {
-                            try {
-                                val intent = Intent(context, Class.forName("com.v2ray.ang.ui.CommentsActivity"))
-                                intent.putExtra("guid", targetId)
-                                intent.putExtra("isOwnerOrAdmin", isOwnerOrAdmin)
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "لم يتم العثور على شاشة التعليقات، الرجاء إضافتها.", Toast.LENGTH_SHORT).show()
-                            }
-                        }
                     }
 
                     socialBar.addView(tvViews)
                     socialBar.addView(tvLikes)
                     socialBar.addView(tvComments)
 
-                    // إضافته بأمان في قائمة النصوص حتى ما يخرب الأزرار السفلية أبداً
                     infoContainer.addView(socialBar)
-                } else {
-                    // تحديث الأرقام فقط إذا كان موجود
-                    (socialBar.getChildAt(0) as? TextView)?.text = "👁 $viewsCount"
-                    (socialBar.getChildAt(1) as? TextView)?.apply {
+                }
+
+                // تحديث القيم فوراً وبشكل آمن
+                (socialBar.getChildAt(0) as? TextView)?.text = "👁 $viewsCount"
+                
+                val tvLikesView = socialBar.getChildAt(1) as? TextView
+                tvLikesView?.apply {
+                    text = if (isLikedByMe) "♥ $likesCount" else "♡ $likesCount"
+                    setTextColor(if (isLikedByMe) Color.parseColor("#E91E63") else Color.parseColor("#B0B0B0"))
+                    
+                    // تنظيف أي مستمع قديم وتعيين المستمع الجديد الخاص بهذا الـ guid فقط
+                    setOnClickListener(null)
+                    setOnClickListener {
+                        isLikedByMe = !isLikedByMe
+                        likesCount = if (isLikedByMe) likesCount + 1 else maxOf(0, likesCount - 1)
+                        
                         text = if (isLikedByMe) "♥ $likesCount" else "♡ $likesCount"
                         setTextColor(if (isLikedByMe) Color.parseColor("#E91E63") else Color.parseColor("#B0B0B0"))
+                        
+                        prefs.edit().putBoolean("isLiked_$guid", isLikedByMe).putInt("likes_$guid", likesCount).apply()
+                        coroutineScope.launch(Dispatchers.IO) {
+                            CloudflareAPI.toggleLike(targetId, myUserId, isLikedByMe)
+                        }
                     }
-                    (socialBar.getChildAt(2) as? TextView)?.text = "💬 $commentsCount"
+                }
+
+                val tvCommentsView = socialBar.getChildAt(2) as? TextView
+                tvCommentsView?.apply {
+                    text = "💬 $commentsCount"
+                    setOnClickListener(null)
+                    setOnClickListener {
+                        try {
+                            val intent = Intent(context, Class.forName("com.v2ray.ang.ui.CommentsActivity"))
+                            intent.putExtra("guid", targetId)
+                            intent.putExtra("isOwnerOrAdmin", isOwnerOrAdmin)
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "الرجاء إضافة شاشة التعليقات الجديدة", Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 }
             }
             // ==========================================
@@ -400,9 +399,6 @@ class MainRecyclerAdapter(
                 bottomSection?.setBackgroundColor(Color.TRANSPARENT)
             }
 
-            // ==========================================
-            // 🌟 إرجاع كل أزرار الإدارة الأصلية 100% 🌟
-            // ==========================================
             if (doubleColumnDisplay) {
                 layoutShare?.visibility = View.GONE
                 layoutEdit?.visibility = View.GONE
