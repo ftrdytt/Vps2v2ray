@@ -175,14 +175,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}
     }
 
-    private suspend fun fetchBatchStats(ids: List<String>): Map<String, JSONObject> {
+    // 🌟 التعديل السحري: تمرير (myUserId) حتى السيرفر يعرف إذا أنت مسوي لايك وتلون الأيقونة أحمر 🌟
+    private suspend fun fetchBatchStats(ids: List<String>, myUserId: String): Map<String, JSONObject> {
         return withContext(Dispatchers.IO) {
             val resultMap = mutableMapOf<String, JSONObject>()
             val jobs = ids.distinct().map { id ->
                 async {
                     try {
                         val encodedId = java.net.URLEncoder.encode(id, "UTF-8")
-                        val checkConn = URL("$BASE_API_URL/check?guid=$encodedId").openConnection() as HttpURLConnection
+                        val encodedUserId = java.net.URLEncoder.encode(myUserId, "UTF-8")
+                        val checkConn = URL("$BASE_API_URL/check?guid=$encodedId&userId=$encodedUserId").openConnection() as HttpURLConnection
                         checkConn.connectTimeout = 5000
                         checkConn.readTimeout = 5000
                         if (checkConn.responseCode == 200) {
@@ -277,7 +279,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         allIdsToFetch.addAll(ids)
                     }
 
-                    val batchStats = fetchBatchStats(allIdsToFetch.toList())
+                    val batchStats = fetchBatchStats(allIdsToFetch.toList(), myUserId)
 
                     for (guid in guids) {
                         val licenseId = guidToLicenseId[guid]!!
@@ -287,6 +289,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         var totalActiveCount = 0
                         var parentExpiry = -1L
                         var isLocked = false
+                        
+                        // متغيرات التفاعل
+                        var viewsCount = 0
+                        var likesCount = 0
+                        var commentsCount = 0
+                        var isLikedByMe = false
 
                         for (id in ids) {
                             val statObj = batchStats[id]
@@ -296,22 +304,33 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 if (id == licenseId) {
                                     isLocked = statObj.optBoolean("isLocked", false)
                                     parentExpiry = statObj.optLong("expiryTime", -1L)
+                                    
+                                    // 🌟 استخراج أرقام التفاعل من السيرفر 🌟
+                                    viewsCount = statObj.optInt("views", 0)
+                                    likesCount = statObj.optInt("likes", 0)
+                                    commentsCount = statObj.optInt("comments", 0)
+                                    isLikedByMe = statObj.optBoolean("isLiked", false)
                                 }
                             }
                         }
                         
                         editor.putBoolean("locked_$guid", isLocked)
                         editor.putString("usage_$guid", formatBytes(totalUsageBytes))
+                        
+                        // 🌟 حفظ أرقام التفاعل بالذاكرة لكي يقرأها الـ Adapter 🌟
+                        editor.putInt("views_$guid", viewsCount)
+                        editor.putInt("likes_$guid", likesCount)
+                        editor.putInt("comments_$guid", commentsCount)
+                        editor.putBoolean("isLiked_$guid", isLikedByMe)
+
                         V2rayCrypt.saveActiveCount(this@MainActivity, guid, totalActiveCount)
                         if (parentExpiry >= 0L) {
                             V2rayCrypt.saveExpiryTime(this@MainActivity, guid, parentExpiry)
                         }
                     }
 
-                    // 🌟 السحر الجديد: سحب بيانات "الناشر الأصلي" باستخدام pubId المدمج مع الملف 🌟
                     val userInfos = guids.map { guid ->
                         async(Dispatchers.IO) {
-                            // نجيب آيدي الناشر الأصلي إذا كان موجود بالتشفير، وإذا ماكو نرجع لـ licenseId
                             var targetFetchId = prefs.getString("pubId_$guid", "") ?: ""
                             if (targetFetchId.isEmpty()) {
                                 targetFetchId = guidToLicenseId[guid]!!
@@ -339,7 +358,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
                             editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false))
                             
-                            // نحتفظ بآيدي الناشر حتى استورياته تنفتح مضبوط
                             val currentPubId = prefs.getString("pubId_$guid", "") ?: ""
                             if (currentPubId.isEmpty()) {
                                 editor.putString("pubId_$guid", obj.optString("id", guidToLicenseId[guid]!!)) 
@@ -711,8 +729,9 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
 
                     delay(1000) 
                     val encodedId = java.net.URLEncoder.encode(idToTrack, "UTF-8")
+                    val encodedUserId = java.net.URLEncoder.encode(AuthManager.getId(this@MainActivity), "UTF-8")
                     try {
-                        val checkConn = URL("$BASE_API_URL/check?guid=$encodedId").openConnection() as HttpURLConnection
+                        val checkConn = URL("$BASE_API_URL/check?guid=$encodedId&userId=$encodedUserId").openConnection() as HttpURLConnection
                         checkConn.connectTimeout = 4000
                         checkConn.readTimeout = 4000
                         if (checkConn.responseCode == 200) {
@@ -994,7 +1013,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 allIdsToFetch.addAll(ids)
             }
 
-            val batchStats = fetchBatchStats(allIdsToFetch.toList())
+            val batchStats = fetchBatchStats(allIdsToFetch.toList(), myUserId)
 
             for (guid in guids) {
                 val licenseId = guidToLicenseId[guid]!!
@@ -1004,6 +1023,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 var totalActiveCount = 0
                 var parentExpiry = -1L
                 var isLocked = false
+                var viewsCount = 0
+                var likesCount = 0
+                var commentsCount = 0
+                var isLikedByMe = false
 
                 for (id in ids) {
                     val statObj = batchStats[id]
@@ -1013,22 +1036,29 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         if (id == licenseId) {
                             isLocked = statObj.optBoolean("isLocked", false)
                             parentExpiry = statObj.optLong("expiryTime", -1L)
+                            viewsCount = statObj.optInt("views", 0)
+                            likesCount = statObj.optInt("likes", 0)
+                            commentsCount = statObj.optInt("comments", 0)
+                            isLikedByMe = statObj.optBoolean("isLiked", false)
                         }
                     }
                 }
                 
                 editor.putBoolean("locked_$guid", isLocked)
                 editor.putString("usage_$guid", formatBytes(totalUsageBytes))
+                editor.putInt("views_$guid", viewsCount)
+                editor.putInt("likes_$guid", likesCount)
+                editor.putInt("comments_$guid", commentsCount)
+                editor.putBoolean("isLiked_$guid", isLikedByMe)
+
                 V2rayCrypt.saveActiveCount(this@MainActivity, guid, totalActiveCount)
                 if (parentExpiry >= 0L) {
                     V2rayCrypt.saveExpiryTime(this@MainActivity, guid, parentExpiry)
                 }
             }
 
-            // 🌟 السحر الجديد: سحب بيانات "الناشر الأصلي" باستخدام pubId المدمج مع الملف 🌟
             val userInfos = guids.map { guid ->
                 async(Dispatchers.IO) {
-                    // نجيب آيدي الناشر الأصلي إذا كان موجود بالتشفير، وإذا ماكو نرجع لـ licenseId
                     var targetFetchId = prefs.getString("pubId_$guid", "") ?: ""
                     if (targetFetchId.isEmpty()) {
                         targetFetchId = guidToLicenseId[guid]!!
@@ -1056,7 +1086,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     editor.putBoolean("story_$guid", obj.optBoolean("hasActiveStory", false))
                     editor.putBoolean("verified_$guid", obj.optBoolean("isVerified", false))
                     
-                    // نحتفظ بآيدي الناشر حتى استورياته تنفتح مضبوط
                     val currentPubId = prefs.getString("pubId_$guid", "") ?: ""
                     if (currentPubId.isEmpty()) {
                         editor.putString("pubId_$guid", obj.optString("id", guidToLicenseId[guid]!!)) 
