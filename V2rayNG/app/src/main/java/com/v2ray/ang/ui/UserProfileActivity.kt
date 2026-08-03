@@ -88,19 +88,25 @@ class UserProfileActivity : AppCompatActivity() {
             checkFollowStatus()
         }
         
-        // 🌟 تفعيل الضغط على أرقام المتابعين لفتح القوائم 🌟
+        // 🌟 تم إيقاف الانتقال مؤقتاً لتفادي خطأ البناء (Build Error) 🌟
         tvFollowersCount.setOnClickListener {
+            Toast.makeText(this, "قائمة المتابعين (قريباً)...", Toast.LENGTH_SHORT).show()
+            /*
             val intent = Intent(this, ConnectionsActivity::class.java)
             intent.putExtra("targetUserId", targetUserId)
             intent.putExtra("type", "followers")
             startActivity(intent)
+            */
         }
 
         tvFollowingCount.setOnClickListener {
+            Toast.makeText(this, "قائمة المتابَعين (قريباً)...", Toast.LENGTH_SHORT).show()
+            /*
             val intent = Intent(this, ConnectionsActivity::class.java)
             intent.putExtra("targetUserId", targetUserId)
             intent.putExtra("type", "following")
             startActivity(intent)
+            */
         }
 
         fetchUserData()
