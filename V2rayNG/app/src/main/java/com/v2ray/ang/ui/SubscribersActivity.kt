@@ -155,7 +155,7 @@ class SubscribersActivity : AppCompatActivity() {
                             val actCount = data.optInt("activeCount", 0) 
                             val totalUsageBytes = data.optLong("totalUsageBytes", 0L) 
                             
-                            // 🌟 السحر الجديد: سحب أرقام التفاعل (المشاهدات، اللايكات، التعليقات) من السيرفر 🌟
+                            // 🌟 سحب أرقام التفاعل من السيرفر 🌟
                             val views = data.optInt("views", 0)
                             val likes = data.optInt("likes", 0)
                             val comments = data.optInt("comments", 0)
@@ -599,7 +599,7 @@ class SubscribersAdapter(
                 flAvatarContainer.setPadding(8, 8, 8, 8)
                 flAvatarContainer.setOnClickListener {
                     try {
-                        val intent = Intent(itemView.context, StoryViewerActivity::class.java)
+                        val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.StoryViewerActivity"))
                         intent.putExtra("targetUserId", item.licenseId)
                         intent.putExtra("userId", item.licenseId)
                         itemView.context.startActivity(intent)
@@ -610,7 +610,7 @@ class SubscribersAdapter(
                 flAvatarContainer.setPadding(0, 0, 0, 0)
                 flAvatarContainer.setOnClickListener {
                     try {
-                        val intent = Intent(itemView.context, UserProfileActivity::class.java)
+                        val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.UserProfileActivity"))
                         intent.putExtra("targetUserId", item.licenseId)
                         itemView.context.startActivity(intent)
                     } catch (e: Exception) {}
@@ -622,13 +622,15 @@ class SubscribersAdapter(
 
             tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
             tvActiveCount.setOnClickListener {
-                val intent = Intent(itemView.context, FileActiveUsersActivity::class.java)
-                intent.putExtra("guid", item.licenseId)
-                intent.putExtra("apiUrl", apiUrl) 
-                itemView.context.startActivity(intent)
+                try {
+                    val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.FileActiveUsersActivity"))
+                    intent.putExtra("guid", item.licenseId)
+                    intent.putExtra("apiUrl", apiUrl) 
+                    itemView.context.startActivity(intent)
+                } catch (e: Exception) {}
             }
 
-            // 🌟 السحر هنا: بناء شريط التفاعل برمجياً وزرعه أسفل حالة النشاط 🌟
+            // 🌟 تصميم شريط التفاعل برمجياً مع تكبير الخطوط 🌟
             val parentLayout = tvActiveCount.parent as? ViewGroup
             if (parentLayout != null) {
                 var socialBar = parentLayout.findViewWithTag<LinearLayout>("social_bar_${item.licenseId}")
@@ -637,45 +639,55 @@ class SubscribersAdapter(
                         tag = "social_bar_${item.licenseId}"
                         orientation = LinearLayout.HORIZONTAL
                         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 15, 0, 15)
+                            setMargins(0, 15, 0, 15) // هوامش أكبر
                         }
                         gravity = Gravity.CENTER_VERTICAL
                     }
 
-                    // أيقونة المشاهدات
+                    // 👁️ المشاهدات
                     val tvViews = TextView(itemView.context).apply {
                         text = "👁️ $viewsCount"
                         setTextColor(Color.LTGRAY)
-                        textSize = 13f
-                        setPadding(0, 0, 40, 0)
+                        textSize = 15f // خط كبير
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        setPadding(0, 0, 50, 0)
                     }
 
-                    // أيقونة اللايكات
+                    // ❤️ اللايكات
                     val tvLikes = TextView(itemView.context).apply {
                         text = "❤️ $likesCount"
                         setTextColor(Color.LTGRAY)
-                        textSize = 13f
-                        setPadding(0, 0, 40, 0)
+                        textSize = 15f // خط كبير
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        setPadding(0, 0, 50, 0)
+                        
+                        // 🌟 النقر يفتح المعجبين 🌟
                         setOnClickListener {
-                            Toast.makeText(itemView.context, "سيتم عرض قائمة المعجبين قريباً!", Toast.LENGTH_SHORT).show()
+                            try {
+                                val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.ConnectionsActivity"))
+                                intent.putExtra("targetUserId", item.licenseId)
+                                intent.putExtra("type", "likers") // تفعيل قائمة المعجبين
+                                itemView.context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(itemView.context, "حدث خطأ أثناء الفتح", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
 
-                    // أيقونة التعليقات
+                    // 💬 التعليقات
                     val tvComments = TextView(itemView.context).apply {
                         text = "💬 $commentsCount"
                         setTextColor(Color.LTGRAY)
-                        textSize = 13f
+                        textSize = 15f // خط كبير
+                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        
                         setOnClickListener {
-                            // فتح شاشة التعليقات مع إعطاء صلاحية الأدمن الكاملة للحذف
                             try {
                                 val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.CommentsActivity"))
                                 intent.putExtra("guid", item.licenseId)
-                                intent.putExtra("isOwnerOrAdmin", true) // بصفتك الأدمن عندك صلاحية الحذف
+                                intent.putExtra("isOwnerOrAdmin", true) 
                                 itemView.context.startActivity(intent)
-                            } catch (e: Exception) {
-                                Toast.makeText(itemView.context, "جاري تجهيز شاشة التعليقات...", Toast.LENGTH_SHORT).show()
-                            }
+                            } catch (e: Exception) {}
                         }
                     }
 
@@ -686,7 +698,7 @@ class SubscribersAdapter(
                     val index = parentLayout.indexOfChild(tvActiveCount)
                     parentLayout.addView(socialBar, index + 1)
                 } else {
-                    // تحديث الأرقام
+                    // تحديث الأرقام بوضوح أكبر
                     (socialBar.getChildAt(0) as? TextView)?.text = "👁️ $viewsCount"
                     (socialBar.getChildAt(1) as? TextView)?.text = "❤️ $likesCount"
                     (socialBar.getChildAt(2) as? TextView)?.text = "💬 $commentsCount"
