@@ -143,10 +143,9 @@ class MainRecyclerAdapter(
             }
 
             // ==========================================
-            // 🌟 شريط التفاعل - تم حل التكرار وتصغير الحجم 🌟
+            // 🌟 شريط التفاعل - تم التكبير وتفعيل قائمة المعجبين 🌟
             // ==========================================
             if (infoContainer != null) {
-                // 💡 الحل السحري للتكرار: نستخدم Tag ثابت للشريط بدل الآيدي
                 var socialBar = infoContainer.findViewWithTag<LinearLayout>("social_bar_view")
                 
                 val viewsCount = prefs.getInt("views_$guid", 0)
@@ -156,41 +155,44 @@ class MainRecyclerAdapter(
 
                 if (socialBar == null) {
                     socialBar = LinearLayout(context).apply {
-                        tag = "social_bar_view" // Tag ثابت يمنع التكرار
+                        tag = "social_bar_view" 
                         orientation = LinearLayout.HORIZONTAL
                         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 5, 0, 0) // تقليل الهوامش لأقصى حد
+                            setMargins(0, 10, 0, 10) // تكبير الهوامش
                         }
                         gravity = Gravity.CENTER_VERTICAL
                         
                         background = GradientDrawable().apply {
                             setColor(Color.parseColor("#15FFFFFF"))
-                            cornerRadius = 30f
-                            setStroke(1, Color.parseColor("#22FFFFFF"))
+                            cornerRadius = 40f
+                            setStroke(1, Color.parseColor("#33FFFFFF"))
                         }
-                        setPadding(25, 8, 25, 8) // تصغير الحجم الداخلي جداً
+                        setPadding(35, 15, 35, 15) // تكبير الحجم الداخلي
                     }
 
+                    // 👁 المشاهدات (حجم أكبر)
                     val tvViews = TextView(context).apply {
                         text = "👁 $viewsCount"
                         setTextColor(Color.parseColor("#B0B0B0"))
-                        textSize = 11f // تصغير الخط
+                        textSize = 14f // تكبير الخط
                         setTypeface(null, android.graphics.Typeface.BOLD)
-                        setPadding(0, 0, 30, 0)
+                        setPadding(0, 0, 45, 0)
                     }
 
+                    // ♥ اللايكات (حجم أكبر)
                     val tvLikes = TextView(context).apply {
                         text = if (isLikedByMe) "♥ $likesCount" else "♡ $likesCount"
                         setTextColor(if (isLikedByMe) Color.parseColor("#E91E63") else Color.parseColor("#B0B0B0"))
-                        textSize = 11f
+                        textSize = 14f // تكبير الخط
                         setTypeface(null, android.graphics.Typeface.BOLD)
-                        setPadding(0, 0, 30, 0)
+                        setPadding(0, 0, 45, 0)
                     }
 
+                    // 💬 التعليقات (حجم أكبر)
                     val tvComments = TextView(context).apply {
                         text = "💬 $commentsCount"
                         setTextColor(Color.parseColor("#B0B0B0"))
-                        textSize = 11f
+                        textSize = 14f // تكبير الخط
                         setTypeface(null, android.graphics.Typeface.BOLD)
                     }
 
@@ -201,7 +203,6 @@ class MainRecyclerAdapter(
                     infoContainer.addView(socialBar)
                 }
 
-                // تحديث القيم فوراً وبشكل آمن
                 (socialBar.getChildAt(0) as? TextView)?.text = "👁 $viewsCount"
                 
                 val tvLikesView = socialBar.getChildAt(1) as? TextView
@@ -209,7 +210,6 @@ class MainRecyclerAdapter(
                     text = if (isLikedByMe) "♥ $likesCount" else "♡ $likesCount"
                     setTextColor(if (isLikedByMe) Color.parseColor("#E91E63") else Color.parseColor("#B0B0B0"))
                     
-                    // تنظيف أي مستمع قديم وتعيين المستمع الجديد الخاص بهذا الـ guid فقط
                     setOnClickListener(null)
                     setOnClickListener {
                         isLikedByMe = !isLikedByMe
@@ -222,6 +222,19 @@ class MainRecyclerAdapter(
                         coroutineScope.launch(Dispatchers.IO) {
                             CloudflareAPI.toggleLike(targetId, myUserId, isLikedByMe)
                         }
+                    }
+
+                    // 🌟 تفعيل الضغط المطول لفتح قائمة المعجبين 🌟
+                    setOnLongClickListener {
+                        try {
+                            val intent = Intent(context, ConnectionsActivity::class.java)
+                            intent.putExtra("targetUserId", targetId)
+                            intent.putExtra("type", "likers") // نمرر نوع جديد
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "لم يتم العثور على شاشة قائمة الإعجابات", Toast.LENGTH_SHORT).show()
+                        }
+                        true
                     }
                 }
 
