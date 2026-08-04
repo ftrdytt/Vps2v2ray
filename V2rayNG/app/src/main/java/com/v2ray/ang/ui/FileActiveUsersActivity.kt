@@ -289,11 +289,25 @@ class FileActiveUsersActivity : AppCompatActivity() {
                     }
                 }
 
+                // 🌟 الحل الجذري للمشكلة: الفلترة حسب الـ Device ID، مع الأولوية لمن يملك حساب (userId) 🌟
                 val uniqueUsersMap = mutableMapOf<String, JSONObject>()
                 for (i in 0 until finalCombinedArray.length()) {
                     val obj = finalCombinedArray.getJSONObject(i)
                     val devId = obj.optString("deviceId", "")
-                    if (devId.isNotEmpty()) uniqueUsersMap[devId] = obj
+                    val currentUserId = obj.optString("userId", "")
+                    
+                    if (devId.isNotEmpty()) {
+                        if (uniqueUsersMap.containsKey(devId)) {
+                            // إذا كان الجهاز موجود مسبقاً في القائمة (كجهاز مجهول مثلاً) 
+                            // والبيانات الجديدة تحتوي على (userId) فهذا يعني أن الشخص دخل بحسابه
+                            val existingUserId = uniqueUsersMap[devId]?.optString("userId", "") ?: ""
+                            if (existingUserId.isEmpty() && currentUserId.isNotEmpty()) {
+                                uniqueUsersMap[devId] = obj // نستبدل المجهول بالحساب المسجل
+                            }
+                        } else {
+                            uniqueUsersMap[devId] = obj
+                        }
+                    }
                 }
                 
                 val cleanUniqueArray = JSONArray()
