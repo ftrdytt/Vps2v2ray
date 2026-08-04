@@ -365,7 +365,7 @@ object CloudflareAPI {
         }
     }
 
-    // 🌟 نظام التعليقات المتطور (الردود، التعديل، اللايكات، החذف) 🌟
+    // 🌟 نظام التعليقات المتطور (الردود، التعديل، اللايكات، الحذف) 🌟
 
     suspend fun getComments(guid: String): JSONArray? {
         return withContext(Dispatchers.IO) {
@@ -386,7 +386,8 @@ object CloudflareAPI {
         }
     }
 
-    suspend fun addComment(guid: String, userId: String, userName: String, userPfp: String, text: String, replyToName: String = ""): Boolean {
+    // 🌟 إضافة parentId لدعم الردود المتداخلة (Nested Replies) 🌟
+    suspend fun addComment(guid: String, userId: String, userName: String, userPfp: String, text: String, replyToName: String = "", parentId: String = ""): Boolean {
         return withContext(Dispatchers.IO) {
             try {
                 val url = URL("$BASE_URL/social/comment/add")
@@ -401,6 +402,7 @@ object CloudflareAPI {
                     put("userPfp", userPfp)
                     put("text", text)
                     put("replyToName", replyToName)
+                    put("parentId", parentId) // إرسال الآيدي الأساسي للتعليق (للردود)
                 }
                 conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                 conn.responseCode == 200
