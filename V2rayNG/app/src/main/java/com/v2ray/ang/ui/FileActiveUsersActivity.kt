@@ -20,6 +20,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.lifecycle.lifecycleScope
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.v2ray.ang.handler.V2rayCrypt
 import com.v2ray.ang.util.AvatarGenerator
@@ -274,33 +275,8 @@ class FileActiveUsersActivity : AppCompatActivity() {
                     }
                 }
 
-                // 🌟 الحل الجذري لمنع اختفاء المتصلين 🌟
-                // استخدام خريطة لحفظ الأجهزة، وإذا لم يكن هناك DeviceID نستخدم معرّف عشوائي لضمان عدم حذفه!
-                val uniqueUsersMap = mutableMapOf<String, JSONObject>()
-                for (i in 0 until finalCombinedArray.length()) {
-                    val obj = finalCombinedArray.getJSONObject(i)
-                    val devId = obj.optString("deviceId", "")
-                    val currentUserId = obj.optString("userId", "")
-                    
-                    // إذا الجهاز ما عنده آيدي، نعطيه آيدي وهمي حتى ما يختفي من القائمة
-                    val uniqueKey = if (devId.isNotEmpty()) devId else "unknown_${System.currentTimeMillis()}_$i"
-                    
-                    if (uniqueUsersMap.containsKey(uniqueKey)) {
-                        val existingUserId = uniqueUsersMap[uniqueKey]?.optString("userId", "") ?: ""
-                        // إذا الجهاز موجود وكان بدون حساب، والآن جاء بحساب، نستبدله
-                        if (existingUserId.isEmpty() && currentUserId.isNotEmpty()) {
-                            uniqueUsersMap[uniqueKey] = obj 
-                        }
-                    } else {
-                        uniqueUsersMap[uniqueKey] = obj
-                    }
-                }
-                
-                val cleanUniqueArray = JSONArray()
-                uniqueUsersMap.values.forEach { cleanUniqueArray.put(it) }
-
                 withContext(Dispatchers.Main) {
-                    allLoadedUsers = cleanUniqueArray
+                    allLoadedUsers = finalCombinedArray
                     tvLoading.visibility = View.GONE
                     swipeRefreshLayout.isRefreshing = false
                     
@@ -374,7 +350,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 استعادة التصميم الأصلي حرفياً بناءً على صورتك (1000025349.jpg) 🌟
     private fun addUserCardOriginal(deviceId: String, name: String, userId: String, pfp: String, isBanned: Boolean, currentTab: String, hasActiveStory: Boolean, usageStr: String) {
         
         val cardView = CardView(this).apply {
@@ -386,7 +361,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             setCardBackgroundColor(Color.parseColor("#1C1C22"))
         }
 
-        // تصميم يعتمد على اتجاه اليمين لليسار (RTL)
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -394,7 +368,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
-        // 1️⃣ الصورة الرمزية (على اليمين في واجهة RTL)
         val avatarContainer = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(140, 140).apply { setMargins(20, 0, 0, 0) }
             
@@ -445,7 +418,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         cvAvatar.addView(ivAvatar)
         avatarContainer.addView(cvAvatar)
 
-        // 2️⃣ التفاصيل (في المنتصف)
         val infoLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -469,7 +441,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
         val tvId = TextView(this).apply {
             text = if (userId.isNotEmpty()) "ID: $userId" else "ID: (غير مسجل)"
-            setTextColor(Color.parseColor("#FFC107")) // لون أصفر للايدي
+            setTextColor(Color.parseColor("#FFC107")) 
             textSize = 12f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setPadding(0, 5, 0, 0)
@@ -477,11 +449,10 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
         val tvDevice = TextView(this).apply {
             text = "📋 الجهاز: $deviceId"
-            setTextColor(Color.parseColor("#9E9E9E")) // لون رمادي
+            setTextColor(Color.parseColor("#9E9E9E")) 
             textSize = 11f
             setPadding(0, 5, 0, 0)
             
-            // نسخ عند الضغط
             isClickable = true
             setOnClickListener {
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -495,10 +466,9 @@ class FileActiveUsersActivity : AppCompatActivity() {
         infoLayout.addView(tvId)
         infoLayout.addView(tvDevice)
 
-        // 3️⃣ زر الحظر (على اليسار)
         val btnAction = MaterialButton(this).apply {
             text = if (isBanned) "إلغاء الحظر" else "حظر فوراً"
-            setBackgroundColor(if (isBanned) Color.parseColor("#4CAF50") else Color.parseColor("#F44336")) // زر أحمر للحظر
+            setBackgroundColor(if (isBanned) Color.parseColor("#4CAF50") else Color.parseColor("#F44336")) 
             setTextColor(Color.WHITE)
             textSize = 12f
             cornerRadius = 15
@@ -511,7 +481,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             }
         }
 
-        // إضافة العناصر للواجهة حسب ترتيب RTL (الصورة، ثم النص، ثم الزر)
         mainLayout.addView(avatarContainer)
         mainLayout.addView(infoLayout)
         mainLayout.addView(btnAction)
