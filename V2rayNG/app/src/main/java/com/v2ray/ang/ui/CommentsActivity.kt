@@ -1,6 +1,7 @@
 package com.v2ray.ang.ui
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -39,7 +40,6 @@ class CommentsActivity : AppCompatActivity() {
     private lateinit var btnSend: ImageView
     private lateinit var tvEmptyState: TextView
     
-    // شريط الرد والتعديل
     private lateinit var layoutActionState: LinearLayout
     private lateinit var tvActionStateText: TextView
     private lateinit var btnCloseAction: ImageView
@@ -65,11 +65,10 @@ class CommentsActivity : AppCompatActivity() {
 
     private fun setupPremiumUI() {
         val rootLayout = RelativeLayout(this).apply {
-            setBackgroundColor(Color.parseColor("#08080A")) // لون أسود ليلي فخم جداً
+            setBackgroundColor(Color.parseColor("#08080A"))
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
 
-        // 1. الشريط العلوي (Toolbar)
         val topBar = LinearLayout(this).apply {
             id = View.generateViewId()
             orientation = LinearLayout.HORIZONTAL
@@ -93,16 +92,14 @@ class CommentsActivity : AppCompatActivity() {
         topBar.addView(btnBack)
         topBar.addView(tvTitle)
 
-        // 2. حقل الإدخال السفلي والردود
         val bottomContainer = LinearLayout(this).apply {
             id = View.generateViewId()
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0F0F13")) // لون مختلف قليلاً لإبراز حقل النص
+            setBackgroundColor(Color.parseColor("#0F0F13"))
             setPadding(30, 20, 30, 30)
             elevation = 20f
         }
         
-        // شريط حالة (جاري الرد / جاري التعديل)
         layoutActionState = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -163,14 +160,13 @@ class CommentsActivity : AppCompatActivity() {
         bottomContainer.addView(layoutActionState)
         bottomContainer.addView(inputWrapper)
 
-        // 3. منطقة التعليقات
         swipeRefresh = SwipeRefreshLayout(this).apply {
             setColorSchemeColors(Color.parseColor("#0088FF"))
             setOnRefreshListener { fetchCommentsFromServer() }
         }
         recyclerView = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@CommentsActivity).apply {
-                stackFromEnd = false // ترتيب طبيعي
+                stackFromEnd = false 
             }
             setPadding(0, 20, 0, 20)
             clipToPadding = false
@@ -201,9 +197,10 @@ class CommentsActivity : AppCompatActivity() {
         setContentView(rootLayout)
 
         adapter = CommentsAdapter(
-            commentsList, 
-            myUserId, 
-            isOwnerOrAdmin,
+            context = this,
+            comments = commentsList, 
+            myUserId = myUserId, 
+            isAdmin = isOwnerOrAdmin,
             onLikeClick = { comment -> toggleLikeComment(comment) },
             onReplyClick = { comment -> setReplyState(comment) },
             onEditClick = { comment -> setEditState(comment) },
@@ -264,16 +261,15 @@ class CommentsActivity : AppCompatActivity() {
     private fun parseAndSetComments(jsonString: String) {
         try {
             val jsonArray = JSONArray(jsonString)
-            commentsList.clear()
+            val allComments = mutableListOf<CommentData>()
+            
             for (i in 0 until jsonArray.length()) {
                 val obj = jsonArray.getJSONObject(i)
-                
-                // جلب قائمة اللايكات كـ List
                 val likesArr = obj.optJSONArray("likes") ?: JSONArray()
                 val likesList = mutableListOf<String>()
                 for(j in 0 until likesArr.length()) likesList.add(likesArr.getString(j))
 
-                commentsList.add(CommentData(
+                allComments.add(CommentData(
                     id = obj.optString("commentId", ""),
                     userId = obj.optString("userId", ""),
                     userName = obj.optString("userName", "مجهول"),
@@ -281,10 +277,25 @@ class CommentsActivity : AppCompatActivity() {
                     text = obj.optString("text", ""),
                     timestamp = obj.optString("timestamp", "الآن"),
                     isEdited = obj.optBoolean("isEdited", false),
+                    parentId = obj.optString("parentId", ""), 
                     replyToName = obj.optString("replyToName", ""),
                     likes = likesList
                 ))
             }
+            
+            // ترتيب التعليقات (الرئيسية أولاً ثم الردود)
+            val parentComments = allComments.filter { it.parentId.isEmpty() }
+            commentsList.clear()
+            
+            parentComments.forEach { parent ->
+                commentsList.add(parent)
+                val replies = allComments.filter { it.parentId == parent.id }
+                if (replies.isNotEmpty()) {
+                    parent.repliesCount = replies.size
+                    parent.repliesList.addAll(replies)
+                }
+            }
+
             tvEmptyState.visibility = if (commentsList.isEmpty()) View.VISIBLE else View.GONE
             adapter.notifyDataSetChanged()
             if (commentsList.isNotEmpty()) recyclerView.scrollToPosition(commentsList.size - 1)
@@ -309,7 +320,8 @@ class CommentsActivity : AppCompatActivity() {
             val success = if (isEdit) {
                 CloudflareAPI.editComment(guid, targetId, myUserId, text)
             } else {
-                CloudflareAPI.addComment(guid, myUserId, myUserName, myUserPfp, text, replyName)
+                // targetId هنا يعمل كـ ParentId للردود
+                CloudflareAPI.addComment(guid, myUserId, myUserName, myUserPfp, text, replyName, targetId)
             }
 
             withContext(Dispatchers.Main) {
@@ -334,7 +346,7 @@ class CommentsActivity : AppCompatActivity() {
     private fun deleteComment(comment: CommentData) {
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("حذف التعليق")
-            .setMessage("هل أنت متأكد من الحذف؟")
+            .setMessage("هل أنت متأكد من الحذف؟ سيتم حذف جميع الردود التابعة له أيضاً.")
             .setPositiveButton("حذف") { _, _ ->
                 swipeRefresh.isRefreshing = true
                 lifecycleScope.launch(Dispatchers.IO) {
@@ -351,7 +363,7 @@ class CommentsActivity : AppCompatActivity() {
     }
 }
 
-// 🌟 بيانات التعليق (مع دعم اللايكات والردود والتعديل) 🌟
+// 🌟 بيانات التعليق المحدثة للردود المتداخلة 🌟
 data class CommentData(
     val id: String, 
     val userId: String, 
@@ -360,13 +372,18 @@ data class CommentData(
     val text: String, 
     val timestamp: String,
     val isEdited: Boolean,
+    val parentId: String = "", 
     val replyToName: String,
-    var likes: MutableList<String>
+    var likes: MutableList<String>,
+    var repliesCount: Int = 0,
+    var areRepliesVisible: Boolean = false,
+    var repliesList: MutableList<CommentData> = mutableListOf()
 )
 
-// 🌟 المحول الاحترافي للتعليقات (تصميم الفيسبوك والانستا) 🌟
+// 🌟 المحول الاحترافي للردود المتداخلة 🌟
 class CommentsAdapter(
-    private val comments: List<CommentData>,
+    private val context: Context,
+    private val comments: MutableList<CommentData>,
     private val myUserId: String,
     private val isAdmin: Boolean,
     private val onLikeClick: (CommentData) -> Unit,
@@ -376,54 +393,56 @@ class CommentsAdapter(
 ) : RecyclerView.Adapter<CommentsAdapter.CommentViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CommentViewHolder {
-        val context = parent.context
+        val ctx = parent.context
         
-        // الحاوية الأساسية للتعليق
-        val layout = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+        val layout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            setPadding(30, 20, 30, 20)
         }
 
-        // صورة المستخدم
-        val ivAvatar = ImageView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(100, 100).apply { setMargins(0, 0, 25, 0) }
+        // --- جسم التعليق الأساسي ---
+        val mainCommentLayout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setPadding(30, 20, 30, 10)
         }
 
-        // الجزء الأيمن (الفقاعة + أزرار التفاعل)
-        val contentLayout = LinearLayout(context).apply {
+        val ivAvatar = ImageView(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(110, 110).apply { setMargins(0, 0, 25, 0) }
+        }
+
+        val contentLayout = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        // 💬 فقاعة التعليق
-        val bubbleLayout = LinearLayout(context).apply {
+        val bubbleLayout = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#1C1C23"))
-                cornerRadius = 30f
+                cornerRadius = 35f
             }
             setPadding(35, 25, 35, 25)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
-        val tvName = TextView(context).apply {
+        val tvName = TextView(ctx).apply {
             setTextColor(Color.parseColor("#E0E0E0"))
-            textSize = 13f
+            textSize = 14f
             setTypeface(null, android.graphics.Typeface.BOLD)
         }
         
-        val tvReplyContext = TextView(context).apply {
+        val tvReplyContext = TextView(ctx).apply {
             setTextColor(Color.parseColor("#0088FF"))
             textSize = 12f
             setPadding(0, 5, 0, 5)
             visibility = View.GONE
         }
 
-        val tvText = TextView(context).apply {
+        val tvText = TextView(ctx).apply {
             setTextColor(Color.WHITE)
-            textSize = 14f
-            setPadding(0, 5, 0, 5)
+            textSize = 15f
+            setPadding(0, 8, 0, 8)
             setLineSpacing(0f, 1.2f)
         }
 
@@ -431,54 +450,53 @@ class CommentsAdapter(
         bubbleLayout.addView(tvReplyContext)
         bubbleLayout.addView(tvText)
 
-        // 🔄 شريط التفاعل (الوقت، لايك، رد، تعديل، حذف) تحت الفقاعة
-        val actionsLayout = LinearLayout(context).apply {
+        val actionsLayout = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(20, 10, 0, 0)
+            setPadding(20, 15, 0, 10)
         }
 
-        val tvTime = TextView(context).apply {
+        val tvTime = TextView(ctx).apply {
             setTextColor(Color.parseColor("#666666"))
-            textSize = 11f
-            setPadding(0, 0, 30, 0)
+            textSize = 12f
+            setPadding(0, 0, 35, 0)
         }
 
-        val tvLike = TextView(context).apply {
+        val tvLike = TextView(ctx).apply {
             text = "إعجاب"
             setTextColor(Color.parseColor("#AAAAAA"))
-            textSize = 12f
+            textSize = 13f
             setTypeface(null, android.graphics.Typeface.BOLD)
-            setPadding(0, 0, 30, 0)
+            setPadding(0, 0, 35, 0)
         }
         
-        val tvLikesCount = TextView(context).apply {
-            setTextColor(Color.parseColor("#E91E63")) // لون وردي للعداد
-            textSize = 11f
-            setPadding(10, 0, 30, 0)
+        val tvLikesCount = TextView(ctx).apply {
+            setTextColor(Color.parseColor("#E91E63")) 
+            textSize = 12f
+            setPadding(10, 0, 35, 0)
             visibility = View.GONE
         }
 
-        val tvReply = TextView(context).apply {
+        val tvReply = TextView(ctx).apply {
             text = "رد"
             setTextColor(Color.parseColor("#AAAAAA"))
-            textSize = 12f
+            textSize = 13f
             setTypeface(null, android.graphics.Typeface.BOLD)
-            setPadding(0, 0, 30, 0)
+            setPadding(0, 0, 35, 0)
         }
 
-        val tvEdit = TextView(context).apply {
+        val tvEdit = TextView(ctx).apply {
             text = "تعديل"
             setTextColor(Color.parseColor("#AAAAAA"))
-            textSize = 12f
-            setPadding(0, 0, 30, 0)
+            textSize = 13f
+            setPadding(0, 0, 35, 0)
             visibility = View.GONE
         }
 
-        val tvDelete = TextView(context).apply {
+        val tvDelete = TextView(ctx).apply {
             text = "حذف"
             setTextColor(Color.parseColor("#FF3B30"))
-            textSize = 12f
+            textSize = 13f
             visibility = View.GONE
         }
 
@@ -492,10 +510,31 @@ class CommentsAdapter(
         contentLayout.addView(bubbleLayout)
         contentLayout.addView(actionsLayout)
         
-        layout.addView(ivAvatar)
-        layout.addView(contentLayout)
+        mainCommentLayout.addView(ivAvatar)
+        mainCommentLayout.addView(contentLayout)
 
-        return CommentViewHolder(layout, ivAvatar, tvName, tvReplyContext, tvText, tvTime, tvLike, tvLikesCount, tvReply, tvEdit, tvDelete)
+        // --- قسم إظهار الردود المتداخلة (Tree) ---
+        val repliesContainer = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(140, 0, 0, 0) // دفع الردود لليسار لتكون متداخلة
+            }
+            visibility = View.GONE
+        }
+
+        val btnShowReplies = TextView(ctx).apply {
+            setTextColor(Color.parseColor("#0088FF"))
+            textSize = 13f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(160, 5, 30, 20)
+            visibility = View.GONE
+        }
+
+        layout.addView(mainCommentLayout)
+        layout.addView(btnShowReplies)
+        layout.addView(repliesContainer)
+
+        return CommentViewHolder(layout, ivAvatar, tvName, tvReplyContext, tvText, tvTime, tvLike, tvLikesCount, tvReply, tvEdit, tvDelete, btnShowReplies, repliesContainer, mainCommentLayout)
     }
 
     override fun onBindViewHolder(holder: CommentViewHolder, position: Int) {
@@ -504,24 +543,16 @@ class CommentsAdapter(
         holder.tvName.text = comment.userName
         holder.tvText.text = comment.text
         
-        // إذا كان التعليق معدلاً
-        if (comment.isEdited) {
-            holder.tvText.append(android.text.Html.fromHtml(" <font color='#666666'><i>(معدل)</i></font>"))
-        }
+        if (comment.isEdited) holder.tvText.append(android.text.Html.fromHtml(" <font color='#666666'><i>(معدل)</i></font>"))
 
-        // إذا كان رداً على شخص
         if (comment.replyToName.isNotEmpty()) {
             holder.tvReplyContext.visibility = View.VISIBLE
             holder.tvReplyContext.text = "↩ رد على ${comment.replyToName}"
-        } else {
-            holder.tvReplyContext.visibility = View.GONE
-        }
+        } else holder.tvReplyContext.visibility = View.GONE
 
-        // تنسيق الوقت
         val timeParts = comment.timestamp.split(" ")
         holder.tvTime.text = if(timeParts.isNotEmpty()) timeParts.last() else comment.timestamp
 
-        // إعداد اللايكات
         val isLikedByMe = comment.likes.contains(myUserId)
         holder.tvLike.text = if (isLikedByMe) "أعجبني" else "إعجاب"
         holder.tvLike.setTextColor(if (isLikedByMe) Color.parseColor("#E91E63") else Color.parseColor("#AAAAAA"))
@@ -529,38 +560,82 @@ class CommentsAdapter(
         if (comment.likes.isNotEmpty()) {
             holder.tvLikesCount.visibility = View.VISIBLE
             holder.tvLikesCount.text = "♥ ${comment.likes.size}"
-        } else {
-            holder.tvLikesCount.visibility = View.GONE
-        }
+        } else holder.tvLikesCount.visibility = View.GONE
 
-        // أزرار الصلاحيات (التعديل والحذف)
         val isMyComment = comment.userId == myUserId
-        
         holder.tvEdit.visibility = if (isMyComment) View.VISIBLE else View.GONE
         holder.tvDelete.visibility = if (isMyComment || isAdmin) View.VISIBLE else View.GONE
 
-        // أحداث الضغط (Click Listeners)
+        // 🌟 فتح شاشة المعجبين عند الضغط المطول على عداد اللايكات 🌟
+        holder.tvLikesCount.setOnLongClickListener {
+            try {
+                val intent = Intent(context, ConnectionsActivity::class.java)
+                intent.putExtra("targetUserId", comment.id) 
+                intent.putExtra("type", "comment_likers")
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(context, "الرجاء تحديث الواجهات", Toast.LENGTH_SHORT).show()
+            }
+            true
+        }
+
         holder.tvLike.setOnClickListener {
-            // تحديث محلي سريع
             if (isLikedByMe) comment.likes.remove(myUserId) else comment.likes.add(myUserId)
             notifyItemChanged(position)
             onLikeClick(comment)
         }
         
-        holder.tvReply.setOnClickListener { onReplyClick(comment) }
+        // عند الرد، نرسل ParentId
+        holder.tvReply.setOnClickListener { 
+            val parentIdToPass = if (comment.parentId.isEmpty()) comment.id else comment.parentId
+            onReplyClick(comment.copy(id = parentIdToPass)) 
+        }
         holder.tvEdit.setOnClickListener { onEditClick(comment) }
         holder.tvDelete.setOnClickListener { onDeleteClick(comment) }
 
-        // الصورة
         if (comment.userPfp.isNotEmpty()) {
             try {
                 val b = Base64.decode(if (comment.userPfp.contains(",")) comment.userPfp.substringAfter(",") else comment.userPfp, Base64.DEFAULT)
                 holder.ivAvatar.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size))
             } catch (e: Exception) {
-                holder.ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(comment.userName, comment.userId, 100))
+                holder.ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(comment.userName, comment.userId, 110))
+            }
+        } else holder.ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(comment.userName, comment.userId, 110))
+
+        // 🌟 معالجة الردود المتداخلة (الـ Tree) 🌟
+        if (comment.parentId.isEmpty() && comment.repliesCount > 0) {
+            holder.btnShowReplies.visibility = View.VISIBLE
+            holder.btnShowReplies.text = if (comment.areRepliesVisible) "إخفاء الردود ⌃" else "↪ عرض ${comment.repliesCount} من الردود ⌄"
+            
+            holder.btnShowReplies.setOnClickListener {
+                comment.areRepliesVisible = !comment.areRepliesVisible
+                
+                if (comment.areRepliesVisible) {
+                    val insertPos = position + 1
+                    comments.addAll(insertPos, comment.repliesList)
+                    notifyItemRangeInserted(insertPos, comment.repliesList.size)
+                } else {
+                    val removePos = position + 1
+                    comments.removeAll(comment.repliesList)
+                    notifyItemRangeRemoved(removePos, comment.repliesList.size)
+                }
+                notifyItemChanged(position)
             }
         } else {
-            holder.ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(comment.userName, comment.userId, 100))
+            holder.btnShowReplies.visibility = View.GONE
+        }
+
+        // تغيير التصميم إذا كان هذا رداً وليس تعليقاً أساسياً
+        if (comment.parentId.isNotEmpty()) {
+            val params = holder.mainCommentLayout.layoutParams as LinearLayout.LayoutParams
+            params.setMargins(100, 0, 0, 0) // دفع للداخل
+            holder.mainCommentLayout.layoutParams = params
+            holder.ivAvatar.layoutParams = LinearLayout.LayoutParams(80, 80).apply { setMargins(0, 0, 20, 0) } // تصغير الصورة للردود
+        } else {
+            val params = holder.mainCommentLayout.layoutParams as LinearLayout.LayoutParams
+            params.setMargins(0, 0, 0, 0)
+            holder.mainCommentLayout.layoutParams = params
+            holder.ivAvatar.layoutParams = LinearLayout.LayoutParams(110, 110).apply { setMargins(0, 0, 25, 0) }
         }
     }
 
@@ -577,6 +652,9 @@ class CommentsAdapter(
         val tvLikesCount: TextView,
         val tvReply: TextView,
         val tvEdit: TextView,
-        val tvDelete: TextView
+        val tvDelete: TextView,
+        val btnShowReplies: TextView,
+        val repliesContainer: LinearLayout,
+        val mainCommentLayout: LinearLayout
     ) : RecyclerView.ViewHolder(view)
 }
