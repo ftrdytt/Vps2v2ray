@@ -26,9 +26,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 
 class CommentsActivity : AppCompatActivity() {
 
+    private val BASE_API_URL = "https://education.ashor.shop"
     private lateinit var guid: String
     private var isOwnerOrAdmin: Boolean = false
     private lateinit var myUserId: String
@@ -201,6 +206,7 @@ class CommentsActivity : AppCompatActivity() {
             comments = commentsList, 
             myUserId = myUserId, 
             isAdmin = isOwnerOrAdmin,
+            apiUrl = BASE_API_URL, // تمرير رابط السيرفر لجلب التحديثات
             onLikeClick = { comment -> toggleLikeComment(comment) },
             onReplyClick = { comment -> setReplyState(comment) },
             onEditClick = { comment -> setEditState(comment) },
@@ -363,12 +369,12 @@ class CommentsActivity : AppCompatActivity() {
     }
 }
 
-// 🌟 بيانات التعليق المحدثة للردود المتداخلة 🌟
+// 🌟 بيانات التعليق 🌟
 data class CommentData(
     val id: String, 
     val userId: String, 
-    val userName: String, 
-    val userPfp: String, 
+    var userName: String, 
+    var userPfp: String, 
     val text: String, 
     val timestamp: String,
     val isEdited: Boolean,
@@ -377,15 +383,17 @@ data class CommentData(
     var likes: MutableList<String>,
     var repliesCount: Int = 0,
     var areRepliesVisible: Boolean = false,
-    var repliesList: MutableList<CommentData> = mutableListOf()
+    var repliesList: MutableList<CommentData> = mutableListOf(),
+    var hasActiveStory: Boolean = false // لدائرة الاستوري
 )
 
-// 🌟 المحول الاحترافي للردود المتداخلة 🌟
+// 🌟 المحول الاحترافي للردود المتداخلة مع تحديث البيانات الحية 🌟
 class CommentsAdapter(
     private val context: Context,
     private val comments: MutableList<CommentData>,
     private val myUserId: String,
     private val isAdmin: Boolean,
+    private val apiUrl: String, // جلب البيانات من السيرفر
     private val onLikeClick: (CommentData) -> Unit,
     private val onReplyClick: (CommentData) -> Unit,
     private val onEditClick: (CommentData) -> Unit,
@@ -407,9 +415,16 @@ class CommentsAdapter(
             setPadding(30, 20, 30, 10)
         }
 
-        val ivAvatar = ImageView(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(110, 110).apply { setMargins(0, 0, 25, 0) }
+        // حاوية الصورة للاستوري
+        val avatarContainer = FrameLayout(ctx).apply {
+            layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 25, 0) }
         }
+
+        val ivAvatar = ImageView(ctx).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        }
+        
+        avatarContainer.addView(ivAvatar)
 
         val contentLayout = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -510,14 +525,14 @@ class CommentsAdapter(
         contentLayout.addView(bubbleLayout)
         contentLayout.addView(actionsLayout)
         
-        mainCommentLayout.addView(ivAvatar)
+        mainCommentLayout.addView(avatarContainer)
         mainCommentLayout.addView(contentLayout)
 
         // --- قسم إظهار الردود المتداخلة (Tree) ---
         val repliesContainer = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(140, 0, 0, 0) // دفع الردود لليسار لتكون متداخلة
+                setMargins(140, 0, 0, 0) 
             }
             visibility = View.GONE
         }
@@ -534,15 +549,44 @@ class CommentsAdapter(
         layout.addView(btnShowReplies)
         layout.addView(repliesContainer)
 
-        return CommentViewHolder(layout, ivAvatar, tvName, tvReplyContext, tvText, tvTime, tvLike, tvLikesCount, tvReply, tvEdit, tvDelete, btnShowReplies, repliesContainer, mainCommentLayout)
+        return CommentViewHolder(layout, avatarContainer, ivAvatar, tvName, tvReplyContext, tvText, tvTime, tvLike, tvLikesCount, tvReply, tvEdit, tvDelete, btnShowReplies, repliesContainer, mainCommentLayout)
     }
 
     override fun onBindViewHolder(holder: CommentViewHolder, position: Int) {
         val comment = comments[position]
         
-        holder.tvName.text = comment.userName
-        holder.tvText.text = comment.text
+        // 🌟 جلب التحديث المباشر للصورة، الاسم، والاستوري من السيرفر 🌟
+        if (comment.userId.isNotEmpty()) {
+            (context as AppCompatActivity).lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val url = URL("$apiUrl/auth/get_user?id=${comment.userId}")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.connectTimeout = 3000
+                    
+                    if (conn.responseCode == 200) {
+                        val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                        val json = JSONObject(resp)
+                        if (json.optBoolean("success", false)) {
+                            comment.userName = json.optString("name", comment.userName)
+                            comment.userPfp = json.optString("pfp", "")
+                            comment.hasActiveStory = json.optBoolean("hasActiveStory", false)
+                            
+                            withContext(Dispatchers.Main) {
+                                // تحديث الواجهة فوراً
+                                holder.tvName.text = comment.userName
+                                updateAvatarAndStory(holder, comment)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {}
+            }
+        }
         
+        holder.tvName.text = comment.userName
+        updateAvatarAndStory(holder, comment)
+
+        holder.tvText.text = comment.text
         if (comment.isEdited) holder.tvText.append(android.text.Html.fromHtml(" <font color='#666666'><i>(معدل)</i></font>"))
 
         if (comment.replyToName.isNotEmpty()) {
@@ -566,17 +610,16 @@ class CommentsAdapter(
         holder.tvEdit.visibility = if (isMyComment) View.VISIBLE else View.GONE
         holder.tvDelete.visibility = if (isMyComment || isAdmin) View.VISIBLE else View.GONE
 
-        // 🌟 فتح شاشة المعجبين عند الضغط المطول على عداد اللايكات 🌟
-        holder.tvLikesCount.setOnLongClickListener {
+        // 🌟 فتح شاشة المعجبين الخاصة بالتعليق عند الضغط على عداد اللايكات 🌟
+        holder.tvLikesCount.setOnClickListener {
             try {
-                val intent = Intent(context, ConnectionsActivity::class.java)
+                val intent = Intent(context, Class.forName("com.v2ray.ang.ui.ConnectionsActivity"))
                 intent.putExtra("targetUserId", comment.id) 
-                intent.putExtra("type", "comment_likers")
+                intent.putExtra("type", "comment_likers") // نفتح الشاشة كإعجابات تعليق
                 context.startActivity(intent)
             } catch (e: Exception) {
-                Toast.makeText(context, "الرجاء تحديث الواجهات", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "حدث خطأ في فتح القائمة", Toast.LENGTH_SHORT).show()
             }
-            true
         }
 
         holder.tvLike.setOnClickListener {
@@ -585,7 +628,6 @@ class CommentsAdapter(
             onLikeClick(comment)
         }
         
-        // عند الرد، نرسل ParentId
         holder.tvReply.setOnClickListener { 
             val parentIdToPass = if (comment.parentId.isEmpty()) comment.id else comment.parentId
             onReplyClick(comment.copy(id = parentIdToPass)) 
@@ -593,16 +635,7 @@ class CommentsAdapter(
         holder.tvEdit.setOnClickListener { onEditClick(comment) }
         holder.tvDelete.setOnClickListener { onDeleteClick(comment) }
 
-        if (comment.userPfp.isNotEmpty()) {
-            try {
-                val b = Base64.decode(if (comment.userPfp.contains(",")) comment.userPfp.substringAfter(",") else comment.userPfp, Base64.DEFAULT)
-                holder.ivAvatar.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size))
-            } catch (e: Exception) {
-                holder.ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(comment.userName, comment.userId, 110))
-            }
-        } else holder.ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(comment.userName, comment.userId, 110))
-
-        // 🌟 معالجة الردود المتداخلة (الـ Tree) 🌟
+        // 🌟 إظهار الردود المتداخلة (Tree) 🌟
         if (comment.parentId.isEmpty() && comment.repliesCount > 0) {
             holder.btnShowReplies.visibility = View.VISIBLE
             holder.btnShowReplies.text = if (comment.areRepliesVisible) "إخفاء الردود ⌃" else "↪ عرض ${comment.repliesCount} من الردود ⌄"
@@ -630,12 +663,50 @@ class CommentsAdapter(
             val params = holder.mainCommentLayout.layoutParams as LinearLayout.LayoutParams
             params.setMargins(100, 0, 0, 0) // دفع للداخل
             holder.mainCommentLayout.layoutParams = params
-            holder.ivAvatar.layoutParams = LinearLayout.LayoutParams(80, 80).apply { setMargins(0, 0, 20, 0) } // تصغير الصورة للردود
+            holder.avatarContainer.layoutParams = LinearLayout.LayoutParams(90, 90).apply { setMargins(0, 0, 20, 0) } // تصغير الصورة للردود
         } else {
             val params = holder.mainCommentLayout.layoutParams as LinearLayout.LayoutParams
             params.setMargins(0, 0, 0, 0)
             holder.mainCommentLayout.layoutParams = params
-            holder.ivAvatar.layoutParams = LinearLayout.LayoutParams(110, 110).apply { setMargins(0, 0, 25, 0) }
+            holder.avatarContainer.layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 25, 0) }
+        }
+    }
+    
+    // دالة لتحديث الصورة والاستوري للتعليقات والردود
+    private fun updateAvatarAndStory(holder: CommentViewHolder, comment: CommentData) {
+        if (comment.userPfp.isNotEmpty()) {
+            try {
+                val b = Base64.decode(if (comment.userPfp.contains(",")) comment.userPfp.substringAfter(",") else comment.userPfp, Base64.DEFAULT)
+                holder.ivAvatar.setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size))
+            } catch (e: Exception) {
+                holder.ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(comment.userName, comment.userId, 120))
+            }
+        } else holder.ivAvatar.setImageBitmap(AvatarGenerator.generateAvatar(comment.userName, comment.userId, 120))
+        
+        if (comment.hasActiveStory && comment.userId.isNotEmpty()) {
+            holder.avatarContainer.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setStroke(5, Color.parseColor("#2196F3")) // لون الاستوري الأزرق
+                setColor(Color.TRANSPARENT)
+            }
+            holder.avatarContainer.setPadding(6, 6, 6, 6)
+            holder.avatarContainer.setOnClickListener {
+                try {
+                    val intent = Intent(context, Class.forName("com.v2ray.ang.ui.StoryViewerActivity"))
+                    intent.putExtra("targetUserId", comment.userId)
+                    context.startActivity(intent)
+                } catch (e: Exception) {}
+            }
+        } else {
+            holder.avatarContainer.background = null
+            holder.avatarContainer.setPadding(0, 0, 0, 0)
+            holder.avatarContainer.setOnClickListener {
+                try {
+                    val intent = Intent(context, Class.forName("com.v2ray.ang.ui.UserProfileActivity"))
+                    intent.putExtra("targetUserId", comment.userId)
+                    context.startActivity(intent)
+                } catch (e: Exception) {}
+            }
         }
     }
 
@@ -643,6 +714,7 @@ class CommentsAdapter(
 
     class CommentViewHolder(
         view: View,
+        val avatarContainer: FrameLayout,
         val ivAvatar: ImageView,
         val tvName: TextView,
         val tvReplyContext: TextView,
