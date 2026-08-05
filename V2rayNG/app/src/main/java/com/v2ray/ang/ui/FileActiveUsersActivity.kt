@@ -275,8 +275,29 @@ class FileActiveUsersActivity : AppCompatActivity() {
                     }
                 }
 
+                val uniqueUsersMap = mutableMapOf<String, JSONObject>()
+                for (i in 0 until finalCombinedArray.length()) {
+                    val obj = finalCombinedArray.getJSONObject(i)
+                    val devId = obj.optString("deviceId", "")
+                    val currentUserId = obj.optString("userId", "")
+                    
+                    val uniqueKey = if (devId.isNotEmpty()) devId else "unknown_${System.currentTimeMillis()}_$i"
+                    
+                    if (uniqueUsersMap.containsKey(uniqueKey)) {
+                        val existingUserId = uniqueUsersMap[uniqueKey]?.optString("userId", "") ?: ""
+                        if (existingUserId.isEmpty() && currentUserId.isNotEmpty()) {
+                            uniqueUsersMap[uniqueKey] = obj 
+                        }
+                    } else {
+                        uniqueUsersMap[uniqueKey] = obj
+                    }
+                }
+                
+                val cleanUniqueArray = JSONArray()
+                uniqueUsersMap.values.forEach { cleanUniqueArray.put(it) }
+
                 withContext(Dispatchers.Main) {
-                    allLoadedUsers = finalCombinedArray
+                    allLoadedUsers = cleanUniqueArray
                     tvLoading.visibility = View.GONE
                     swipeRefreshLayout.isRefreshing = false
                     
@@ -447,11 +468,17 @@ class FileActiveUsersActivity : AppCompatActivity() {
             setPadding(0, 5, 0, 0)
         }
 
+        // 🌟 تعديل قسم الـ Device ID وإضافة زر الأجهزة 🌟
+        val deviceRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.RIGHT or Gravity.END
+            setPadding(0, 5, 0, 0)
+        }
+
         val tvDevice = TextView(this).apply {
             text = "📋 الجهاز: $deviceId"
             setTextColor(Color.parseColor("#9E9E9E")) 
             textSize = 11f
-            setPadding(0, 5, 0, 0)
             
             isClickable = true
             setOnClickListener {
@@ -460,11 +487,28 @@ class FileActiveUsersActivity : AppCompatActivity() {
                 Toast.makeText(this@FileActiveUsersActivity, "تم نسخ Device ID", Toast.LENGTH_SHORT).show()
             }
         }
+        
+        deviceRow.addView(tvDevice)
+
+        // إضافة أيقونة "عرض الأجهزة" في حال كان المتصل لديه حساب (User ID)
+        if (userId.isNotEmpty()) {
+            val btnAllDevices = TextView(this).apply {
+                text = " 🔗 عرض الأجهزة"
+                setTextColor(Color.parseColor("#2196F3"))
+                textSize = 11f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setPadding(20, 0, 0, 0)
+                setOnClickListener {
+                    showDevicesDialog(userId, name, deviceId)
+                }
+            }
+            deviceRow.addView(btnAllDevices)
+        }
 
         infoLayout.addView(tvName)
         infoLayout.addView(tvUsage)
         infoLayout.addView(tvId)
-        infoLayout.addView(tvDevice)
+        infoLayout.addView(deviceRow) // تم استبدال tvDevice بـ deviceRow بالكامل
 
         val btnAction = MaterialButton(this).apply {
             text = if (isBanned) "إلغاء الحظر" else "حظر فوراً"
@@ -487,6 +531,115 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
         cardView.addView(mainLayout)
         mainContainer.addView(cardView)
+    }
+
+    // 🌟 دالة عرض الأجهزة المنبثقة 🌟
+    private fun showDevicesDialog(userId: String, userName: String, currentDeviceId: String) {
+        val bottomSheet = BottomSheetDialog(this)
+        
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(50, 50, 50, 50)
+            setBackgroundColor(Color.parseColor("#1A1A1D"))
+        }
+
+        container.addView(TextView(this).apply {
+            text = "الأجهزة المربوطة بحساب: $userName"
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 30)
+        })
+
+        val loadingText = TextView(this).apply {
+            text = "جاري جلب بيانات الأجهزة..."
+            setTextColor(Color.GRAY)
+            gravity = Gravity.CENTER
+            setPadding(0, 20, 0, 20)
+        }
+        container.addView(loadingText)
+
+        val scrollView = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        val devicesList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        scrollView.addView(devicesList)
+        container.addView(scrollView)
+
+        bottomSheet.setContentView(container)
+        bottomSheet.show()
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val url = URL("$baseUrl/auth/get_user?id=$userId")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 5000
+                
+                if (conn.responseCode == 200) {
+                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                    val json = JSONObject(resp)
+                    
+                    withContext(Dispatchers.Main) {
+                        loadingText.visibility = View.GONE
+                        val devices = json.optJSONArray("devices") ?: JSONArray()
+                        
+                        if (devices.length() == 0) devices.put(currentDeviceId) 
+                        
+                        for (i in 0 until devices.length()) {
+                            val devId = devices.getString(i)
+                            devicesList.addView(createDeviceRow(devId, devId == currentDeviceId))
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    loadingText.text = "فشل الاتصال بالسيرفر!"
+                    loadingText.setTextColor(Color.parseColor("#F44336"))
+                }
+            }
+        }
+    }
+
+    private fun createDeviceRow(deviceId: String, isCurrent: Boolean): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor("#252529"))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, 20)
+            }
+            setPadding(30, 30, 30, 30)
+        }
+
+        val tvDevice = TextView(this).apply {
+            text = if (isCurrent) "✅ $deviceId (النشط الآن)" else "📱 $deviceId"
+            setTextColor(if (isCurrent) Color.parseColor("#4CAF50") else Color.WHITE)
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val btnCopy = TextView(this).apply {
+            text = "نسخ"
+            setTextColor(Color.parseColor("#2196F3"))
+            textSize = 14f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(20, 20, 20, 20)
+            
+            isClickable = true
+            setOnClickListener {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Device ID", deviceId))
+                Toast.makeText(context, "تم نسخ أيدي الجهاز!", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        row.addView(tvDevice)
+        row.addView(btnCopy)
+        return row
     }
 
     private fun toggleBanStatus(deviceId: String, name: String, userId: String, pfp: String, banStatus: Boolean, currentTab: String) {
