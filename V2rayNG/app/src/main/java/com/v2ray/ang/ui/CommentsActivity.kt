@@ -14,6 +14,7 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.cardview.widget.CardView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -206,7 +207,7 @@ class CommentsActivity : AppCompatActivity() {
             comments = commentsList, 
             myUserId = myUserId, 
             isAdmin = isOwnerOrAdmin,
-            apiUrl = BASE_API_URL, // تمرير رابط السيرفر لجلب التحديثات
+            apiUrl = BASE_API_URL, 
             onLikeClick = { comment -> toggleLikeComment(comment) },
             onReplyClick = { comment -> setReplyState(comment) },
             onEditClick = { comment -> setEditState(comment) },
@@ -326,7 +327,6 @@ class CommentsActivity : AppCompatActivity() {
             val success = if (isEdit) {
                 CloudflareAPI.editComment(guid, targetId, myUserId, text)
             } else {
-                // targetId هنا يعمل كـ ParentId للردود
                 CloudflareAPI.addComment(guid, myUserId, myUserName, myUserPfp, text, replyName, targetId)
             }
 
@@ -387,13 +387,13 @@ data class CommentData(
     var hasActiveStory: Boolean = false // لدائرة الاستوري
 )
 
-// 🌟 المحول الاحترافي للردود المتداخلة مع تحديث البيانات الحية 🌟
+// 🌟 المحول الاحترافي للردود المتداخلة مع تحديث البيانات الحية والصورة الدائرية 🌟
 class CommentsAdapter(
     private val context: Context,
     private val comments: MutableList<CommentData>,
     private val myUserId: String,
     private val isAdmin: Boolean,
-    private val apiUrl: String, // جلب البيانات من السيرفر
+    private val apiUrl: String, 
     private val onLikeClick: (CommentData) -> Unit,
     private val onReplyClick: (CommentData) -> Unit,
     private val onEditClick: (CommentData) -> Unit,
@@ -415,16 +415,25 @@ class CommentsAdapter(
             setPadding(30, 20, 30, 10)
         }
 
-        // حاوية الصورة للاستوري
+        // 🌟 حاوية الصورة للاستوري مع CardView لضمان قص الصورة بشكل دائري 100% 🌟
         val avatarContainer = FrameLayout(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 25, 0) }
+        }
+        
+        val cvAvatar = CardView(ctx).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            radius = 60f // جعلها دائرية بالكامل
+            cardElevation = 0f
+            setCardBackgroundColor(Color.TRANSPARENT)
         }
 
         val ivAvatar = ImageView(ctx).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            scaleType = ImageView.ScaleType.CENTER_CROP // ملء الدائرة بالصورة
         }
         
-        avatarContainer.addView(ivAvatar)
+        cvAvatar.addView(ivAvatar)
+        avatarContainer.addView(cvAvatar)
 
         val contentLayout = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -549,7 +558,7 @@ class CommentsAdapter(
         layout.addView(btnShowReplies)
         layout.addView(repliesContainer)
 
-        return CommentViewHolder(layout, avatarContainer, ivAvatar, tvName, tvReplyContext, tvText, tvTime, tvLike, tvLikesCount, tvReply, tvEdit, tvDelete, btnShowReplies, repliesContainer, mainCommentLayout)
+        return CommentViewHolder(layout, avatarContainer, cvAvatar, ivAvatar, tvName, tvReplyContext, tvText, tvTime, tvLike, tvLikesCount, tvReply, tvEdit, tvDelete, btnShowReplies, repliesContainer, mainCommentLayout)
     }
 
     override fun onBindViewHolder(holder: CommentViewHolder, position: Int) {
@@ -658,21 +667,25 @@ class CommentsAdapter(
             holder.btnShowReplies.visibility = View.GONE
         }
 
-        // تغيير التصميم إذا كان هذا رداً وليس تعليقاً أساسياً
+        // 🌟 تعديل حجم الصورة وقطر الدائرة في الردود والتعليقات الأساسية 🌟
         if (comment.parentId.isNotEmpty()) {
             val params = holder.mainCommentLayout.layoutParams as LinearLayout.LayoutParams
             params.setMargins(100, 0, 0, 0) // دفع للداخل
             holder.mainCommentLayout.layoutParams = params
-            holder.avatarContainer.layoutParams = LinearLayout.LayoutParams(90, 90).apply { setMargins(0, 0, 20, 0) } // تصغير الصورة للردود
+            
+            holder.avatarContainer.layoutParams = LinearLayout.LayoutParams(90, 90).apply { setMargins(0, 0, 20, 0) } // تصغير الحاوية
+            holder.cvAvatar.radius = 45f // تعديل قطر القص ليناسب التصغير
         } else {
             val params = holder.mainCommentLayout.layoutParams as LinearLayout.LayoutParams
             params.setMargins(0, 0, 0, 0)
             holder.mainCommentLayout.layoutParams = params
-            holder.avatarContainer.layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 25, 0) }
+            
+            holder.avatarContainer.layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 25, 0) } // الحجم الأساسي
+            holder.cvAvatar.radius = 60f // تعديل قطر القص
         }
     }
     
-    // دالة لتحديث الصورة والاستوري للتعليقات والردود
+    // دالة لتحديث الصورة والاستوري للتعليقات والردود بشكل دائري 100%
     private fun updateAvatarAndStory(holder: CommentViewHolder, comment: CommentData) {
         if (comment.userPfp.isNotEmpty()) {
             try {
@@ -715,6 +728,7 @@ class CommentsAdapter(
     class CommentViewHolder(
         view: View,
         val avatarContainer: FrameLayout,
+        val cvAvatar: CardView, // الكارد الجديد للقص الدائري
         val ivAvatar: ImageView,
         val tvName: TextView,
         val tvReplyContext: TextView,
