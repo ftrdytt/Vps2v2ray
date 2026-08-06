@@ -466,30 +466,36 @@ class SubscribersActivity : AppCompatActivity() {
         builder.setNegativeButton("إلغاء", null).show()
     }
 
-    // 🌟 التصدير والمشاركة يعملان بامتياز الأوفلاين 🌟
+    // 🌟 المشاركة والتصدير يعملان أوفلاين 🌟
     private fun shareSubscriber(sub: V2rayCrypt.SubscriberData) {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        
-        // جلب كود السيرفر الأصلي المخفي من الذاكرة المحلية (بدون انترنت)
-        val configStr = AngConfigManager.getOriginalConfigByGuid(this, parentGuid)
-        
-        if (configStr.isNotEmpty()) {
-            val encryptedConf = V2rayCrypt.encrypt(configStr, sub.expiryTimeMs, sub.licenseId)
-            AlertDialog.Builder(this).setTitle("مشاركة المشترك")
-                .setItems(arrayOf("نسخ إلى الحافظة", "تصدير كملف")) { _, which ->
-                    when (which) {
-                        0 -> { 
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Config", encryptedConf))
-                            Toast.makeText(this, "تم نسخ الكود!", Toast.LENGTH_SHORT).show() 
-                        }
-                        1 -> { 
-                            pendingEncryptedConfigToSave = encryptedConf
-                            saveEncryptedFileLauncher.launch("${sub.name.replace(" ", "_")}.ashor") 
-                        }
-                    }
-                }.show()
-        } else {
-            Toast.makeText(this, "تعذر سحب كود السيرفر المحلي. تأكد من تحديد الملف الصحيح.", Toast.LENGTH_SHORT).show()
+        try {
+            if (AngConfigManager.share2Clipboard(this, parentGuid) == 0) {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val conf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                
+                if (conf.isNotEmpty()) {
+                    val encryptedConf = V2rayCrypt.encrypt(conf, sub.expiryTimeMs, sub.licenseId)
+                    AlertDialog.Builder(this).setTitle("مشاركة المشترك")
+                        .setItems(arrayOf("نسخ إلى الحافظة", "تصدير كملف")) { _, which ->
+                            when (which) {
+                                0 -> { 
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("Config", encryptedConf))
+                                    Toast.makeText(this, "تم نسخ الكود محلياً بنجاح! 📱", Toast.LENGTH_SHORT).show() 
+                                }
+                                1 -> { 
+                                    pendingEncryptedConfigToSave = encryptedConf
+                                    saveEncryptedFileLauncher.launch("${sub.name.replace(" ", "_")}.ashor") 
+                                }
+                            }
+                        }.show()
+                } else {
+                    Toast.makeText(this, "الحافظة فارغة! تعذر جلب الكود.", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this, "تعذر استنساخ الكود.", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "حدث خطأ غير متوقع", Toast.LENGTH_SHORT).show()
         }
     }
 
