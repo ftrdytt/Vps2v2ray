@@ -1,6 +1,8 @@
 package com.v2ray.ang.ui
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -158,7 +160,7 @@ class MainRecyclerAdapter(
                         tag = "social_bar_view" 
                         orientation = LinearLayout.HORIZONTAL
                         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 15, 0, 15) 
+                            setMargins(0, 15, 0, 15) // هوامش أكبر
                         }
                         gravity = Gravity.CENTER_VERTICAL
                         
@@ -167,13 +169,13 @@ class MainRecyclerAdapter(
                             cornerRadius = 50f
                             setStroke(1, Color.parseColor("#33FFFFFF"))
                         }
-                        setPadding(40, 20, 40, 20) 
+                        setPadding(40, 20, 40, 20) // توسيع المساحة الداخلية
                     }
 
                     val tvViews = TextView(context).apply {
                         text = "👁 $viewsCount"
                         setTextColor(Color.parseColor("#B0B0B0"))
-                        textSize = 15f 
+                        textSize = 15f // خط كبير وواضح
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         setPadding(0, 0, 50, 0)
                     }
@@ -181,7 +183,7 @@ class MainRecyclerAdapter(
                     val tvLikeIcon = TextView(context).apply {
                         text = if (isLikedByMe) "♥" else "♡"
                         setTextColor(if (isLikedByMe) Color.parseColor("#E91E63") else Color.parseColor("#B0B0B0"))
-                        textSize = 18f 
+                        textSize = 18f // أيقونة ضخمة للضغط عليها بسهولة
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         setPadding(0, 0, 10, 0)
                     }
@@ -189,7 +191,7 @@ class MainRecyclerAdapter(
                     val tvLikeCount = TextView(context).apply {
                         text = "$likesCount"
                         setTextColor(Color.parseColor("#E0E0E0"))
-                        textSize = 15f 
+                        textSize = 15f // خط كبير للرقم
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         setPadding(0, 0, 50, 0)
                     }
@@ -197,7 +199,7 @@ class MainRecyclerAdapter(
                     val tvComments = TextView(context).apply {
                         text = "💬 $commentsCount"
                         setTextColor(Color.parseColor("#B0B0B0"))
-                        textSize = 15f 
+                        textSize = 15f // خط كبير
                         setTypeface(null, android.graphics.Typeface.BOLD)
                     }
 
@@ -241,7 +243,7 @@ class MainRecyclerAdapter(
                         try {
                             val intent = Intent(context, Class.forName("com.v2ray.ang.ui.ConnectionsActivity"))
                             intent.putExtra("targetUserId", targetId)
-                            intent.putExtra("type", "likers") 
+                            intent.putExtra("type", "likers") // فتح المعجبين
                             context.startActivity(intent)
                         } catch (e: Exception) {
                             Toast.makeText(context, "حدث خطأ في فتح القائمة", Toast.LENGTH_SHORT).show()
@@ -434,7 +436,6 @@ class MainRecyclerAdapter(
                 layoutMore?.visibility = View.VISIBLE
 
                 layoutMore?.setOnClickListener {
-                    // 🌟 التصدير أوفلاين في الوضع المزدوج 🌟
                     handleOfflineShare(context, guid, profile, isMore = true)
                 }
             } else {
@@ -466,7 +467,6 @@ class MainRecyclerAdapter(
                 }
 
                 layoutShare?.setOnClickListener {
-                    // 🌟 التصدير أوفلاين من زر المشاركة العادي 🌟
                     handleOfflineShare(context, guid, profile, isMore = false)
                 }
 
@@ -500,17 +500,25 @@ class MainRecyclerAdapter(
 
     // 🌟 دالة معالجة التصدير والمشاركة الأوفلاين محلياً بالكامل 🌟
     private fun handleOfflineShare(context: Context, guid: String, profile: ProfileItem, isMore: Boolean) {
-        val configStr = AngConfigManager.getOriginalConfigByGuid(context, guid)
-        if (configStr.isNotEmpty()) {
-            val expiryTimeMs = V2rayCrypt.getExpiryTime(context, guid)
-            val licenseId = V2rayCrypt.getLicenseId(context, guid).ifEmpty { guid }
-            val encryptedConf = V2rayCrypt.encrypt(configStr, expiryTimeMs, licenseId)
-            
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("Encrypted Config", encryptedConf))
-            Toast.makeText(context, "تم تشفير ونسخ الكود محلياً بنجاح! (أوفلاين 📱)", Toast.LENGTH_LONG).show()
-        } else {
-            // كخيار بديل إذا لم يتوفر الكود المحلي، نمرره للـ listener الأصلي
+        try {
+            if (AngConfigManager.share2Clipboard(context, guid) == 0) {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val configStr = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+                
+                if (configStr.isNotEmpty()) {
+                    val expiryTimeMs = V2rayCrypt.getExpiryTime(context, guid)
+                    val licenseId = V2rayCrypt.getLicenseId(context, guid).ifEmpty { guid }
+                    val encryptedConf = V2rayCrypt.encrypt(configStr, expiryTimeMs, licenseId)
+                    
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Encrypted Config", encryptedConf))
+                    Toast.makeText(context, "تم تشفير ونسخ الكود محلياً بنجاح! (أوفلاين 📱)", Toast.LENGTH_SHORT).show()
+                } else {
+                    adapterListener?.onShare(guid, profile, 0, isMore)
+                }
+            } else {
+                adapterListener?.onShare(guid, profile, 0, isMore)
+            }
+        } catch (e: Exception) {
             adapterListener?.onShare(guid, profile, 0, isMore)
         }
     }
