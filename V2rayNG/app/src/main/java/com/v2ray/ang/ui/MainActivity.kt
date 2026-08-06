@@ -277,7 +277,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         guidToIds[guid] = ids
                         allIdsToFetch.addAll(ids)
 
-                        // 🌟 السحر الجديد: إرسال إشعار المشاهدة بصمت 🌟
                         launch(Dispatchers.IO) {
                             try {
                                 val viewPayload = JSONObject()
@@ -386,17 +385,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 delay(5 * 60 * 1000L) 
             }
         }
-    }
-
-    private fun formatBytes(bytes: Long): String {
-        if (bytes <= 0) return "0.0 MB"
-        val kb = bytes / 1024.0
-        val mb = kb / 1024.0
-        if (mb >= 1024) {
-            val gb = mb / 1024.0
-            return String.format("%.2f GB", gb)
-        }
-        return String.format("%.1f MB", mb)
     }
 
     private fun startAccountWatchdog() {
@@ -818,6 +806,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
 
+            // 🌟 السحر الجديد: نظام الـ 10 ثواني (Grace Period) والتحقق من الحظر 🌟
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
                 delay(1000)
@@ -825,43 +814,137 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     try {
                         mainViewModel.testCurrentServerRealPing()
 
+                        var forceDisconnect = false
+                        var disconnectReason = ""
+                        var banMessage = ""
+
                         val currentExpiry = V2rayCrypt.getExpiryTime(this@MainActivity, guid)
                         if (currentExpiry > 0L && NetworkTime.currentTimeMillis(this@MainActivity) > currentExpiry) {
-                            withContext(Dispatchers.IO) {
-                                if (idToTrack.isNotEmpty()) {
-                                    val userId = AuthManager.getId(this@MainActivity)
-                                    val payload = JSONObject()
-                                        .put("guid", idToTrack)
-                                        .put("deviceId", deviceId)
-                                        .put("userId", userId)
-                                        .put("disconnect", true)
-                                    try {
-                                        val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
-                                        conn.requestMethod = "POST"
-                                        conn.setRequestProperty("Content-Type", "application/json")
-                                        conn.doOutput = true
-                                        conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-                                        conn.responseCode
-                                    } catch (e: Exception) {}
-                                    
-                                    val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
-                                    V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
-                                    lastReportedState = false
-                                }
-                                delay(1000) 
+                            forceDisconnect = true
+                            disconnectReason = "EXPIRED"
+                        }
+
+                        // فحص إضافي: هل تم حظر هذا الجهاز أثناء الاتصال؟
+                        if (!forceDisconnect) {
+                            val isBannedNow = withContext(Dispatchers.IO) {
+                                try {
+                                    val conn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
+                                    conn.connectTimeout = 3000
+                                    conn.readTimeout = 3000
+                                    if (conn.responseCode == 200) {
+                                        val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                                        if (resp.startsWith("{")) {
+                                            val jsonResponse = JSONObject(resp)
+                                            if (jsonResponse.optBoolean("banned", false)) {
+                                                banMessage = jsonResponse.optString("message", "تم حظرك من هذا الملف من قبل الإدارة 🚫")
+                                                return@withContext true
+                                            }
+                                        }
+                                    }
+                                } catch (e: Exception) {}
+                                return@withContext false
                             }
+                            if (isBannedNow) {
+                                forceDisconnect = true
+                                disconnectReason = "BANNED"
+                            }
+                        }
+
+                        // إذا تم اكتشاف انتهاء أو حظر، نطبق نظام الـ 10 ثواني (فرصة أخيرة)
+                        if (forceDisconnect) {
+                            var stillDisconnected = true
                             
-                            withContext(Dispatchers.Main) {
-                                V2RayServiceManager.stopVService(this@MainActivity)
-                                AlertDialog.Builder(this@MainActivity)
-                                    .setTitle("انتهى الاشتراك")
-                                    .setMessage("تم إيقاف المحرك لانتهاء مدة الصلاحية أو إيقافه من قبل الإدارة.")
-                                    .setPositiveButton("حسناً", null)
-                                    .setCancelable(false)
-                                    .show()
-                                mainViewModel.reloadServerList()
+                            // 🌟 فرصة الـ 10 ثواني للتأكد النهائي من السيرفر 🌟
+                            for (i in 1..2) { // 2 محاولات × 5 ثواني = 10 ثواني
+                                delay(5000)
+                                val serverStatus = withContext(Dispatchers.IO) {
+                                    try {
+                                        val encodedId = java.net.URLEncoder.encode(idToTrack, "UTF-8")
+                                        val encodedUserId = java.net.URLEncoder.encode(AuthManager.getId(this@MainActivity), "UTF-8")
+                                        val checkConn = URL("$BASE_API_URL/check?guid=$encodedId&userId=$encodedUserId").openConnection() as HttpURLConnection
+                                        checkConn.connectTimeout = 4000
+                                        checkConn.readTimeout = 4000
+                                        if (checkConn.responseCode == 200) {
+                                            val checkResp = BufferedReader(InputStreamReader(checkConn.inputStream)).readText()
+                                            val checkObj = JSONObject(checkResp)
+                                            val newExpiry = checkObj.optLong("expiryTime", -1L)
+                                            
+                                            // فحص الحظر مرة ثانية
+                                            var stillBanned = false
+                                            if (disconnectReason == "BANNED") {
+                                                val banConn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
+                                                banConn.connectTimeout = 3000
+                                                if (banConn.responseCode == 200) {
+                                                    val bResp = BufferedReader(InputStreamReader(banConn.inputStream)).readText()
+                                                    if (bResp.startsWith("{") && JSONObject(bResp).optBoolean("banned", false)) {
+                                                        stillBanned = true
+                                                    }
+                                                }
+                                            }
+
+                                            // إذا كان السبب انتهاء الاشتراك وتم التجديد
+                                            if (disconnectReason == "EXPIRED" && newExpiry > NetworkTime.currentTimeMillis(this@MainActivity)) {
+                                                V2rayCrypt.saveExpiryTime(this@MainActivity, guid, newExpiry)
+                                                return@withContext "RENEWED"
+                                            }
+                                            // إذا كان السبب حظر وتم إزالة الحظر
+                                            else if (disconnectReason == "BANNED" && !stillBanned) {
+                                                return@withContext "UNBANNED"
+                                            }
+                                        }
+                                    } catch (e: Exception) {}
+                                    return@withContext "STILL_DISCONNECTED"
+                                }
+
+                                if (serverStatus == "RENEWED" || serverStatus == "UNBANNED") {
+                                    stillDisconnected = false
+                                    break
+                                }
                             }
-                            break 
+
+                            // إذا بعد 10 ثواني بقى الوضع على ما هو عليه، نفصل!
+                            if (stillDisconnected) {
+                                withContext(Dispatchers.IO) {
+                                    if (idToTrack.isNotEmpty()) {
+                                        val userId = AuthManager.getId(this@MainActivity)
+                                        val payload = JSONObject()
+                                            .put("guid", idToTrack)
+                                            .put("deviceId", deviceId)
+                                            .put("userId", userId)
+                                            .put("disconnect", true)
+                                        try {
+                                            val conn = URL("$BASE_API_URL/file/ping").openConnection() as HttpURLConnection
+                                            conn.requestMethod = "POST"
+                                            conn.setRequestProperty("Content-Type", "application/json")
+                                            conn.doOutput = true
+                                            conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                                            conn.responseCode
+                                        } catch (e: Exception) {}
+                                        
+                                        val prevCount = V2rayCrypt.getActiveCount(this@MainActivity, guid)
+                                        V2rayCrypt.saveActiveCount(this@MainActivity, guid, max(0, prevCount - 1))
+                                        lastReportedState = false
+                                    }
+                                    delay(1000) 
+                                }
+                                
+                                withContext(Dispatchers.Main) {
+                                    V2RayServiceManager.stopVService(this@MainActivity)
+                                    
+                                    val title = if (disconnectReason == "BANNED") "تم حظرك! 🚫" else "انتهى الاشتراك"
+                                    val message = if (disconnectReason == "BANNED") banMessage else "تم إيقاف المحرك لانتهاء مدة الصلاحية أو إيقافه من قبل الإدارة."
+                                    
+                                    AlertDialog.Builder(this@MainActivity)
+                                        .setTitle(title)
+                                        .setMessage(message)
+                                        .setPositiveButton("حسناً", null)
+                                        .setCancelable(false)
+                                        .show()
+                                        
+                                    mainViewModel.reloadServerList()
+                                }
+                                break 
+                            }
                         }
                     } catch (e: Exception) {}
                     delay(5000) 
@@ -905,8 +988,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
         lottieEngine?.playAnimation()
 
+        // 🌟 التحقق من الحظر قبل التشغيل (مع نظام الـ 10 ثواني) 🌟
         lifecycleScope.launch(Dispatchers.IO) {
             var isBanned = false
+            var banMsg = ""
             try {
                 val conn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
                 conn.connectTimeout = 3000
@@ -917,22 +1002,50 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val jsonResponse = JSONObject(resp)
                         if (jsonResponse.optBoolean("banned", false)) {
                             isBanned = true
-                            val banMsg = jsonResponse.optString("message", "تم حظرك من هذا الملف من قبل الإدارة 🚫")
-                            withContext(Dispatchers.Main) {
-                                binding.fab.setImageResource(R.drawable.ic_play_24dp)
-                                binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this@MainActivity, R.color.color_fab_inactive))
-                                btnGreenConnect?.text = "تشغيل المحرك"
-                                btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
-                                lottieEngine?.cancelAnimation()
-                                lottieEngine?.progress = 0f
-                                Toast.makeText(this@MainActivity, banMsg, Toast.LENGTH_LONG).show()
-                            }
+                            banMsg = jsonResponse.optString("message", "تم حظرك من هذا الملف من قبل الإدارة 🚫")
                         }
                     }
                 }
             } catch (e: Exception) {} 
             
-            if (!isBanned) {
+            if (isBanned) {
+                // إذا كان محظوراً، ننتظر 10 ثوانٍ كفرصة أخيرة ونتحقق مجدداً
+                withContext(Dispatchers.Main) { btnGreenConnect?.text = "جاري تأكيد حالة الحظر..." }
+                delay(10000) 
+                
+                var stillBanned = true
+                try {
+                    val conn2 = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
+                    conn2.connectTimeout = 3000
+                    conn2.readTimeout = 3000
+                    if (conn2.responseCode == 200) {
+                        val resp2 = BufferedReader(InputStreamReader(conn2.inputStream)).readText()
+                        if (resp2.startsWith("{") && !JSONObject(resp2).optBoolean("banned", false)) {
+                            stillBanned = false 
+                        }
+                    }
+                } catch (e: Exception) {}
+
+                if (stillBanned) {
+                    withContext(Dispatchers.Main) {
+                        binding.fab.setImageResource(R.drawable.ic_play_24dp)
+                        binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this@MainActivity, R.color.color_fab_inactive))
+                        btnGreenConnect?.text = "تشغيل المحرك"
+                        btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
+                        lottieEngine?.cancelAnimation()
+                        lottieEngine?.progress = 0f
+                        
+                        AlertDialog.Builder(this@MainActivity)
+                            .setTitle("تم حظرك! 🚫")
+                            .setMessage(banMsg)
+                            .setPositiveButton("حسناً", null)
+                            .setCancelable(false)
+                            .show()
+                    }
+                } else {
+                    withContext(Dispatchers.Main) { startV2RayCore() }
+                }
+            } else {
                 withContext(Dispatchers.Main) { startV2RayCore() }
             }
         }
@@ -1025,7 +1138,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 guidToIds[guid] = ids
                 allIdsToFetch.addAll(ids)
 
-                // 🌟 السحر الجديد: إرسال إشعار المشاهدة بصمت بمجرد ظهور الملف 🌟
                 launch(Dispatchers.IO) {
                     try {
                         val viewPayload = JSONObject()
