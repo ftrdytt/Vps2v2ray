@@ -158,7 +158,7 @@ class MainRecyclerAdapter(
                         tag = "social_bar_view" 
                         orientation = LinearLayout.HORIZONTAL
                         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 15, 0, 15) // هوامش أكبر
+                            setMargins(0, 15, 0, 15) 
                         }
                         gravity = Gravity.CENTER_VERTICAL
                         
@@ -167,41 +167,37 @@ class MainRecyclerAdapter(
                             cornerRadius = 50f
                             setStroke(1, Color.parseColor("#33FFFFFF"))
                         }
-                        setPadding(40, 20, 40, 20) // توسيع المساحة الداخلية
+                        setPadding(40, 20, 40, 20) 
                     }
 
-                    // 👁 المشاهدات (حجم كبير)
                     val tvViews = TextView(context).apply {
                         text = "👁 $viewsCount"
                         setTextColor(Color.parseColor("#B0B0B0"))
-                        textSize = 15f // خط كبير وواضح
+                        textSize = 15f 
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         setPadding(0, 0, 50, 0)
                     }
 
-                    // ♥ أيقونة اللايك (حجم كبير للضغط)
                     val tvLikeIcon = TextView(context).apply {
                         text = if (isLikedByMe) "♥" else "♡"
                         setTextColor(if (isLikedByMe) Color.parseColor("#E91E63") else Color.parseColor("#B0B0B0"))
-                        textSize = 18f // أيقونة ضخمة للضغط عليها بسهولة
+                        textSize = 18f 
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         setPadding(0, 0, 10, 0)
                     }
 
-                    // عداد اللايكات (نص منفصل للضغط عليه وعرض القائمة بضغطة وحدة)
                     val tvLikeCount = TextView(context).apply {
                         text = "$likesCount"
                         setTextColor(Color.parseColor("#E0E0E0"))
-                        textSize = 15f // خط كبير للرقم
+                        textSize = 15f 
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         setPadding(0, 0, 50, 0)
                     }
 
-                    // 💬 التعليقات (حجم كبير)
                     val tvComments = TextView(context).apply {
                         text = "💬 $commentsCount"
                         setTextColor(Color.parseColor("#B0B0B0"))
-                        textSize = 15f // خط كبير
+                        textSize = 15f 
                         setTypeface(null, android.graphics.Typeface.BOLD)
                     }
 
@@ -213,13 +209,11 @@ class MainRecyclerAdapter(
                     infoContainer.addView(socialBar)
                 }
 
-                // تحديث القيم فوراً وبشكل آمن
                 (socialBar.getChildAt(0) as? TextView)?.text = "👁 $viewsCount"
                 
                 val tvLikeIconView = socialBar.getChildAt(1) as? TextView
                 val tvLikeCountView = socialBar.getChildAt(2) as? TextView
 
-                // زر إضافة اللايك (أيقونة القلب)
                 tvLikeIconView?.apply {
                     text = if (isLikedByMe) "♥" else "♡"
                     setTextColor(if (isLikedByMe) Color.parseColor("#E91E63") else Color.parseColor("#B0B0B0"))
@@ -240,7 +234,6 @@ class MainRecyclerAdapter(
                     }
                 }
 
-                // 🌟 زر فتح قائمة المتابعين (رقم اللايكات - بضغطة وحدة) 🌟
                 tvLikeCountView?.apply {
                     text = "$likesCount"
                     setOnClickListener(null)
@@ -248,7 +241,7 @@ class MainRecyclerAdapter(
                         try {
                             val intent = Intent(context, Class.forName("com.v2ray.ang.ui.ConnectionsActivity"))
                             intent.putExtra("targetUserId", targetId)
-                            intent.putExtra("type", "likers") // فتح المعجبين
+                            intent.putExtra("type", "likers") 
                             context.startActivity(intent)
                         } catch (e: Exception) {
                             Toast.makeText(context, "حدث خطأ في فتح القائمة", Toast.LENGTH_SHORT).show()
@@ -441,7 +434,8 @@ class MainRecyclerAdapter(
                 layoutMore?.visibility = View.VISIBLE
 
                 layoutMore?.setOnClickListener {
-                    adapterListener?.onShare(guid, profile, position, true)
+                    // 🌟 التصدير أوفلاين في الوضع المزدوج 🌟
+                    handleOfflineShare(context, guid, profile, isMore = true)
                 }
             } else {
                 layoutMore?.visibility = View.GONE
@@ -472,7 +466,8 @@ class MainRecyclerAdapter(
                 }
 
                 layoutShare?.setOnClickListener {
-                    adapterListener?.onShare(guid, profile, position, false)
+                    // 🌟 التصدير أوفلاين من زر المشاركة العادي 🌟
+                    handleOfflineShare(context, guid, profile, isMore = false)
                 }
 
                 layoutEdit?.setOnClickListener {
@@ -500,6 +495,23 @@ class MainRecyclerAdapter(
             infoContainer?.setOnClickListener {
                 adapterListener?.onSelectServer(guid)
             }
+        }
+    }
+
+    // 🌟 دالة معالجة التصدير والمشاركة الأوفلاين محلياً بالكامل 🌟
+    private fun handleOfflineShare(context: Context, guid: String, profile: ProfileItem, isMore: Boolean) {
+        val configStr = AngConfigManager.getOriginalConfigByGuid(context, guid)
+        if (configStr.isNotEmpty()) {
+            val expiryTimeMs = V2rayCrypt.getExpiryTime(context, guid)
+            val licenseId = V2rayCrypt.getLicenseId(context, guid).ifEmpty { guid }
+            val encryptedConf = V2rayCrypt.encrypt(configStr, expiryTimeMs, licenseId)
+            
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("Encrypted Config", encryptedConf))
+            Toast.makeText(context, "تم تشفير ونسخ الكود محلياً بنجاح! (أوفلاين 📱)", Toast.LENGTH_LONG).show()
+        } else {
+            // كخيار بديل إذا لم يتوفر الكود المحلي، نمرره للـ listener الأصلي
+            adapterListener?.onShare(guid, profile, 0, isMore)
         }
     }
 
