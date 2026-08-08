@@ -130,6 +130,18 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
 
+    // 🌟 دالة الفورمات تم إضافتها بداخل الكلاس لتجنب الخطأ بالكومبايلر 🌟
+    private fun formatBytes(bytes: Long): String {
+        if (bytes <= 0) return "0.0 MB"
+        val kb = bytes / 1024.0
+        val mb = kb / 1024.0
+        if (mb >= 1024) {
+            val gb = mb / 1024.0
+            return String.format("%.2f GB", gb)
+        }
+        return String.format("%.1f MB", mb)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
@@ -806,7 +818,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             }
 
-            // 🌟 السحر الجديد: نظام الـ 10 ثواني (Grace Period) والتحقق من الحظر 🌟
             pingJob?.cancel()
             pingJob = lifecycleScope.launch {
                 delay(1000)
@@ -824,7 +835,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             disconnectReason = "EXPIRED"
                         }
 
-                        // فحص إضافي: هل تم حظر هذا الجهاز أثناء الاتصال؟
                         if (!forceDisconnect) {
                             val isBannedNow = withContext(Dispatchers.IO) {
                                 try {
@@ -850,12 +860,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             }
                         }
 
-                        // إذا تم اكتشاف انتهاء أو حظر، نطبق نظام الـ 10 ثواني (فرصة أخيرة)
                         if (forceDisconnect) {
                             var stillDisconnected = true
                             
-                            // 🌟 فرصة الـ 10 ثواني للتأكد النهائي من السيرفر 🌟
-                            for (i in 1..2) { // 2 محاولات × 5 ثواني = 10 ثواني
+                            for (i in 1..2) {
                                 delay(5000)
                                 val serverStatus = withContext(Dispatchers.IO) {
                                     try {
@@ -869,7 +877,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                             val checkObj = JSONObject(checkResp)
                                             val newExpiry = checkObj.optLong("expiryTime", -1L)
                                             
-                                            // فحص الحظر مرة ثانية
                                             var stillBanned = false
                                             if (disconnectReason == "BANNED") {
                                                 val banConn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
@@ -882,12 +889,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                                 }
                                             }
 
-                                            // إذا كان السبب انتهاء الاشتراك وتم التجديد
                                             if (disconnectReason == "EXPIRED" && newExpiry > NetworkTime.currentTimeMillis(this@MainActivity)) {
                                                 V2rayCrypt.saveExpiryTime(this@MainActivity, guid, newExpiry)
                                                 return@withContext "RENEWED"
                                             }
-                                            // إذا كان السبب حظر وتم إزالة الحظر
                                             else if (disconnectReason == "BANNED" && !stillBanned) {
                                                 return@withContext "UNBANNED"
                                             }
@@ -902,7 +907,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                                 }
                             }
 
-                            // إذا بعد 10 ثواني بقى الوضع على ما هو عليه، نفصل!
                             if (stillDisconnected) {
                                 withContext(Dispatchers.IO) {
                                     if (idToTrack.isNotEmpty()) {
@@ -988,7 +992,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
         lottieEngine?.playAnimation()
 
-        // 🌟 التحقق من الحظر قبل التشغيل (مع نظام الـ 10 ثواني) 🌟
         lifecycleScope.launch(Dispatchers.IO) {
             var isBanned = false
             var banMsg = ""
@@ -1009,7 +1012,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             } catch (e: Exception) {} 
             
             if (isBanned) {
-                // إذا كان محظوراً، ننتظر 10 ثوانٍ كفرصة أخيرة ونتحقق مجدداً
                 withContext(Dispatchers.Main) { btnGreenConnect?.text = "جاري تأكيد حالة الحظر..." }
                 delay(10000) 
                 
