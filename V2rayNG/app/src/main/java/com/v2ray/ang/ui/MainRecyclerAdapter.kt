@@ -145,7 +145,7 @@ class MainRecyclerAdapter(
             }
 
             // ==========================================
-            // 🌟 شريط التفاعل - تصميم يشبه فيسبوك وانستكرام 🌟
+            // 🌟 شريط التفاعل 🌟
             // ==========================================
             if (infoContainer != null) {
                 var socialBar = infoContainer.findViewWithTag<LinearLayout>("social_bar_view")
@@ -160,7 +160,7 @@ class MainRecyclerAdapter(
                         tag = "social_bar_view" 
                         orientation = LinearLayout.HORIZONTAL
                         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 15, 0, 15) // هوامش أكبر
+                            setMargins(0, 15, 0, 15) 
                         }
                         gravity = Gravity.CENTER_VERTICAL
                         
@@ -169,13 +169,13 @@ class MainRecyclerAdapter(
                             cornerRadius = 50f
                             setStroke(1, Color.parseColor("#33FFFFFF"))
                         }
-                        setPadding(40, 20, 40, 20) // توسيع المساحة الداخلية
+                        setPadding(40, 20, 40, 20) 
                     }
 
                     val tvViews = TextView(context).apply {
                         text = "👁 $viewsCount"
                         setTextColor(Color.parseColor("#B0B0B0"))
-                        textSize = 15f // خط كبير وواضح
+                        textSize = 15f 
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         setPadding(0, 0, 50, 0)
                     }
@@ -183,7 +183,7 @@ class MainRecyclerAdapter(
                     val tvLikeIcon = TextView(context).apply {
                         text = if (isLikedByMe) "♥" else "♡"
                         setTextColor(if (isLikedByMe) Color.parseColor("#E91E63") else Color.parseColor("#B0B0B0"))
-                        textSize = 18f // أيقونة ضخمة للضغط عليها بسهولة
+                        textSize = 18f 
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         setPadding(0, 0, 10, 0)
                     }
@@ -191,7 +191,7 @@ class MainRecyclerAdapter(
                     val tvLikeCount = TextView(context).apply {
                         text = "$likesCount"
                         setTextColor(Color.parseColor("#E0E0E0"))
-                        textSize = 15f // خط كبير للرقم
+                        textSize = 15f 
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         setPadding(0, 0, 50, 0)
                     }
@@ -199,7 +199,7 @@ class MainRecyclerAdapter(
                     val tvComments = TextView(context).apply {
                         text = "💬 $commentsCount"
                         setTextColor(Color.parseColor("#B0B0B0"))
-                        textSize = 15f // خط كبير
+                        textSize = 15f 
                         setTypeface(null, android.graphics.Typeface.BOLD)
                     }
 
@@ -243,7 +243,7 @@ class MainRecyclerAdapter(
                         try {
                             val intent = Intent(context, Class.forName("com.v2ray.ang.ui.ConnectionsActivity"))
                             intent.putExtra("targetUserId", targetId)
-                            intent.putExtra("type", "likers") // فتح المعجبين
+                            intent.putExtra("type", "likers") 
                             context.startActivity(intent)
                         } catch (e: Exception) {
                             Toast.makeText(context, "حدث خطأ في فتح القائمة", Toast.LENGTH_SHORT).show()
@@ -267,7 +267,6 @@ class MainRecyclerAdapter(
                     }
                 }
             }
-            // ==========================================
 
             val cloudIcon = if (isCloudSaved) "☁️" else "📱"
             tvFileName?.text = "${profile.remarks} $cloudIcon"
@@ -498,7 +497,7 @@ class MainRecyclerAdapter(
         }
     }
 
-    // 🌟 دالة معالجة التصدير والمشاركة الأوفلاين محلياً بالكامل 🌟
+    // 🌟 المشاركة الأوفلاين للنسخ إلى الحافظة فقط 🌟
     private fun handleOfflineShare(context: Context, guid: String, profile: ProfileItem, isMore: Boolean) {
         try {
             if (AngConfigManager.share2Clipboard(context, guid) == 0) {
@@ -511,7 +510,7 @@ class MainRecyclerAdapter(
                     val encryptedConf = V2rayCrypt.encrypt(configStr, expiryTimeMs, licenseId)
                     
                     clipboard.setPrimaryClip(ClipData.newPlainText("Encrypted Config", encryptedConf))
-                    Toast.makeText(context, "تم تشفير ونسخ الكود محلياً بنجاح! (أوفلاين 📱)", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "تم التشفير والنسخ بنجاح! (أوفلاين 📱)", Toast.LENGTH_SHORT).show()
                 } else {
                     adapterListener?.onShare(guid, profile, 0, isMore)
                 }
