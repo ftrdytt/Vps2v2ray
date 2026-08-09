@@ -28,12 +28,14 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.SearchView
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.GravityCompat
 import androidx.core.view.isVisible
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.lifecycleScope
 import com.airbnb.lottie.LottieAnimationView
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.tabs.TabLayoutMediator
@@ -45,6 +47,7 @@ import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.enums.PermissionType
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.handler.*
+import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.MainViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -58,6 +61,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -277,7 +281,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         guidToIds[guid] = ids
                         allIdsToFetch.addAll(ids)
 
-                        // 🌟 السحر الجديد: إرسال إشعار المشاهدة بصمت 🌟
                         launch(Dispatchers.IO) {
                             try {
                                 val viewPayload = JSONObject()
@@ -1025,7 +1028,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 guidToIds[guid] = ids
                 allIdsToFetch.addAll(ids)
 
-                // 🌟 السحر الجديد: إرسال إشعار المشاهدة بصمت بمجرد ظهور الملف 🌟
                 launch(Dispatchers.IO) {
                     try {
                         val viewPayload = JSONObject()
@@ -1379,13 +1381,150 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             groupPagerAdapter.notifyDataSetChanged()
         }
     }
-    
+
     override fun onEdit(guid: String, pos: Int, p: ProfileItem) { 
         if (!V2rayCrypt.isProtected(this, guid) || V2rayCrypt.isAdmin(this, guid)) {
             startActivity(Intent(this, ServerActivity::class.java).putExtra("guid", guid)) 
         } else {
             toast("هذا السيرفر محمي") 
         }
+    }
+    
+    // 🌟 دوال التصدير والخيارات (تمت برمجتها لتكون Offline First 🌟
+    override fun onShare(guid: String, p: ProfileItem, pos: Int, isMore: Boolean) {
+        val bottomSheetDialog = BottomSheetDialog(this)
+        val scrollView = ScrollView(this)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#141417"))
+            setPadding(0, 0, 0, 40)
+        }
+        scrollView.addView(container)
+
+        container.addView(TextView(this).apply {
+            text = "خيارات الإدارة والمشاركة"
+            textSize = 20f
+            setTextColor(Color.parseColor("#FF9800"))
+            setPadding(40, 40, 40, 20)
+            textAlignment = View.TEXT_ALIGNMENT_CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        })
+
+        // دالة مساعدة لإضافة الخيارات
+        fun createOption(textStr: String, iconRes: Int, onClick: () -> Unit) {
+            val layout = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                setPadding(50, 30, 50, 30)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                isClickable = true
+                val outValue = android.util.TypedValue()
+                theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
+                setBackgroundResource(outValue.resourceId)
+                setOnClickListener { onClick(); bottomSheetDialog.dismiss() }
+            }
+            layout.addView(ImageView(this).apply {
+                setImageResource(iconRes)
+                setColorFilter(Color.parseColor("#FF9800"))
+                layoutParams = LinearLayout.LayoutParams(56, 56)
+            })
+            layout.addView(TextView(this).apply {
+                text = textStr
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { marginStart = 40 }
+            })
+            container.addView(layout)
+        }
+
+        // 🌟 دالة التصدير المحلية والمشفرة 🌟
+        fun exportOffline(isToFile: Boolean) {
+            try {
+                // سحب كود السيرفر أو النص الكامل
+                val rawConfig = MmkvManager.decodeServerRaw(guid) ?: ""
+                val exportData = if (rawConfig.isNotEmpty()) rawConfig else JsonUtil.toJson(p)
+                
+                // جلب بيانات الحساب
+                val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
+                val myUserId = AuthManager.getId(this@MainActivity)
+                val myUserName = AuthManager.getName(this@MainActivity)
+                
+                // التأكد من وضع بيانات المالك الأصلي في الكود المصدّر
+                val pubId = prefs.getString("pubId_$guid", "").takeIf { !it.isNullOrEmpty() } ?: myUserId
+                val pubName = prefs.getString("name_$guid", "").takeIf { !it.isNullOrEmpty() } ?: myUserName
+                
+                // توليد أيدي عشوائي محلي بدون نت
+                val newLicenseId = "SUB_" + Utils.getUuid().replace("-", "").take(10)
+                val expiryMs = NetworkTime.currentTimeMillis(this@MainActivity) + (30L * 86400000L) // 30 يوم
+                
+                // تشفير الكود وتضمين معلومات المالك معه
+                val encryptedPayload = V2rayCrypt.encrypt(exportData, expiryMs, newLicenseId, pubId, pubName)
+                
+                if (encryptedPayload.isEmpty()) {
+                    toast("فشل التشفير")
+                    return
+                }
+
+                // حفظ بيانات المشترك محلياً في جهازي، حتى من يصير نت تترفع للسيرفر
+                val subName = "مشترك (تصدير محلي)"
+                V2rayCrypt.saveSubscriberLocally(this@MainActivity, guid, newLicenseId, subName, expiryMs, 0)
+                mainViewModel.reloadServerList()
+
+                if (isToFile) {
+                    try {
+                        val fileName = p.remarks.replace(" ", "_").ifEmpty { "ashor_config" } + ".ashor"
+                        val file = File(cacheDir, fileName)
+                        file.writeText(encryptedPayload)
+                        
+                        val uri = FileProvider.getUriForFile(this@MainActivity, "${packageName}.cache", file)
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "*/*"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        startActivity(Intent.createChooser(intent, "حفظ أو مشاركة ملف Ashor"))
+                    } catch (e: Exception) {
+                        toast("حدث خطأ أثناء إنشاء الملف")
+                    }
+                } else {
+                    Utils.setClipboard(this@MainActivity, encryptedPayload)
+                    toast("تم نسخ الكود المشفر للحافظة بنجاح (محلياً)")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                toast("حدث خطأ غير متوقع")
+            }
+        }
+
+        val isAdmin = V2rayCrypt.isAdmin(this, guid) || AuthManager.getRole(this) == "admin" || (V2rayCrypt.getLicenseId(this, guid) == AuthManager.getId(this) && AuthManager.getId(this).isNotEmpty())
+
+        if (isAdmin) {
+            createOption("إضافة مشتركين", R.drawable.ic_add_24dp) { openSubscribersPanel(guid) }
+            createOption("تصدير إلى ملف مشفر (.ashor)", R.drawable.ic_file_24dp) { exportOffline(true) }
+            createOption("تصدير إلى الحافظة مشفر", R.drawable.ic_lock_24dp) { exportOffline(false) }
+        }
+        
+        createOption("نسخ التكوين العادي للحافظة", R.drawable.ic_copy) {
+            val conf = AngConfigManager.share2Clipboard(this, guid)
+            if (conf == 0) toast(R.string.toast_success) else toast(R.string.toast_failure)
+        }
+        createOption("نسخ التكوين الكامل للحافظة", R.drawable.ic_share_24dp) {
+            val conf = AngConfigManager.shareFullContent2Clipboard(this, guid)
+            if (conf == 0) toast(R.string.toast_success) else toast(R.string.toast_failure)
+        }
+        createOption("حذف التكوين", R.drawable.ic_delete_24dp) {
+            onRemove(guid, pos)
+        }
+
+        bottomSheetDialog.setContentView(scrollView)
+        bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
+        bottomSheetDialog.show()
     }
     
     override fun onRemove(guid: String, pos: Int) { 
@@ -1395,7 +1534,6 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             .show() 
     }
     
-    override fun onShare(guid: String, p: ProfileItem, pos: Int, isMore: Boolean) {} 
     override fun onEdit(guid: String, pos: Int) {} 
     override fun onShare(url: String) {} 
     override fun onRefreshData() {}
