@@ -174,6 +174,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
         loadUsers(currentTabType, isSilent = false)
     }
 
+    // 🌟 تم إرجاع الدالة لمكانها الصحيح داخل الكلاس 🌟
     private fun formatBytes(bytes: Long): String {
         if (bytes <= 0) return "0.0 MB"
         val kb = bytes / 1024.0
@@ -389,6 +390,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
+        // 🌟 حاوية الصورة للاستوري مع CardView لضمان قص الصورة بشكل دائري 100% 🌟
         val avatarContainer = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(140, 140).apply { setMargins(20, 0, 0, 0) }
             
@@ -415,7 +417,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
         val cvAvatar = CardView(this).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            radius = 70f
+            radius = 70f // دائري بالكامل
             cardElevation = 0f
             setCardBackgroundColor(Color.TRANSPARENT)
         }
@@ -506,7 +508,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
         infoLayout.addView(tvName)
         infoLayout.addView(tvUsage)
         infoLayout.addView(tvId)
-        infoLayout.addView(deviceRow)
+        infoLayout.addView(deviceRow) 
 
         val btnAction = MaterialButton(this).apply {
             text = if (isBanned) "إلغاء الحظر" else "حظر فوراً"
@@ -655,7 +657,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
                         conn.setRequestProperty("Content-Type", "application/json")
                         conn.doOutput = true
 
-                        // 🌟 التعديل هنا: الاعتماد على currentGuid دائماً لضمان دقة الحظر في الملف المفتوح 🌟
                         val targetGuid = currentGuid
 
                         val payload = JSONObject()
@@ -709,4 +710,4 @@ class FileActiveUsersActivity : AppCompatActivity() {
             .setNegativeButton("إلغاء", null)
             .show()
     }
-}
+}, 
