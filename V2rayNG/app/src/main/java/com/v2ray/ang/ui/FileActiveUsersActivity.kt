@@ -174,7 +174,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         loadUsers(currentTabType, isSilent = false)
     }
 
-    // 🌟 تم إرجاع الدالة لمكانها الصحيح داخل الكلاس 🌟
     private fun formatBytes(bytes: Long): String {
         if (bytes <= 0) return "0.0 MB"
         val kb = bytes / 1024.0
@@ -390,7 +389,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
-        // 🌟 حاوية الصورة للاستوري مع CardView لضمان قص الصورة بشكل دائري 100% 🌟
         val avatarContainer = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(140, 140).apply { setMargins(20, 0, 0, 0) }
             
@@ -417,7 +415,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
         val cvAvatar = CardView(this).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            radius = 70f // دائري بالكامل
+            radius = 70f
             cardElevation = 0f
             setCardBackgroundColor(Color.TRANSPARENT)
         }
@@ -470,6 +468,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
             setPadding(0, 5, 0, 0)
         }
 
+        // 🌟 تعديل قسم الـ Device ID وإضافة زر الأجهزة 🌟
         val deviceRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.RIGHT or Gravity.END
@@ -491,6 +490,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
         
         deviceRow.addView(tvDevice)
 
+        // إضافة أيقونة "عرض الأجهزة" في حال كان المتصل لديه حساب (User ID)
         if (userId.isNotEmpty()) {
             val btnAllDevices = TextView(this).apply {
                 text = " 🔗 عرض الأجهزة"
@@ -508,7 +508,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
         infoLayout.addView(tvName)
         infoLayout.addView(tvUsage)
         infoLayout.addView(tvId)
-        infoLayout.addView(deviceRow) 
+        infoLayout.addView(deviceRow) // تم استبدال tvDevice بـ deviceRow بالكامل
 
         val btnAction = MaterialButton(this).apply {
             text = if (isBanned) "إلغاء الحظر" else "حظر فوراً"
@@ -533,6 +533,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
         mainContainer.addView(cardView)
     }
 
+    // 🌟 دالة عرض الأجهزة المنبثقة 🌟
     private fun showDevicesDialog(userId: String, userName: String, currentDeviceId: String) {
         val bottomSheet = BottomSheetDialog(this)
         
@@ -657,7 +658,12 @@ class FileActiveUsersActivity : AppCompatActivity() {
                         conn.setRequestProperty("Content-Type", "application/json")
                         conn.doOutput = true
 
-                        val targetGuid = currentGuid
+                        var baseLicenseId = V2rayCrypt.getLicenseId(this@FileActiveUsersActivity, currentGuid)
+                        if (baseLicenseId.isEmpty() || baseLicenseId == "LEGACY") {
+                            baseLicenseId = currentGuid
+                        }
+                        
+                        val targetGuid = if (userId.isNotEmpty()) userId else baseLicenseId 
 
                         val payload = JSONObject()
                             .put("guid", targetGuid) 
@@ -710,4 +716,4 @@ class FileActiveUsersActivity : AppCompatActivity() {
             .setNegativeButton("إلغاء", null)
             .show()
     }
-}, 
+}
