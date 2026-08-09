@@ -155,6 +155,7 @@ class SubscribersActivity : AppCompatActivity() {
                             val actCount = data.optInt("activeCount", 0) 
                             val totalUsageBytes = data.optLong("totalUsageBytes", 0L) 
                             
+                            // 🌟 سحب أرقام التفاعل من السيرفر 🌟
                             val views = data.optInt("views", 0)
                             val likes = data.optInt("likes", 0)
                             val comments = data.optInt("comments", 0)
@@ -466,36 +467,20 @@ class SubscribersActivity : AppCompatActivity() {
         builder.setNegativeButton("إلغاء", null).show()
     }
 
-    // 🌟 المشاركة والتصدير يعملان أوفلاين 🌟
     private fun shareSubscriber(sub: V2rayCrypt.SubscriberData) {
-        try {
-            if (AngConfigManager.share2Clipboard(this, parentGuid) == 0) {
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val conf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
-                
-                if (conf.isNotEmpty()) {
-                    val encryptedConf = V2rayCrypt.encrypt(conf, sub.expiryTimeMs, sub.licenseId)
-                    AlertDialog.Builder(this).setTitle("مشاركة المشترك")
-                        .setItems(arrayOf("نسخ إلى الحافظة", "تصدير كملف")) { _, which ->
-                            when (which) {
-                                0 -> { 
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("Config", encryptedConf))
-                                    Toast.makeText(this, "تم نسخ الكود محلياً بنجاح! 📱", Toast.LENGTH_SHORT).show() 
-                                }
-                                1 -> { 
-                                    pendingEncryptedConfigToSave = encryptedConf
-                                    saveEncryptedFileLauncher.launch("${sub.name.replace(" ", "_")}.ashor") 
-                                }
-                            }
-                        }.show()
-                } else {
-                    Toast.makeText(this, "الحافظة فارغة! تعذر جلب الكود.", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                Toast.makeText(this, "تعذر استنساخ الكود.", Toast.LENGTH_SHORT).show()
+        if (AngConfigManager.share2Clipboard(this, parentGuid) == 0) {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val conf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+            if (conf.isNotEmpty()) {
+                val encryptedConf = V2rayCrypt.encrypt(conf, sub.expiryTimeMs, sub.licenseId)
+                AlertDialog.Builder(this).setTitle("مشاركة المشترك")
+                    .setItems(arrayOf("نسخ إلى الحافظة", "تصدير كملف")) { _, which ->
+                        when (which) {
+                            0 -> { clipboard.setPrimaryClip(ClipData.newPlainText("Config", encryptedConf)); Toast.makeText(this, "تم نسخ الكود!", Toast.LENGTH_SHORT).show() }
+                            1 -> { pendingEncryptedConfigToSave = encryptedConf; saveEncryptedFileLauncher.launch("${sub.name.replace(" ", "_")}.ashor") }
+                        }
+                    }.show()
             }
-        } catch (e: Exception) {
-            Toast.makeText(this, "حدث خطأ غير متوقع", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -579,6 +564,7 @@ class SubscribersAdapter(
             val hasStory = prefs.getBoolean("story_${item.licenseId}", false)
             val usage = prefs.getString("usage_${item.licenseId}", "0.0 MB") ?: "0.0 MB"
 
+            // 🌟 استدعاء أرقام التفاعل من الذاكرة 🌟
             val viewsCount = prefs.getInt("views_${item.licenseId}", 0)
             val likesCount = prefs.getInt("likes_${item.licenseId}", 0)
             val commentsCount = prefs.getInt("comments_${item.licenseId}", 0)
@@ -644,6 +630,7 @@ class SubscribersAdapter(
                 } catch (e: Exception) {}
             }
 
+            // 🌟 تصميم شريط التفاعل برمجياً مع تكبير الخطوط 🌟
             val parentLayout = tvActiveCount.parent as? ViewGroup
             if (parentLayout != null) {
                 var socialBar = parentLayout.findViewWithTag<LinearLayout>("social_bar_${item.licenseId}")
@@ -652,31 +639,34 @@ class SubscribersAdapter(
                         tag = "social_bar_${item.licenseId}"
                         orientation = LinearLayout.HORIZONTAL
                         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 15, 0, 15) 
+                            setMargins(0, 15, 0, 15) // هوامش أكبر
                         }
                         gravity = Gravity.CENTER_VERTICAL
                     }
 
+                    // 👁️ المشاهدات
                     val tvViews = TextView(itemView.context).apply {
                         text = "👁️ $viewsCount"
                         setTextColor(Color.LTGRAY)
-                        textSize = 15f 
+                        textSize = 15f // خط كبير
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         setPadding(0, 0, 50, 0)
                     }
 
+                    // ❤️ اللايكات
                     val tvLikes = TextView(itemView.context).apply {
                         text = "❤️ $likesCount"
                         setTextColor(Color.LTGRAY)
-                        textSize = 15f 
+                        textSize = 15f // خط كبير
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         setPadding(0, 0, 50, 0)
                         
+                        // 🌟 النقر يفتح المعجبين 🌟
                         setOnClickListener {
                             try {
                                 val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.ConnectionsActivity"))
                                 intent.putExtra("targetUserId", item.licenseId)
-                                intent.putExtra("type", "likers") 
+                                intent.putExtra("type", "likers") // تفعيل قائمة المعجبين
                                 itemView.context.startActivity(intent)
                             } catch (e: Exception) {
                                 Toast.makeText(itemView.context, "حدث خطأ أثناء الفتح", Toast.LENGTH_SHORT).show()
@@ -684,10 +674,11 @@ class SubscribersAdapter(
                         }
                     }
 
+                    // 💬 التعليقات
                     val tvComments = TextView(itemView.context).apply {
                         text = "💬 $commentsCount"
                         setTextColor(Color.LTGRAY)
-                        textSize = 15f 
+                        textSize = 15f // خط كبير
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         
                         setOnClickListener {
@@ -707,6 +698,7 @@ class SubscribersAdapter(
                     val index = parentLayout.indexOfChild(tvActiveCount)
                     parentLayout.addView(socialBar, index + 1)
                 } else {
+                    // تحديث الأرقام بوضوح أكبر
                     (socialBar.getChildAt(0) as? TextView)?.text = "👁️ $viewsCount"
                     (socialBar.getChildAt(1) as? TextView)?.text = "❤️ $likesCount"
                     (socialBar.getChildAt(2) as? TextView)?.text = "💬 $commentsCount"
