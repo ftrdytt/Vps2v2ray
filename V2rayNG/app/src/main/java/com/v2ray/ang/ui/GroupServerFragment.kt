@@ -40,13 +40,9 @@ import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.NetworkTime
 import com.v2ray.ang.handler.V2rayCrypt
-import com.v2ray.ang.handler.CloudflareAPI
 import com.v2ray.ang.handler.AuthManager
 import com.v2ray.ang.helper.SimpleItemTouchHelperCallback
 import com.v2ray.ang.viewmodel.MainViewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
     private val ownerActivity: MainActivity
@@ -229,18 +225,12 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
                     val conf = clipboard.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
                     
                     if (conf.isNotEmpty()) {
-                        ownerActivity.showLoadingDialog()
-                        ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
-                            val uploaded = CloudflareAPI.createOrUpdateSubscriber(licenseId, expiryTimeMs, conf)
-                            withContext(Dispatchers.Main) {
-                                ownerActivity.hideLoadingDialog()
-                                if (uploaded) {
-                                    V2rayCrypt.saveSubscriberLocally(ownerActivity, parentGuid, licenseId, subName, expiryTimeMs)
-                                    ownerActivity.toastSuccess("تم إضافة المشترك بنجاح!")
-                                    askToShareSubscriberCode(conf, expiryTimeMs, licenseId, subName)
-                                } else ownerActivity.toastError("فشل الاتصال بكلاود فلير.")
-                            }
-                        }
+                        // 🌟 Offline Logic: الحفظ محلياً مباشرة بدون نت 🌟
+                        V2rayCrypt.saveSubscriberLocally(ownerActivity, parentGuid, licenseId, subName, expiryTimeMs)
+                        ownerActivity.toastSuccess("تم إضافة المشترك بنجاح!")
+                        askToShareSubscriberCode(conf, expiryTimeMs, licenseId, subName)
+                    } else {
+                        ownerActivity.toastError(R.string.toast_failure)
                     }
                 }
             }
@@ -249,7 +239,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
     }
 
     private fun askToShareSubscriberCode(conf: String, expiryTimeMs: Long, licenseId: String, subName: String) {
-        // 🌟 التعديل هنا: حقن الهوية والاسم عند إنشاء مشترك جديد 🌟
+        // 🌟 تضمين هوية صاحب الملف بداخل الكود لتعمل مميزات العرض أوفلاين 🌟
         val myPubId = AuthManager.getId(ownerActivity)
         val myPubName = AuthManager.getName(ownerActivity)
         val encryptedConf = V2rayCrypt.encrypt(conf, expiryTimeMs, licenseId, myPubId, myPubName)
@@ -301,34 +291,28 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
 
             showCustomExpiryDialog { expiryTime ->
                 val childLicenseId = "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16)
-                ownerActivity.showLoadingDialog()
-                ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
-                    val uploaded = CloudflareAPI.createOrUpdateSubscriber(childLicenseId, expiryTime, conf)
-                    withContext(Dispatchers.Main) {
-                        ownerActivity.hideLoadingDialog()
-                        if (uploaded) {
-                            if (V2rayCrypt.getLicenseId(ownerActivity, guid).isEmpty()) {
-                                V2rayCrypt.addAdminGuid(ownerActivity, guid)
-                                V2rayCrypt.saveLicenseId(ownerActivity, guid, "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16))
-                                V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
-                            }
-                            
-                            // 🌟 السطر السحري: حقن الآيدي واسم الحساب بداخل الملف المشفر 🌟
-                            val myPubId = AuthManager.getId(ownerActivity)
-                            val myPubName = AuthManager.getName(ownerActivity)
-                            val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, childLicenseId, myPubId, myPubName)
+                
+                // 🌟 Offline Logic: العمل محلياً بدون انتظار نت 🌟
+                if (V2rayCrypt.getLicenseId(ownerActivity, guid).isEmpty()) {
+                    V2rayCrypt.addAdminGuid(ownerActivity, guid)
+                    V2rayCrypt.saveLicenseId(ownerActivity, guid, "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16))
+                    V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
+                }
+                
+                val myPubId = AuthManager.getId(ownerActivity)
+                val myPubName = AuthManager.getName(ownerActivity)
+                val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, childLicenseId, myPubId, myPubName)
 
-                            if (encryptedConf.isNotEmpty()) {
-                                pendingEncryptedConfigToSave = encryptedConf
-                                val configName = "ملف_مستخرج_${(1000..9999).random()}"
-                                
-                                V2rayCrypt.saveSubscriberLocally(ownerActivity, guid, childLicenseId, configName, expiryTime)
-                                
-                                saveEncryptedFileLauncher.launch("$configName.ashor")
-                                mainViewModel.reloadServerList() 
-                            } else ownerActivity.toastError(R.string.toast_failure)
-                        } else ownerActivity.toastError("فشل الاتصال بكلاود فلير.")
-                    }
+                if (encryptedConf.isNotEmpty()) {
+                    pendingEncryptedConfigToSave = encryptedConf
+                    val configName = "ملف_مستخرج_${(1000..9999).random()}"
+                    
+                    V2rayCrypt.saveSubscriberLocally(ownerActivity, guid, childLicenseId, configName, expiryTime)
+                    
+                    saveEncryptedFileLauncher.launch("$configName.ashor")
+                    mainViewModel.reloadServerList() 
+                } else {
+                    ownerActivity.toastError(R.string.toast_failure)
                 }
             }
         } catch (e: Exception) { ownerActivity.toastError(R.string.toast_failure) }
@@ -343,34 +327,28 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
 
             showCustomExpiryDialog { expiryTime ->
                 val childLicenseId = "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16)
-                ownerActivity.showLoadingDialog()
-                ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
-                    val uploaded = CloudflareAPI.createOrUpdateSubscriber(childLicenseId, expiryTime, conf)
-                    withContext(Dispatchers.Main) {
-                        ownerActivity.hideLoadingDialog()
-                        if (uploaded) {
-                            if (V2rayCrypt.getLicenseId(ownerActivity, guid).isEmpty()) {
-                                V2rayCrypt.addAdminGuid(ownerActivity, guid)
-                                V2rayCrypt.saveLicenseId(ownerActivity, guid, "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16))
-                                V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
-                            }
+                
+                // 🌟 Offline Logic: العمل محلياً بدون انتظار نت 🌟
+                if (V2rayCrypt.getLicenseId(ownerActivity, guid).isEmpty()) {
+                    V2rayCrypt.addAdminGuid(ownerActivity, guid)
+                    V2rayCrypt.saveLicenseId(ownerActivity, guid, "LIC_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16))
+                    V2rayCrypt.saveExpiryTime(ownerActivity, guid, expiryTime)
+                }
 
-                            // 🌟 السطر السحري: حقن الآيدي واسم الحساب بداخل النص المشفر للحافظة 🌟
-                            val myPubId = AuthManager.getId(ownerActivity)
-                            val myPubName = AuthManager.getName(ownerActivity)
-                            val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, childLicenseId, myPubId, myPubName)
+                val myPubId = AuthManager.getId(ownerActivity)
+                val myPubName = AuthManager.getName(ownerActivity)
+                val encryptedConf = V2rayCrypt.encrypt(conf, expiryTime, childLicenseId, myPubId, myPubName)
 
-                            if (encryptedConf.isNotEmpty()) {
-                                val configName = "نسخة_حافظة_${(1000..9999).random()}"
-                                
-                                V2rayCrypt.saveSubscriberLocally(ownerActivity, guid, childLicenseId, configName, expiryTime)
+                if (encryptedConf.isNotEmpty()) {
+                    val configName = "نسخة_حافظة_${(1000..9999).random()}"
+                    
+                    V2rayCrypt.saveSubscriberLocally(ownerActivity, guid, childLicenseId, configName, expiryTime)
 
-                                clipboard.setPrimaryClip(ClipData.newPlainText("Encrypted V2ray Config", encryptedConf))
-                                ownerActivity.toast("تم نسخ التكوين المشفر!")
-                                mainViewModel.reloadServerList()
-                            } else ownerActivity.toastError(R.string.toast_failure)
-                        } else ownerActivity.toastError("فشل الاتصال بكلاود فلير.")
-                    }
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Encrypted V2ray Config", encryptedConf))
+                    ownerActivity.toast("تم نسخ التكوين المشفر!")
+                    mainViewModel.reloadServerList()
+                } else {
+                    ownerActivity.toastError(R.string.toast_failure)
                 }
             }
         } catch (e: Exception) { ownerActivity.toastError(R.string.toast_failure) }
@@ -379,10 +357,8 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
     private fun share2Clipboard(guid: String) { if (AngConfigManager.share2Clipboard(ownerActivity, guid) == 0) ownerActivity.toastSuccess(R.string.toast_success) else ownerActivity.toastError(R.string.toast_failure) }
 
     private fun shareFullContent(guid: String) {
-        ownerActivity.lifecycleScope.launch(Dispatchers.IO) {
-            val result = AngConfigManager.shareFullContent2Clipboard(ownerActivity, guid)
-            launch(Dispatchers.Main) { if (result == 0) ownerActivity.toastSuccess(R.string.toast_success) else ownerActivity.toastError(R.string.toast_failure) }
-        }
+        val result = AngConfigManager.shareFullContent2Clipboard(ownerActivity, guid)
+        if (result == 0) ownerActivity.toastSuccess(R.string.toast_success) else ownerActivity.toastError(R.string.toast_failure)
     }
 
     private fun editServer(guid: String, profile: ProfileItem) {
