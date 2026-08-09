@@ -866,8 +866,42 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             }
                             break 
                         }
+
+                        val isBanned = withContext(Dispatchers.IO) {
+                            var banned = false
+                            try {
+                                val conn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
+                                conn.connectTimeout = 3000
+                                conn.readTimeout = 3000
+                                if (conn.responseCode == 200) {
+                                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                                    if (resp.startsWith("{")) {
+                                        val jsonResponse = JSONObject(resp)
+                                        if (jsonResponse.optBoolean("banned", false)) {
+                                            banned = true
+                                        }
+                                    }
+                                }
+                            } catch (e: Exception) {}
+                            banned
+                        }
+
+                        if (isBanned) {
+                            withContext(Dispatchers.Main) {
+                                V2RayServiceManager.stopVService(this@MainActivity)
+                                AlertDialog.Builder(this@MainActivity)
+                                    .setTitle("تم الحظر")
+                                    .setMessage("لقد تم حظرك من هذا الملف 🚫")
+                                    .setPositiveButton("حسناً", null)
+                                    .setCancelable(false)
+                                    .show()
+                                mainViewModel.reloadServerList()
+                            }
+                            break
+                        }
+
                     } catch (e: Exception) {}
-                    delay(5000) 
+                    delay(10000)
                 }
             }
         } else {
