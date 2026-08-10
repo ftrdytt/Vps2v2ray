@@ -867,10 +867,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                             break 
                         }
 
+                        // 🌟 إضافة التحقق المستمر من الحظر 🌟
                         val isBanned = withContext(Dispatchers.IO) {
                             var banned = false
                             try {
-                                val conn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
+                                val conn = URL("$BASE_API_URL/file/check_ban?guid=$idToTrack&deviceId=$deviceId").openConnection() as HttpURLConnection
                                 conn.connectTimeout = 3000
                                 conn.readTimeout = 3000
                                 if (conn.responseCode == 200) {
@@ -889,9 +890,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         if (isBanned) {
                             withContext(Dispatchers.Main) {
                                 V2RayServiceManager.stopVService(this@MainActivity)
+                                binding.fab.setImageResource(R.drawable.ic_play_24dp)
+                                binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this@MainActivity, R.color.color_fab_inactive))
+                                btnGreenConnect?.text = "تشغيل المحرك"
+                                btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
+                                lottieEngine?.cancelAnimation()
+                                lottieEngine?.progress = 0f
+                                
                                 AlertDialog.Builder(this@MainActivity)
-                                    .setTitle("تم الحظر")
-                                    .setMessage("لقد تم حظرك من هذا الملف 🚫")
+                                    .setTitle("تم الحظر 🚫")
+                                    .setMessage("تم قطع الاتصال! لقد تم حظرك من هذا الملف من قبل الإدارة.")
                                     .setPositiveButton("حسناً", null)
                                     .setCancelable(false)
                                     .show()
@@ -942,10 +950,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
         lottieEngine?.playAnimation()
 
+        // 🌟 نشغل المحرك فوراً 🌟
         startV2RayCore()
 
+        // 🌟 نطلق وظيفة بالخلفية تفحص بعد 10 ثواني مثل ما طلبت 🌟
         lifecycleScope.launch(Dispatchers.IO) {
-            delay(10000) // Wait 10 seconds before checking ban status
+            delay(10000) // انتظار 10 ثواني للتحقق
 
             var isBanned = false
             var banMsg = "تم حظرك من هذا الملف من قبل الإدارة 🚫"
@@ -966,6 +976,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 }
             } catch (e: Exception) {} 
             
+            // 🌟 إذا رجعت النتيجة إنه محظور، نطفيه ونطلعله رسالة المنع 🌟
             if (isBanned) {
                 withContext(Dispatchers.Main) {
                     if (mainViewModel.isRunning.value == true) {
@@ -977,7 +988,13 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                     btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
                     lottieEngine?.cancelAnimation()
                     lottieEngine?.progress = 0f
-                    Toast.makeText(this@MainActivity, banMsg, Toast.LENGTH_LONG).show()
+                    
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("تم الحظر 🚫")
+                        .setMessage(banMsg)
+                        .setPositiveButton("حسناً", null)
+                        .setCancelable(false)
+                        .show()
                 }
             }
         }
@@ -1432,153 +1449,10 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
     
-    // 🌟 دوال التصدير والخيارات (تمت برمجتها لتكون Offline First 🌟
-    override fun onShare(guid: String, p: ProfileItem, pos: Int, isMore: Boolean) {
-        val bottomSheetDialog = BottomSheetDialog(this)
-        val scrollView = ScrollView(this)
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#141417"))
-            setPadding(0, 0, 0, 40)
-        }
-        scrollView.addView(container)
-
-        container.addView(TextView(this).apply {
-            text = "خيارات الإدارة والمشاركة"
-            textSize = 20f
-            setTextColor(Color.parseColor("#FF9800"))
-            setPadding(40, 40, 40, 20)
-            textAlignment = View.TEXT_ALIGNMENT_CENTER
-            setTypeface(null, android.graphics.Typeface.BOLD)
-        })
-
-        // دالة مساعدة لإضافة الخيارات
-        fun createOption(textStr: String, iconRes: Int, onClick: () -> Unit) {
-            val layout = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                setPadding(50, 30, 50, 30)
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                isClickable = true
-                val outValue = android.util.TypedValue()
-                theme.resolveAttribute(android.R.attr.selectableItemBackground, outValue, true)
-                setBackgroundResource(outValue.resourceId)
-                setOnClickListener { onClick(); bottomSheetDialog.dismiss() }
-            }
-            layout.addView(ImageView(this).apply {
-                setImageResource(iconRes)
-                setColorFilter(Color.parseColor("#FF9800"))
-                layoutParams = LinearLayout.LayoutParams(56, 56)
-            })
-            layout.addView(TextView(this).apply {
-                text = textStr
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { marginStart = 40 }
-            })
-            container.addView(layout)
-        }
-
-        // 🌟 دالة التصدير المحلية والمشفرة 🌟
-        fun exportOffline(isToFile: Boolean) {
-            try {
-                // سحب كود السيرفر أو النص الكامل
-                val rawConfig = MmkvManager.decodeServerRaw(guid) ?: ""
-                val exportData = if (rawConfig.isNotEmpty()) rawConfig else JsonUtil.toJson(p)
-                
-                // جلب بيانات الحساب
-                val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
-                val myUserId = AuthManager.getId(this@MainActivity)
-                val myUserName = AuthManager.getName(this@MainActivity)
-                
-                // التأكد من وضع بيانات المالك الأصلي في الكود المصدّر
-                val pubId = prefs.getString("pubId_$guid", "").takeIf { !it.isNullOrEmpty() } ?: myUserId
-                val pubName = prefs.getString("name_$guid", "").takeIf { !it.isNullOrEmpty() } ?: myUserName
-                
-                // توليد أيدي عشوائي محلي بدون نت
-                val newLicenseId = "SUB_" + Utils.getUuid().replace("-", "").take(10)
-                val expiryMs = NetworkTime.currentTimeMillis(this@MainActivity) + (30L * 86400000L) // 30 يوم
-                
-                // تشفير الكود وتضمين معلومات المالك معه
-                val encryptedPayload = V2rayCrypt.encrypt(exportData, expiryMs, newLicenseId, pubId, pubName)
-                
-                if (encryptedPayload.isEmpty()) {
-                    toast("فشل التشفير")
-                    return
-                }
-
-                // حفظ بيانات المشترك محلياً في جهازي، حتى من يصير نت تترفع للسيرفر
-                val subName = "مشترك (تصدير محلي)"
-                V2rayCrypt.saveSubscriberLocally(this@MainActivity, guid, newLicenseId, subName, expiryMs, 0)
-                mainViewModel.reloadServerList()
-
-                if (isToFile) {
-                    try {
-                        val fileName = p.remarks.replace(" ", "_").ifEmpty { "ashor_config" } + ".ashor"
-                        val file = File(cacheDir, fileName)
-                        file.writeText(encryptedPayload)
-                        
-                        val uri = FileProvider.getUriForFile(this@MainActivity, "${packageName}.cache", file)
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "*/*"
-                            putExtra(Intent.EXTRA_STREAM, uri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        startActivity(Intent.createChooser(intent, "حفظ أو مشاركة ملف Ashor"))
-                    } catch (e: Exception) {
-                        toast("حدث خطأ أثناء إنشاء الملف")
-                    }
-                } else {
-                    Utils.setClipboard(this@MainActivity, encryptedPayload)
-                    toast("تم نسخ الكود المشفر للحافظة بنجاح (محلياً)")
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                toast("حدث خطأ غير متوقع")
-            }
-        }
-
-        val isAdmin = V2rayCrypt.isAdmin(this, guid) || AuthManager.getRole(this) == "admin" || (V2rayCrypt.getLicenseId(this, guid) == AuthManager.getId(this) && AuthManager.getId(this).isNotEmpty())
-
-        if (isAdmin) {
-            createOption("إضافة مشتركين", R.drawable.ic_add_24dp) { openSubscribersPanel(guid) }
-            createOption("تصدير إلى ملف مشفر (.ashor)", R.drawable.ic_file_24dp) { exportOffline(true) }
-            createOption("تصدير إلى الحافظة مشفر", R.drawable.ic_lock_24dp) { exportOffline(false) }
-        }
-        
-        createOption("نسخ التكوين العادي للحافظة", R.drawable.ic_copy) {
-            val conf = AngConfigManager.share2Clipboard(this, guid)
-            if (conf == 0) toast(R.string.toast_success) else toast(R.string.toast_failure)
-        }
-        createOption("نسخ التكوين الكامل للحافظة", R.drawable.ic_share_24dp) {
-            val conf = AngConfigManager.shareFullContent2Clipboard(this, guid)
-            if (conf == 0) toast(R.string.toast_success) else toast(R.string.toast_failure)
-        }
-        createOption("حذف التكوين", R.drawable.ic_delete_24dp) {
-            onRemove(guid, pos)
-        }
-
-        bottomSheetDialog.setContentView(scrollView)
-        bottomSheetDialog.window?.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)?.setBackgroundColor(Color.TRANSPARENT)
-        bottomSheetDialog.show()
-    }
-    
-    override fun onRemove(guid: String, pos: Int) { 
-        AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm)
-            .setPositiveButton(android.R.string.ok) { _, _ -> mainViewModel.removeServer(guid) }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show() 
-    }
-    
-    override fun onEdit(guid: String, pos: Int) {} 
+    override fun onRemove(guid: String, pos: Int) {} 
     override fun onShare(url: String) {} 
     override fun onRefreshData() {}
+    override fun onShare(guid: String, profile: ProfileItem, position: Int, more: Boolean) {}
 
     fun openAshorConfig() {
         startActivity(Intent(this, ServerAshorActivity::class.java))
