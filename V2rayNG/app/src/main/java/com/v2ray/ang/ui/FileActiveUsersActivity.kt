@@ -38,6 +38,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
     private var baseUrl: String = "https://education.ashor.shop"
     private lateinit var mainContainer: LinearLayout
     private lateinit var tvLoading: TextView
+    private lateinit var tvUsersCount: TextView // 🌟 لعرض عدد المتصلين/المحظورين
     private lateinit var etSearch: EditText
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private var currentGuid: String = ""
@@ -112,6 +113,16 @@ class FileActiveUsersActivity : AppCompatActivity() {
         tabsLayout.addView(btnActiveTab)
         tabsLayout.addView(btnBannedTab)
 
+        // 🌟 إعداد نص عدد المشتركين البارز 🌟
+        tvUsersCount = TextView(this).apply {
+            text = ""
+            textSize = 15f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, 30, 0, 10)
+            visibility = View.GONE
+        }
+
         tvLoading = TextView(this).apply {
             text = "جاري تجميع بيانات المتصلين..."
             setTextColor(Color.parseColor("#FF9800"))
@@ -143,6 +154,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
         root.addView(header)
         root.addView(etSearch)
         root.addView(tabsLayout)
+        root.addView(tvUsersCount) // إضافة العداد
         root.addView(tvLoading)
         root.addView(swipeRefreshLayout)
 
@@ -190,6 +202,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
             tvLoading.visibility = View.VISIBLE
             tvLoading.text = "جاري تجميع بيانات المتصلين..."
             mainContainer.removeAllViews()
+            tvUsersCount.visibility = View.GONE
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
@@ -258,6 +271,8 @@ class FileActiveUsersActivity : AppCompatActivity() {
                                         for (i in 0 until parsedArray.length()) {
                                             val obj = parsedArray.getJSONObject(i)
                                             obj.put("realUsageBytes", actualUsageBytes) 
+                                            // 🌟 حقن الآيدي الخاص الدقيق لضمان نجاح الحظر 🌟
+                                            obj.put("sourceGuid", targetGuid) 
                                         }
                                         return@async parsedArray
                                     }
@@ -338,7 +353,18 @@ class FileActiveUsersActivity : AppCompatActivity() {
     }
 
     private fun renderUsersList(array: JSONArray, type: String) {
-        if (array.length() == 0) {
+        // 🌟 تحديث وإظهار العدد 🌟
+        val count = array.length()
+        tvUsersCount.visibility = View.VISIBLE
+        if (type == "ACTIVE") {
+            tvUsersCount.text = "🟢 إجمالي النشطين الآن: $count"
+            tvUsersCount.setTextColor(Color.parseColor("#4CAF50"))
+        } else {
+            tvUsersCount.text = "🚫 إجمالي المحظورين: $count"
+            tvUsersCount.setTextColor(Color.parseColor("#F44336"))
+        }
+
+        if (count == 0) {
             mainContainer.addView(TextView(this@FileActiveUsersActivity).apply { 
                 text = if (etSearch.text.isNotEmpty()) "لم يتم العثور على نتائج تطابق بحثك" 
                        else if (type == "ACTIVE") "لا يوجد متصلين حالياً" 
@@ -360,6 +386,9 @@ class FileActiveUsersActivity : AppCompatActivity() {
             val name = obj.optString("name", "مجهول الهوية")
             val pfp = obj.optString("pfp", "")
 
+            // 🌟 سحب الآيدي المخصص لهذا الجهاز بالذات 🌟
+            val sourceGuid = obj.optString("sourceGuid", currentGuid)
+
             val serverUsageBytes = obj.optLong("realUsageBytes", obj.optLong("totalUsageBytes", 0L))
             var finalUsageStr = formatBytes(serverUsageBytes)
 
@@ -367,11 +396,11 @@ class FileActiveUsersActivity : AppCompatActivity() {
                 finalUsageStr = fallbackMainUsage 
             }
 
-            addUserCardOriginal(deviceId, name, userId, pfp, isBanned, type, hasActiveStory, finalUsageStr)
+            addUserCardOriginal(deviceId, name, userId, pfp, isBanned, type, hasActiveStory, finalUsageStr, sourceGuid)
         }
     }
 
-    private fun addUserCardOriginal(deviceId: String, name: String, userId: String, pfp: String, isBanned: Boolean, currentTab: String, hasActiveStory: Boolean, usageStr: String) {
+    private fun addUserCardOriginal(deviceId: String, name: String, userId: String, pfp: String, isBanned: Boolean, currentTab: String, hasActiveStory: Boolean, usageStr: String, sourceGuid: String) {
         
         val cardView = CardView(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { 
@@ -468,7 +497,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
             setPadding(0, 5, 0, 0)
         }
 
-        // 🌟 تعديل قسم الـ Device ID وإضافة زر الأجهزة 🌟
         val deviceRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.RIGHT or Gravity.END
@@ -490,7 +518,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         
         deviceRow.addView(tvDevice)
 
-        // إضافة أيقونة "عرض الأجهزة" في حال كان المتصل لديه حساب (User ID)
         if (userId.isNotEmpty()) {
             val btnAllDevices = TextView(this).apply {
                 text = " 🔗 عرض الأجهزة"
@@ -508,10 +535,10 @@ class FileActiveUsersActivity : AppCompatActivity() {
         infoLayout.addView(tvName)
         infoLayout.addView(tvUsage)
         infoLayout.addView(tvId)
-        infoLayout.addView(deviceRow) // تم استبدال tvDevice بـ deviceRow بالكامل
+        infoLayout.addView(deviceRow) 
 
         val btnAction = MaterialButton(this).apply {
-            text = if (isBanned) "إلغاء الحظر" else "حظر فوراً"
+            text = if (isBanned) "إلغاء الحظر" else "حظر وطرد"
             setBackgroundColor(if (isBanned) Color.parseColor("#4CAF50") else Color.parseColor("#F44336")) 
             setTextColor(Color.WHITE)
             textSize = 12f
@@ -521,7 +548,8 @@ class FileActiveUsersActivity : AppCompatActivity() {
                 setMargins(0, 0, 20, 0)
             }
             setOnClickListener {
-                toggleBanStatus(deviceId, name, userId, pfp, !isBanned, currentTab)
+                // 🌟 إرسال الآيدي الدقيق لتنفيذ الحظر/إلغاء الحظر 🌟
+                toggleBanStatus(deviceId, name, userId, pfp, !isBanned, currentTab, sourceGuid)
             }
         }
 
@@ -533,7 +561,6 @@ class FileActiveUsersActivity : AppCompatActivity() {
         mainContainer.addView(cardView)
     }
 
-    // 🌟 دالة عرض الأجهزة المنبثقة 🌟
     private fun showDevicesDialog(userId: String, userName: String, currentDeviceId: String) {
         val bottomSheet = BottomSheetDialog(this)
         
@@ -642,11 +669,12 @@ class FileActiveUsersActivity : AppCompatActivity() {
         return row
     }
 
-    private fun toggleBanStatus(deviceId: String, name: String, userId: String, pfp: String, banStatus: Boolean, currentTab: String) {
+    // 🌟 دالة الحظر بعد التحديث 🌟
+    private fun toggleBanStatus(deviceId: String, name: String, userId: String, pfp: String, banStatus: Boolean, currentTab: String, exactSourceGuid: String) {
         val actionName = if (banStatus) "حظر وطرد" else "إلغاء حظر"
         AlertDialog.Builder(this)
             .setTitle("تأكيد العملية")
-            .setMessage("هل أنت متأكد أنك تريد $actionName هذا المستخدم؟\n(سيتم فصل اتصاله فوراً ومنعه من الدخول)")
+            .setMessage("هل أنت متأكد أنك تريد $actionName هذا المستخدم؟\n(سيتم ${if (banStatus) "فصل اتصاله فوراً ومنعه" else "السماح له"} بالدخول)")
             .setPositiveButton("نعم") { _, _ ->
                 tvLoading.visibility = View.VISIBLE
                 tvLoading.text = "جاري تنفيذ الأمر..."
@@ -658,15 +686,9 @@ class FileActiveUsersActivity : AppCompatActivity() {
                         conn.setRequestProperty("Content-Type", "application/json")
                         conn.doOutput = true
 
-                        var baseLicenseId = V2rayCrypt.getLicenseId(this@FileActiveUsersActivity, currentGuid)
-                        if (baseLicenseId.isEmpty() || baseLicenseId == "LEGACY") {
-                            baseLicenseId = currentGuid
-                        }
-                        
-                        val targetGuid = if (userId.isNotEmpty()) userId else baseLicenseId 
-
+                        // 🌟 إرسال الـ ID الدقيق اللي مكنك عليه المستخدم 🌟
                         val payload = JSONObject()
-                            .put("guid", targetGuid) 
+                            .put("guid", exactSourceGuid) 
                             .put("deviceId", deviceId)
                             .put("banStatus", banStatus)
                             .put("name", name)
@@ -677,10 +699,11 @@ class FileActiveUsersActivity : AppCompatActivity() {
                         
                         val responseOk = conn.responseCode == 200
 
+                        // إذا حظرناه، نطرده فوراً بضربه بإيعاز disconnect
                         if (responseOk && banStatus) {
                             try {
                                 val pingPayload = JSONObject()
-                                    .put("guid", targetGuid)
+                                    .put("guid", exactSourceGuid)
                                     .put("deviceId", deviceId)
                                     .put("userId", userId)
                                     .put("disconnect", true) 
@@ -696,7 +719,9 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
                         if (responseOk) {
                             withContext(Dispatchers.Main) {
-                                Toast.makeText(this@FileActiveUsersActivity, "تم التنفيذ والطرد بنجاح!", Toast.LENGTH_SHORT).show()
+                                val successMsg = if (banStatus) "تم الحظر والطرد بنجاح!" else "تم إلغاء الحظر!"
+                                Toast.makeText(this@FileActiveUsersActivity, successMsg, Toast.LENGTH_SHORT).show()
+                                // 🌟 تحديث القائمة الحالية (المحظور راح يطير من النشطين والملغى حظره راح يطير من المحظورين) 🌟
                                 loadUsers(currentTab, isSilent = false) 
                             }
                         } else {
