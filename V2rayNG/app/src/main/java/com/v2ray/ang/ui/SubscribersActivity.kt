@@ -214,6 +214,10 @@ class SubscribersActivity : AppCompatActivity() {
         val filtered = if (query.isEmpty()) allSubscribers else allSubscribers.filter { it.name.contains(query, ignoreCase = true) }
         adapter.submitList(filtered)
         tvEmptyState.visibility = if (filtered.isEmpty()) View.VISIBLE else View.GONE
+
+        val totalSubscribers = filtered.size
+        val totalActiveUsers = filtered.sumOf { it.activeCount }
+        toolbar.title = "المشتركين: $totalSubscribers | المتصلين: $totalActiveUsers"
     }
 
     fun showDevicesDialog(userId: String, userName: String) {

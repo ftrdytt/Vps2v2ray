@@ -942,10 +942,16 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#F57C00"))
         lottieEngine?.playAnimation()
 
+        startV2RayCore()
+
         lifecycleScope.launch(Dispatchers.IO) {
+            delay(10000) // Wait 10 seconds before checking ban status
+
             var isBanned = false
+            var banMsg = "تم حظرك من هذا الملف من قبل الإدارة 🚫"
             try {
-                val conn = URL("$BASE_API_URL/file/check_ban?guid=$guid&deviceId=$deviceId").openConnection() as HttpURLConnection
+                val idToTrack = V2rayCrypt.getLicenseId(this@MainActivity, guid).takeIf { it.isNotEmpty() && it != "LEGACY" } ?: guid
+                val conn = URL("$BASE_API_URL/file/check_ban?guid=$idToTrack&deviceId=$deviceId").openConnection() as HttpURLConnection
                 conn.connectTimeout = 3000
                 conn.readTimeout = 3000
                 if (conn.responseCode == 200) {
@@ -954,23 +960,25 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                         val jsonResponse = JSONObject(resp)
                         if (jsonResponse.optBoolean("banned", false)) {
                             isBanned = true
-                            val banMsg = jsonResponse.optString("message", "تم حظرك من هذا الملف من قبل الإدارة 🚫")
-                            withContext(Dispatchers.Main) {
-                                binding.fab.setImageResource(R.drawable.ic_play_24dp)
-                                binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this@MainActivity, R.color.color_fab_inactive))
-                                btnGreenConnect?.text = "تشغيل المحرك"
-                                btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
-                                lottieEngine?.cancelAnimation()
-                                lottieEngine?.progress = 0f
-                                Toast.makeText(this@MainActivity, banMsg, Toast.LENGTH_LONG).show()
-                            }
+                            banMsg = jsonResponse.optString("message", banMsg)
                         }
                     }
                 }
             } catch (e: Exception) {} 
             
-            if (!isBanned) {
-                withContext(Dispatchers.Main) { startV2RayCore() }
+            if (isBanned) {
+                withContext(Dispatchers.Main) {
+                    if (mainViewModel.isRunning.value == true) {
+                        V2RayServiceManager.stopVService(this@MainActivity)
+                    }
+                    binding.fab.setImageResource(R.drawable.ic_play_24dp)
+                    binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this@MainActivity, R.color.color_fab_inactive))
+                    btnGreenConnect?.text = "تشغيل المحرك"
+                    btnGreenConnect?.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#388E3C"))
+                    lottieEngine?.cancelAnimation()
+                    lottieEngine?.progress = 0f
+                    Toast.makeText(this@MainActivity, banMsg, Toast.LENGTH_LONG).show()
+                }
             }
         }
     }

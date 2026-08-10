@@ -663,7 +663,7 @@ class FileActiveUsersActivity : AppCompatActivity() {
                             baseLicenseId = currentGuid
                         }
                         
-                        val targetGuid = if (userId.isNotEmpty()) userId else baseLicenseId 
+                        val targetGuid = baseLicenseId
 
                         val payload = JSONObject()
                             .put("guid", targetGuid) 
@@ -696,7 +696,9 @@ class FileActiveUsersActivity : AppCompatActivity() {
 
                         if (responseOk) {
                             withContext(Dispatchers.Main) {
-                                Toast.makeText(this@FileActiveUsersActivity, "تم التنفيذ والطرد بنجاح!", Toast.LENGTH_SHORT).show()
+                                val successMsg = if (banStatus) "تم التنفيذ والطرد بنجاح!" else "تم إلغاء الحظر بنجاح!"
+                                Toast.makeText(this@FileActiveUsersActivity, successMsg, Toast.LENGTH_SHORT).show()
+                                // After ban/unban, we should reload both lists or redirect to the appropriate list to reflect changes
                                 loadUsers(currentTab, isSilent = false) 
                             }
                         } else {
