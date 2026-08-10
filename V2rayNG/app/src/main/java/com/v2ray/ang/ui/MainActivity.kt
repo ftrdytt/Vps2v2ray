@@ -1449,7 +1449,14 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         }
     }
     
-    override fun onRemove(guid: String, pos: Int) {} 
+    override fun onRemove(guid: String, position: Int) { 
+        AlertDialog.Builder(this).setMessage(R.string.del_config_comfirm)
+            .setPositiveButton(android.R.string.ok) { _, _ -> mainViewModel.removeServer(guid) }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show() 
+    }
+    
+    override fun onEdit(guid: String, position: Int) {} 
     override fun onShare(url: String) {} 
     override fun onRefreshData() {}
     override fun onShare(guid: String, profile: ProfileItem, position: Int, more: Boolean) {}
