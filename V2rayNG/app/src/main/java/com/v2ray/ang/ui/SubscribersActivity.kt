@@ -28,6 +28,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AngConfigManager
+import com.v2ray.ang.handler.AuthManager
 import com.v2ray.ang.handler.NetworkTime
 import com.v2ray.ang.handler.V2rayCrypt
 import com.v2ray.ang.util.AvatarGenerator
@@ -140,11 +141,13 @@ class SubscribersActivity : AppCompatActivity() {
 
             var isChanged = false
             val prefs = getSharedPreferences("FileStatsPrefs", Context.MODE_PRIVATE)
+            val myUserId = AuthManager.getId(this@SubscribersActivity)
 
             val deferreds = allSubscribers.map { sub ->
                 async {
                     try {
-                        val connCheck = URL("$BASE_API_URL/check?guid=${sub.licenseId}").openConnection() as HttpURLConnection
+                        // 🌟 إضافة userId للرابط لحل مشكلة رجوع الأرقام بصفر 🌟
+                        val connCheck = URL("$BASE_API_URL/check?guid=${sub.licenseId}&userId=$myUserId").openConnection() as HttpURLConnection
                         connCheck.requestMethod = "GET"
                         connCheck.connectTimeout = 4000
                         connCheck.readTimeout = 4000
@@ -153,7 +156,6 @@ class SubscribersActivity : AppCompatActivity() {
                             val data = JSONObject(BufferedReader(InputStreamReader(connCheck.inputStream)).readText())
                             val exp = data.optLong("expiryTime", -1L)
                             
-                            // 🌟 تعديل قراءة الأرقام لضمان استلامها حتى لو تغير اسمها بالـ API 🌟
                             val actCount = data.optInt("activeCount", data.optInt("active_count", 0)) 
                             val totalUsageBytes = data.optLong("totalUsageBytes", data.optLong("usage", 0L)) 
                             
@@ -162,6 +164,7 @@ class SubscribersActivity : AppCompatActivity() {
                             val comments = data.optInt("comments", data.optInt("comment_count", 0))
                             
                             if (exp >= 0L) {
+                                // 🌟 تحديث عدد النشطين محلياً حتى يقرأه التطبيق 🌟
                                 V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, exp, actCount)
                                 
                                 val baseline = prefs.getLong("baseline_${sub.licenseId}", 0L)
@@ -620,6 +623,7 @@ class SubscribersAdapter(
             tvDataUsage?.text = "استهلاك: $usage"
             tvDataUsage?.visibility = View.VISIBLE
 
+            // 🌟 إظهار عدد النشطين بشكل صحيح 🌟
             tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
             tvActiveCount.setOnClickListener {
                 try {
@@ -630,61 +634,42 @@ class SubscribersAdapter(
                 } catch (e: Exception) {}
             }
 
+            // 🌟 حل مشكلة التداخل والتكرار بالواجهة جذرياً 🌟
             val parentLayout = tvActiveCount.parent as? ViewGroup
             if (parentLayout != null) {
-                var socialBar = parentLayout.findViewWithTag<LinearLayout>("social_bar_${item.licenseId}")
+                // نستخدم tag ثابت لكل الكاردات حتى نمنع تكرار الإضافة
+                var socialBar = parentLayout.findViewWithTag<LinearLayout>("social_bar_view_fixed")
+                
                 if (socialBar == null) {
                     socialBar = LinearLayout(itemView.context).apply {
-                        tag = "social_bar_${item.licenseId}"
+                        tag = "social_bar_view_fixed"
                         orientation = LinearLayout.HORIZONTAL
                         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 15, 0, 15) 
+                            setMargins(0, 25, 0, 10) 
                         }
-                        gravity = Gravity.CENTER_VERTICAL
+                        gravity = Gravity.CENTER
+                        weightSum = 3f // توزيع الأيقونات بالتساوي
+                        background = GradientDrawable().apply {
+                            setColor(Color.parseColor("#1AFFFFFF"))
+                            cornerRadius = 25f
+                        }
+                        setPadding(10, 20, 10, 20)
                     }
 
-                    val tvViews = TextView(itemView.context).apply {
-                        text = "👁️ $viewsCount"
-                        setTextColor(Color.LTGRAY)
-                        textSize = 15f 
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                        setPadding(0, 0, 50, 0)
-                    }
-
-                    val tvLikes = TextView(itemView.context).apply {
-                        text = "❤️ $likesCount"
-                        setTextColor(Color.LTGRAY)
-                        textSize = 15f 
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                        setPadding(0, 0, 50, 0)
-                        
-                        setOnClickListener {
-                            try {
-                                val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.ConnectionsActivity"))
-                                intent.putExtra("targetUserId", item.licenseId)
-                                intent.putExtra("type", "likers") 
-                                itemView.context.startActivity(intent)
-                            } catch (e: Exception) {
-                                Toast.makeText(itemView.context, "حدث خطأ أثناء الفتح", Toast.LENGTH_SHORT).show()
-                            }
+                    fun createSocialText(textStr: String): TextView {
+                        return TextView(itemView.context).apply {
+                            text = textStr
+                            setTextColor(Color.LTGRAY)
+                            textSize = 15f 
+                            setTypeface(null, android.graphics.Typeface.BOLD)
+                            gravity = Gravity.CENTER
+                            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                         }
                     }
 
-                    val tvComments = TextView(itemView.context).apply {
-                        text = "💬 $commentsCount"
-                        setTextColor(Color.LTGRAY)
-                        textSize = 15f 
-                        setTypeface(null, android.graphics.Typeface.BOLD)
-                        
-                        setOnClickListener {
-                            try {
-                                val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.CommentsActivity"))
-                                intent.putExtra("guid", item.licenseId)
-                                intent.putExtra("isOwnerOrAdmin", true) 
-                                itemView.context.startActivity(intent)
-                            } catch (e: Exception) {}
-                        }
-                    }
+                    val tvViews = createSocialText("👁️ $viewsCount")
+                    val tvLikes = createSocialText("❤️ $likesCount")
+                    val tvComments = createSocialText("💬 $commentsCount")
 
                     socialBar.addView(tvViews)
                     socialBar.addView(tvLikes)
@@ -693,9 +678,33 @@ class SubscribersAdapter(
                     val index = parentLayout.indexOfChild(tvActiveCount)
                     parentLayout.addView(socialBar, index + 1)
                 } else {
+                    // في حال كان الـ Social Bar موجود، فقط نحدث الأرقام داخله
                     (socialBar.getChildAt(0) as? TextView)?.text = "👁️ $viewsCount"
                     (socialBar.getChildAt(1) as? TextView)?.text = "❤️ $likesCount"
                     (socialBar.getChildAt(2) as? TextView)?.text = "💬 $commentsCount"
+                }
+
+                // 🌟 ربط الأحداث (الضغطات) من جديد بعد التحديث 🌟
+                val tvLikesView = socialBar.getChildAt(1) as? TextView
+                tvLikesView?.setOnClickListener {
+                    try {
+                        val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.ConnectionsActivity"))
+                        intent.putExtra("targetUserId", item.licenseId)
+                        intent.putExtra("type", "likers") 
+                        itemView.context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(itemView.context, "حدث خطأ أثناء الفتح", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                val tvCommentsView = socialBar.getChildAt(2) as? TextView
+                tvCommentsView?.setOnClickListener {
+                    try {
+                        val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.CommentsActivity"))
+                        intent.putExtra("guid", item.licenseId)
+                        intent.putExtra("isOwnerOrAdmin", true) 
+                        itemView.context.startActivity(intent)
+                    } catch (e: Exception) {}
                 }
             }
             
