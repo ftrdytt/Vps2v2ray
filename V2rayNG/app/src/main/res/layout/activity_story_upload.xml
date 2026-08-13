@@ -1,144 +1,219 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0A0A0C">
+    android:background="#000000">
 
-    <LinearLayout
+    <!-- 🌟 حاوية القصة (هذا الجزء الذي سيتم التقاطه ورفعه) 🌟 -->
+    <FrameLayout
+        android:id="@+id/story_capture_frame"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:layout_height="match_parent">
 
-        <androidx.appcompat.widget.Toolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            android:background="#141417"
-            app:title="إضافة قصة جديدة"
-            app:titleTextColor="#FFFFFF"
-            app:navigationIcon="?attr/homeAsUpIndicator"/>
-
-        <ScrollView
+        <!-- المعاينة (صورة أو فيديو تملأ الشاشة) -->
+        <ImageView
+            android:id="@+id/iv_story_preview"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:fillViewport="true"
-            android:padding="20dp">
-            
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
+            android:scaleType="centerCrop"
+            android:background="#0A0A0C" />
 
-                <!-- حاوية الصورة والمعاينة الحية للنص -->
-                <androidx.cardview.widget.CardView
-                    android:id="@+id/card_preview"
-                    android:layout_width="match_parent"
-                    android:layout_height="350dp"
-                    app:cardCornerRadius="16dp"
-                    app:cardBackgroundColor="#1A1A1D"
-                    android:layout_marginBottom="20dp">
+        <!-- طبقة تظليل خفيفة لجعل النصوص واضحة -->
+        <View
+            android:id="@+id/view_overlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#33000000"
+            android:visibility="gone"/>
 
-                    <!-- تم تغيير الـ ID هنا ليتوافق مع كود الكوتلن الجديد ليتم التقاطه كصورة واحدة -->
-                    <FrameLayout
-                        android:id="@+id/story_capture_frame"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent">
+        <!-- حاوية العناصر العائمة (النصوص والملصقات والموسيقى) -->
+        <FrameLayout
+            android:id="@+id/drawing_view_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </FrameLayout>
 
-                        <ImageView
-                            android:id="@+id/iv_story_preview"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:scaleType="centerCrop"
-                            android:src="@android:drawable/ic_menu_gallery"
-                            app:tint="#80FFFFFF"/>
+    <!-- 🌟 الأزرار العلوية الشفافة (أدوات التعديل) 🌟 -->
+    <LinearLayout
+        android:id="@+id/top_tools_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingTop="50dp"
+        android:paddingBottom="20dp"
+        android:paddingStart="15dp"
+        android:paddingEnd="15dp"
+        android:background="#44000000">
 
-                        <!-- طبقة تظليل خفيفة لجعل النص مقروءاً فوق الصورة -->
-                        <View
-                            android:id="@+id/view_overlay"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:background="#44000000"
-                            android:visibility="gone"/>
+        <!-- زر الإغلاق -->
+        <ImageView
+            android:id="@+id/btn_close"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            app:tint="#FFFFFF"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="5dp"/>
 
-                        <!-- نص المعاينة الحية (قابل للتحريك والتكبير باللمس) -->
-                        <TextView
-                            android:id="@+id/tv_preview_text"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="center"
-                            android:gravity="center"
-                            android:padding="24dp"
-                            android:textColor="#FFFFFF"
-                            android:textSize="26sp"
-                            android:textStyle="bold"
-                            android:shadowColor="#000000"
-                            android:shadowDx="2"
-                            android:shadowDy="2"
-                            android:shadowRadius="8"/>
-                    </FrameLayout>
-                </androidx.cardview.widget.CardView>
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_select_image"
-                    android:layout_width="match_parent"
-                    android:layout_height="60dp"
-                    android:text="اختيار صورة من الاستوديو"
-                    android:textColor="#FFFFFF"
-                    app:backgroundTint="#252529"
-                    app:cornerRadius="12dp"
-                    android:layout_marginBottom="16dp"/>
+        <!-- زر الموسيقى -->
+        <ImageView
+            android:id="@+id/btn_add_music"
+            android:layout_width="45dp"
+            android:layout_height="45dp"
+            android:src="@android:drawable/ic_media_play"
+            app:tint="#FFFFFF"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="8dp"
+            android:layout_marginEnd="15dp"/>
 
-                <com.google.android.material.textfield.TextInputLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    app:boxBackgroundColor="#1A1A1D"
-                    app:boxCornerRadiusTopStart="12dp"
-                    app:boxCornerRadiusTopEnd="12dp"
-                    app:boxCornerRadiusBottomStart="12dp"
-                    app:boxCornerRadiusBottomEnd="12dp"
-                    app:boxStrokeWidth="0dp"
-                    android:layout_marginBottom="24dp">
-                    
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/et_story_text"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:minLines="3"
-                        android:gravity="top|start"
-                        android:hint="اكتب نصاً لقصتك (معاينة حية)..."
-                        android:textColorHint="#80FFFFFF"
-                        android:textColor="#FFFFFF" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btn_publish_story"
-                    android:layout_width="match_parent"
-                    android:layout_height="65dp"
-                    android:text="نشر القصة 🚀"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="16dp"
-                    app:backgroundTint="#2196F3"/>
-            </LinearLayout>
-        </ScrollView>
+        <!-- زر النص -->
+        <ImageView
+            android:id="@+id/btn_add_text"
+            android:layout_width="45dp"
+            android:layout_height="45dp"
+            android:src="@android:drawable/ic_menu_edit"
+            app:tint="#FFFFFF"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="8dp"/>
     </LinearLayout>
 
-    <!-- شاشة التحميل تظهر أثناء الرفع -->
+    <!-- 🌟 زر النشر السفلي (انستغرام ستايل) 🌟 -->
+    <LinearLayout
+        android:id="@+id/bottom_tools_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:gravity="end"
+        android:padding="20dp"
+        android:background="#44000000">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_publish_story"
+            android:layout_width="wrap_content"
+            android:layout_height="55dp"
+            android:text="مشاركة 🚀"
+            android:textColor="#000000"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:cornerRadius="30dp"
+            app:backgroundTint="#FFFFFF"
+            android:paddingStart="25dp"
+            android:paddingEnd="25dp"/>
+    </LinearLayout>
+
+    <!-- 🌟 شاشة إدخال وتعديل النص (تظهر كطبقة شفافة فوك الصورة) 🌟 -->
+    <FrameLayout
+        android:id="@+id/text_editor_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#B3000000"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_done_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="50dp"
+            android:layout_marginEnd="15dp"
+            android:text="تم"
+            android:textColor="#FFFFFF"
+            app:backgroundTint="#33FFFFFF"
+            app:cornerRadius="20dp"/>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="55dp"
+            android:orientation="horizontal"
+            android:gravity="center">
+            
+            <!-- زر تغيير خلفية النص -->
+            <ImageView
+                android:id="@+id/btn_toggle_text_bg"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@android:drawable/ic_menu_sort_by_size"
+                app:tint="#FFFFFF"
+                android:padding="5dp"
+                android:layout_marginEnd="20dp"/>
+
+            <!-- زر تغيير نوع الخط -->
+            <TextView
+                android:id="@+id/btn_toggle_font"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="كلاسيكي"
+                android:textColor="#FFFFFF"
+                android:gravity="center"
+                android:textStyle="bold"
+                android:paddingStart="15dp"
+                android:paddingEnd="15dp"/>
+        </LinearLayout>
+
+        <EditText
+            android:id="@+id/et_story_text_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:hint="اكتب هنا..."
+            android:textColorHint="#AAFFFFFF"
+            android:textColor="#FFFFFF"
+            android:textSize="32sp"
+            android:background="@null"
+            android:inputType="textMultiLine"
+            android:padding="20dp"/>
+
+        <!-- شريط الألوان -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:layout_marginBottom="20dp"
+            android:scrollbars="none"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp">
+            <LinearLayout
+                android:id="@+id/color_picker_container"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"/>
+        </HorizontalScrollView>
+    </FrameLayout>
+
+    <!-- شاشة التحميل -->
     <FrameLayout
         android:id="@+id/layout_loading"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#AA000000"
+        android:background="#CC000000"
         android:clickable="true"
         android:focusable="true"
         android:visibility="gone">
-
         <ProgressBar
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:indeterminateTint="#2196F3" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginTop="50dp"
+            android:text="جاري التجهيز والنشر..."
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"/>
     </FrameLayout>
-
-</RelativeLayout>
+</FrameLayout>
