@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Base64
+import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.widget.FrameLayout
@@ -88,25 +89,12 @@ class UserProfileActivity : AppCompatActivity() {
             checkFollowStatus()
         }
         
-        // 🌟 تم إيقاف الانتقال مؤقتاً لتفادي خطأ البناء (Build Error) 🌟
         tvFollowersCount.setOnClickListener {
             Toast.makeText(this, "قائمة المتابعين (قريباً)...", Toast.LENGTH_SHORT).show()
-            /*
-            val intent = Intent(this, ConnectionsActivity::class.java)
-            intent.putExtra("targetUserId", targetUserId)
-            intent.putExtra("type", "followers")
-            startActivity(intent)
-            */
         }
 
         tvFollowingCount.setOnClickListener {
             Toast.makeText(this, "قائمة المتابَعين (قريباً)...", Toast.LENGTH_SHORT).show()
-            /*
-            val intent = Intent(this, ConnectionsActivity::class.java)
-            intent.putExtra("targetUserId", targetUserId)
-            intent.putExtra("type", "following")
-            startActivity(intent)
-            */
         }
 
         fetchUserData()
@@ -239,7 +227,7 @@ class UserProfileActivity : AppCompatActivity() {
                 layoutAvatarContainer.setPadding(8, 8, 8, 8)
                 
                 layoutAvatarContainer.setOnClickListener {
-                    val intent = Intent(this, StoryViewerActivity::class.java)
+                    val intent = Intent(this, Class.forName("com.v2ray.ang.ui.StoryViewerActivity"))
                     intent.putExtra("targetUserId", targetUserId)
                     startActivity(intent)
                 }
@@ -247,14 +235,48 @@ class UserProfileActivity : AppCompatActivity() {
                 layoutAvatarContainer.background = null
                 layoutAvatarContainer.setPadding(0, 0, 0, 0)
                 
-                // 🌟 إضافة مهمة جداً: إذا كان حسابي وليس لدي قصة، بضغطي على صورتي تفتح شاشة نشر قصة! 🌟
                 if (targetUserId == myUserId) {
                     layoutAvatarContainer.setOnClickListener {
-                        val intent = Intent(this, StoryUploadActivity::class.java)
+                        val intent = Intent(this, Class.forName("com.v2ray.ang.ui.StoryUploadActivity"))
                         startActivity(intent)
                     }
                 } else {
                     layoutAvatarContainer.setOnClickListener(null)
+                }
+            }
+
+            // 🌟 إضافة زر (+) العائم الاحترافي إذا كان هذا حسابي 🌟
+            if (targetUserId == myUserId) {
+                val existingAddBtn = layoutAvatarContainer.findViewWithTag<ImageView>("btn_add_story")
+                if (existingAddBtn == null) {
+                    val btnAddStory = ImageView(this).apply {
+                        tag = "btn_add_story"
+                        setImageResource(android.R.drawable.ic_input_add) 
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(Color.parseColor("#2196F3")) 
+                            setStroke(6, Color.parseColor("#0A0A0C")) // إطار سميك بلون الخلفية لعمل عزل
+                        }
+                        setColorFilter(Color.WHITE)
+                        setPadding(12, 12, 12, 12)
+                        
+                        val size = 90
+                        layoutParams = FrameLayout.LayoutParams(size, size).apply {
+                            gravity = Gravity.BOTTOM or Gravity.START
+                            setMargins(10, 10, 10, 10)
+                        }
+                        
+                        setOnClickListener {
+                            val intent = Intent(this@UserProfileActivity, Class.forName("com.v2ray.ang.ui.StoryUploadActivity"))
+                            startActivity(intent)
+                        }
+                    }
+                    layoutAvatarContainer.addView(btnAddStory)
+                }
+            } else {
+                // إزالة الزر إذا تم تحميل ملف شخص آخر في نفس الدورة
+                layoutAvatarContainer.findViewWithTag<ImageView>("btn_add_story")?.let {
+                    layoutAvatarContainer.removeView(it)
                 }
             }
         }
