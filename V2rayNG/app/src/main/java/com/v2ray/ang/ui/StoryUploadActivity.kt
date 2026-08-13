@@ -1,5 +1,6 @@
 package com.v2ray.ang.ui
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -14,40 +15,39 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.text.Editable
-import android.text.TextWatcher
 import android.util.Base64
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
-import com.google.android.material.textfield.TextInputEditText
 import com.v2ray.ang.R
 import com.v2ray.ang.handler.AuthManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
+import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.absoluteValue
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -59,201 +59,305 @@ class StoryUploadActivity : AppCompatActivity() {
     private var hasSelectedVideo = false
     private var selectedVideoUri: Uri? = null
 
-    // 🌟 عناصر الواجهة 🌟
+    // 🌟 عناصر الواجهة (التصميم الجديد الشفاف) 🌟
     private lateinit var storyCaptureFrame: FrameLayout
     private lateinit var ivPreview: ImageView
-    private lateinit var tvPreviewText: TextView
     private lateinit var viewOverlay: View
-    private lateinit var btnSelectImage: MaterialButton
-    private lateinit var etText: TextInputEditText
-    private lateinit var btnPublish: MaterialButton
+    private lateinit var drawingContainer: FrameLayout
     private lateinit var layoutLoading: FrameLayout
+    private lateinit var topToolsLayout: LinearLayout
+    private lateinit var bottomToolsLayout: LinearLayout
 
-    // 🌟 متغيرات أدوات التعديل (ستايل انستغرام) 🌟
-    private var currentTextColor = Color.WHITE
-    private var currentTextStyle = "CLASSIC" // CLASSIC, NEON, TYPEWRITER
+    // 🌟 أدوات محرر النصوص (الشاشة الكاملة) 🌟
+    private lateinit var textEditorLayout: FrameLayout
+    private lateinit var etTextInput: EditText
+    private lateinit var colorPickerContainer: LinearLayout
+    private lateinit var btnToggleFont: TextView
+    private lateinit var btnToggleTextBg: ImageView
 
-    // لوحة ألوان للقصص
     private val textStoryColors = arrayOf(
         "#FFFFFF", "#000000", "#FF5722", "#9C27B0", "#E91E63", "#009688", "#3F51B5", "#4CAF50", "#FF9800", "#FFEB3B"
     )
+
+    private var currentTextColor = Color.WHITE
+    private var currentTextStyle = "CLASSIC"
+    private var textBgMode = 0 // 0: Transparent, 1: Semi-transparent, 2: Solid
+    private var activeTextViewToEdit: TextView? = null
 
     private val pickMedia = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val uri = result.data?.data ?: return@registerForActivityResult
             val mimeType = contentResolver.getType(uri) ?: ""
-
-            if (mimeType.startsWith("video/")) {
-                handleVideoSelection(uri)
-            } else {
-                handleImageSelection(uri)
-            }
+            if (mimeType.startsWith("video/")) handleVideoSelection(uri) else handleImageSelection(uri)
+        } else {
+            // إذا المستخدم فتح الاستوديو وتراجع بدون ما يختار، نطلعه من الشاشة
+            if (!hasSelectedImage && !hasSelectedVideo) finish() 
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // إخفاء الـ Action Bar للشاشة الكاملة
+        supportActionBar?.hide()
         setContentView(R.layout.activity_story_upload)
-
-        val toolbar = findViewById<Toolbar>(R.id.toolbar)
-        setSupportActionBar(toolbar)
-        toolbar.setNavigationOnClickListener { onBackPressed() }
 
         storyCaptureFrame = findViewById(R.id.story_capture_frame)
         ivPreview = findViewById(R.id.iv_story_preview)
-        tvPreviewText = findViewById(R.id.tv_preview_text)
         viewOverlay = findViewById(R.id.view_overlay)
-        btnSelectImage = findViewById(R.id.btn_select_image)
-        etText = findViewById(R.id.et_story_text)
-        btnPublish = findViewById(R.id.btn_publish_story)
+        drawingContainer = findViewById(R.id.drawing_view_container)
         layoutLoading = findViewById(R.id.layout_loading)
+        topToolsLayout = findViewById(R.id.top_tools_layout)
+        bottomToolsLayout = findViewById(R.id.bottom_tools_layout)
 
-        // 🌟 بناء شريط أدوات التصميم (الألوان والخطوط) برمجياً وإضافته للشاشة 🌟
-        buildStoryEditorTools()
+        textEditorLayout = findViewById(R.id.text_editor_layout)
+        etTextInput = findViewById(R.id.et_story_text_input)
+        colorPickerContainer = findViewById(R.id.color_picker_container)
+        btnToggleFont = findViewById(R.id.btn_toggle_font)
+        btnToggleTextBg = findViewById(R.id.btn_toggle_text_bg)
 
-        // تفعيل نظام السحب والإفلات والتكبير للنص
-        setupTouchListeners(tvPreviewText)
-
-        etText.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                val text = s.toString().trim()
-                tvPreviewText.text = text
-                
-                if (!hasSelectedImage && !hasSelectedVideo) {
-                    if (text.isNotEmpty()) {
-                        ivPreview.setImageDrawable(null)
-                        val colorIndex = text.hashCode().absoluteValue % textStoryColors.size
-                        ivPreview.setBackgroundColor(Color.parseColor(textStoryColors[colorIndex]))
-                    } else {
-                        ivPreview.setImageResource(android.R.drawable.ic_menu_gallery)
-                        ivPreview.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#555555"))
-                        ivPreview.setBackgroundColor(Color.TRANSPARENT)
-                    }
-                }
-            }
-        })
-
-        btnSelectImage.setOnClickListener {
-            val intent = Intent(Intent.ACTION_PICK).apply {
-                type = "*/*"
-                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*"))
-            }
-            pickMedia.launch(intent)
+        // 🌟 فتح الاستوديو فوراً عند الدخول 🌟
+        if (savedInstanceState == null) {
+            openGallery()
         }
 
-        btnPublish.setOnClickListener {
-            val textContent = etText.text.toString().trim()
-            if (!hasSelectedImage && !hasSelectedVideo && textContent.isEmpty()) {
-                showCustomSnackbar("يجب إضافة صورة أو فيديو أو كتابة نص على الأقل", "#FF9800")
+        findViewById<ImageView>(R.id.btn_close).setOnClickListener { finish() }
+
+        // 🌟 زر إضافة نص حر 🌟
+        findViewById<ImageView>(R.id.btn_add_text).setOnClickListener {
+            activeTextViewToEdit = null
+            etTextInput.setText("")
+            openTextEditor()
+        }
+
+        // 🌟 إضافة ملصق الموسيقى 🌟
+        findViewById<ImageView>(R.id.btn_add_music).setOnClickListener {
+            addMusicSticker("موسيقى اشور", "صوت الإدارة")
+        }
+
+        // 🌟 زر المشاركة (النشر) 🌟
+        findViewById<MaterialButton>(R.id.btn_publish_story).setOnClickListener {
+            if (!hasSelectedImage && !hasSelectedVideo && drawingContainer.childCount == 0) {
+                showCustomSnackbar("يجب إضافة صورة أو نص أو موسيقى على الأقل", "#FF9800")
                 return@setOnClickListener
             }
-
-            // 🌟 التحقق من قيود الهاردوير (Limits Check) قبل النشر 🌟
-            if (!checkDailyQuota(isVideo = hasSelectedVideo)) {
-                return@setOnClickListener
-            }
-
+            if (!checkDailyQuota(isVideo = hasSelectedVideo)) return@setOnClickListener
+            
+            // إخفاء الأزرار الشفافة حتى لا تظهر في الصورة الملتقطة
+            topToolsLayout.visibility = View.INVISIBLE
+            bottomToolsLayout.visibility = View.INVISIBLE
+            
             uploadStory()
         }
+
+        setupTextEditorTools()
+    }
+
+    private fun openGallery() {
+        val intent = Intent(Intent.ACTION_PICK).apply {
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*"))
+        }
+        pickMedia.launch(intent)
     }
 
     // =========================================================================
-    // 🌟 أدوات تعديل الاستوري (انستغرام ستايل) المضافة برمجياً 🌟
+    // 🌟 أدوات محرر النصوص (Drag, Color, Font, Background) 🌟
     // =========================================================================
-    private fun buildStoryEditorTools() {
-        val rootLayout = findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as ViewGroup
-        
-        val toolsContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.BOTTOM
-                setMargins(0, 0, 0, 350) // لرفعه فوق زر النشر
-            }
-        }
-
-        // 1. شريط الستايلات (كلاسيكي، نيون، آلة كاتبة)
-        val stylesLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, 10, 0, 20)
-        }
-
-        val styles = mapOf("كلاسيكي" to "CLASSIC", "نيون" to "NEON", "آلة كاتبة" to "TYPEWRITER")
-        for ((label, styleKey) in styles) {
-            val btnStyle = TextView(this).apply {
-                text = label
-                setTextColor(Color.WHITE)
-                textSize = 14f
-                setPadding(30, 15, 30, 15)
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#66000000"))
-                    cornerRadius = 30f
-                }
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(10, 0, 10, 0)
-                }
-                setOnClickListener {
-                    applyTextStyle(styleKey)
-                }
-            }
-            stylesLayout.addView(btnStyle)
-        }
-
-        // 2. شريط الألوان الدائري
-        val colorsScroll = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            setPadding(20, 0, 20, 0)
-        }
-        val colorsLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-
+    private fun setupTextEditorTools() {
+        // شريط الألوان
         for (colorHex in textStoryColors) {
             val colorView = View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(80, 80).apply { setMargins(15, 0, 15, 0) }
+                layoutParams = LinearLayout.LayoutParams(90, 90).apply { setMargins(15, 0, 15, 0) }
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
                     setColor(Color.parseColor(colorHex))
-                    setStroke(3, Color.WHITE)
+                    setStroke(4, Color.WHITE)
                 }
                 setOnClickListener {
                     currentTextColor = Color.parseColor(colorHex)
-                    applyTextStyle(currentTextStyle) 
+                    etTextInput.setTextColor(currentTextColor)
+                    updateTextBackground()
                 }
             }
-            colorsLayout.addView(colorView)
+            colorPickerContainer.addView(colorView)
         }
 
-        colorsScroll.addView(colorsLayout)
-        toolsContainer.addView(stylesLayout)
-        toolsContainer.addView(colorsScroll)
-        rootLayout.addView(toolsContainer)
+        // تغيير الخط
+        btnToggleFont.setOnClickListener {
+            currentTextStyle = when (currentTextStyle) {
+                "CLASSIC" -> "NEON"
+                "NEON" -> "TYPEWRITER"
+                else -> "CLASSIC"
+            }
+            btnToggleFont.text = when (currentTextStyle) { "CLASSIC" -> "كلاسيكي"; "NEON" -> "نيون"; else -> "آلة كاتبة" }
+            applyTextStyleToEditText()
+        }
+
+        // تغيير خلفية النص
+        btnToggleTextBg.setOnClickListener {
+            textBgMode = (textBgMode + 1) % 3
+            updateTextBackground()
+        }
+
+        // زر (تم) عند الانتهاء من الكتابة
+        findViewById<MaterialButton>(R.id.btn_done_text).setOnClickListener {
+            val text = etTextInput.text.toString().trim()
+            if (text.isNotEmpty()) {
+                if (activeTextViewToEdit == null) {
+                    addDraggableTextSticker(text)
+                } else {
+                    activeTextViewToEdit?.text = text
+                    applyStyleToTextView(activeTextViewToEdit!!)
+                }
+            } else if (activeTextViewToEdit != null) {
+                drawingContainer.removeView(activeTextViewToEdit)
+            }
+            closeTextEditor()
+        }
     }
 
-    private fun applyTextStyle(styleKey: String) {
-        currentTextStyle = styleKey
-        tvPreviewText.setTextColor(currentTextColor)
+    private fun openTextEditor() {
+        textEditorLayout.visibility = View.VISIBLE
+        etTextInput.requestFocus()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.showSoftInput(etTextInput, InputMethodManager.SHOW_IMPLICIT)
+        applyTextStyleToEditText()
+        updateTextBackground()
+    }
 
-        when (styleKey) {
+    private fun closeTextEditor() {
+        textEditorLayout.visibility = View.GONE
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(etTextInput.windowToken, 0)
+    }
+
+    private fun updateTextBackground() {
+        when (textBgMode) {
+            0 -> etTextInput.background = null // شفاف
+            1 -> etTextInput.background = GradientDrawable().apply {
+                setColor(Color.parseColor("#88000000"))
+                cornerRadius = 20f
+            } // أسود شفاف
+            2 -> etTextInput.background = GradientDrawable().apply {
+                setColor(if (currentTextColor == Color.WHITE) Color.BLACK else Color.WHITE)
+                cornerRadius = 20f
+            } // لون عكسي سادة
+        }
+        etTextInput.setPadding(30, 20, 30, 20)
+    }
+
+    private fun applyTextStyleToEditText() {
+        when (currentTextStyle) {
             "CLASSIC" -> {
-                tvPreviewText.setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-                tvPreviewText.setShadowLayer(5f, 2f, 2f, Color.BLACK)
+                etTextInput.setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                etTextInput.setShadowLayer(5f, 2f, 2f, Color.BLACK)
             }
             "NEON" -> {
-                tvPreviewText.setTypeface(Typeface.DEFAULT_BOLD, Typeface.NORMAL)
-                // توهج بلون النص
-                tvPreviewText.setShadowLayer(25f, 0f, 0f, currentTextColor) 
-                tvPreviewText.setTextColor(Color.WHITE) 
+                etTextInput.setTypeface(Typeface.DEFAULT_BOLD, Typeface.NORMAL)
+                etTextInput.setShadowLayer(25f, 0f, 0f, currentTextColor)
             }
             "TYPEWRITER" -> {
-                tvPreviewText.setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
-                tvPreviewText.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
-                tvPreviewText.setBackgroundColor(Color.parseColor("#88000000")) // خلفية سوداء شفافة للنص
+                etTextInput.setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+                etTextInput.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
             }
         }
-        
-        if (styleKey != "TYPEWRITER") {
-            tvPreviewText.setBackgroundColor(Color.TRANSPARENT)
+    }
+
+    // =========================================================================
+    // 🌟 إضافة العناصر القابلة للسحب والتكبير (النصوص والموسيقى) 🌟
+    // =========================================================================
+    private fun addDraggableTextSticker(text: String) {
+        val tvSticker = TextView(this).apply {
+            this.text = text
+            textSize = 32f
+            gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER
+            }
+            setOnClickListener {
+                activeTextViewToEdit = this
+                etTextInput.setText(text)
+                openTextEditor()
+            }
+        }
+        applyStyleToTextView(tvSticker)
+        makeViewDraggable(tvSticker)
+        drawingContainer.addView(tvSticker)
+    }
+
+    private fun applyStyleToTextView(tv: TextView) {
+        tv.setTextColor(currentTextColor)
+        when (textBgMode) {
+            0 -> tv.background = null
+            1 -> tv.background = GradientDrawable().apply { setColor(Color.parseColor("#88000000")); cornerRadius = 20f }
+            2 -> tv.background = GradientDrawable().apply { setColor(if (currentTextColor == Color.WHITE) Color.BLACK else Color.WHITE); cornerRadius = 20f }
+        }
+        tv.setPadding(30, 20, 30, 20)
+
+        when (currentTextStyle) {
+            "CLASSIC" -> { tv.setTypeface(Typeface.DEFAULT, Typeface.BOLD); tv.setShadowLayer(5f, 2f, 2f, Color.BLACK) }
+            "NEON" -> { tv.setTypeface(Typeface.DEFAULT_BOLD, Typeface.NORMAL); tv.setShadowLayer(25f, 0f, 0f, currentTextColor); tv.setTextColor(Color.WHITE) }
+            "TYPEWRITER" -> { tv.setTypeface(Typeface.MONOSPACE, Typeface.BOLD); tv.setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT) }
+        }
+    }
+
+    private fun addMusicSticker(songName: String, artist: String) {
+        val musicLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#B3000000")) 
+                cornerRadius = 40f
+            }
+            setPadding(20, 15, 30, 15)
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER
+                setMargins(0, 200, 0, 0)
+            }
+        }
+
+        val icon = ImageView(this).apply {
+            setImageResource(android.R.drawable.ic_media_play)
+            setColorFilter(Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(60, 60).apply { setMargins(0, 0, 15, 0) }
+        }
+
+        val textLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        textLayout.addView(TextView(this).apply { text = songName; setTextColor(Color.WHITE); textSize = 14f; setTypeface(null, Typeface.BOLD) })
+        textLayout.addView(TextView(this).apply { text = artist; setTextColor(Color.LTGRAY); textSize = 11f })
+
+        musicLayout.addView(icon)
+        musicLayout.addView(textLayout)
+
+        makeViewDraggable(musicLayout)
+        drawingContainer.addView(musicLayout)
+        showCustomSnackbar("تم إضافة الملصق الموسيقي. يمكنك سحبه أو تكبيره!", "#4CAF50")
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun makeViewDraggable(view: View) {
+        val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val scale = view.scaleX * detector.scaleFactor
+                view.scaleX = Math.max(0.3f, min(scale, 5.0f))
+                view.scaleY = Math.max(0.3f, min(scale, 5.0f))
+                return true
+            }
+        })
+
+        var dX = 0f; var dY = 0f
+        view.setOnTouchListener { v, event ->
+            scaleDetector.onTouchEvent(event)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { dX = v.x - event.rawX; dY = v.y - event.rawY }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!scaleDetector.isInProgress && event.pointerCount == 1) {
+                        v.x = event.rawX + dX
+                        v.y = event.rawY + dY
+                    }
+                }
+            }
+            true
         }
     }
 
@@ -262,7 +366,7 @@ class StoryUploadActivity : AppCompatActivity() {
     // =========================================================================
     private fun handleImageSelection(uri: Uri) {
         try {
-            // تم حل مشكلة MediaStore واستبدالها بـ BitmapFactory المباشر والآمن 100%
+            // حل مشكلة البناء بالاعتماد على BitmapFactory
             val inputStream = contentResolver.openInputStream(uri)
             val originalBitmap = BitmapFactory.decodeStream(inputStream)
             inputStream?.close()
@@ -280,13 +384,11 @@ class StoryUploadActivity : AppCompatActivity() {
             val scaled = Bitmap.createScaledBitmap(originalBitmap, width, height, true)
             ivPreview.setImageBitmap(scaled)
             ivPreview.imageTintList = null
-            ivPreview.setBackgroundColor(Color.TRANSPARENT)
             
             viewOverlay.visibility = View.VISIBLE
             hasSelectedImage = true
             hasSelectedVideo = false
             selectedVideoUri = null
-            
         } catch (e: Exception) {
             showCustomSnackbar("فشل في قراءة الصورة", "#F44336")
         }
@@ -299,22 +401,15 @@ class StoryUploadActivity : AppCompatActivity() {
             val timeString = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             val durationMs = timeString?.toLongOrNull() ?: 0L
 
-            // 🌟 شرط الفيديو 60 ثانية 🌟
             if (durationMs > 60500L) { 
-                showCustomSnackbar("عذراً، يجب أن لا تتجاوز مدة الفيديو دقيقة واحدة (60 ثانية)", "#F44336")
+                showCustomSnackbar("عذراً، يجب أن لا تتجاوز مدة الفيديو دقيقة واحدة", "#F44336")
                 return
             }
 
-            // وضع صورة مصغرة للفيديو
             val thumbnail = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            if (thumbnail != null) {
-                ivPreview.setImageBitmap(thumbnail)
-            } else {
-                ivPreview.setImageResource(android.R.drawable.ic_media_play)
-            }
+            if (thumbnail != null) ivPreview.setImageBitmap(thumbnail)
             
             ivPreview.imageTintList = null
-            ivPreview.setBackgroundColor(Color.TRANSPARENT)
             viewOverlay.visibility = View.VISIBLE
             
             hasSelectedVideo = true
@@ -331,50 +426,13 @@ class StoryUploadActivity : AppCompatActivity() {
     }
 
     // =========================================================================
-    // 🌟 نظام اللمس المتعدد (Pinch-to-zoom & Drag) الاحترافي 🌟
-    // =========================================================================
-    private fun setupTouchListeners(view: View) {
-        val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            override fun onScale(detector: ScaleGestureDetector): Boolean {
-                val scale = view.scaleX * detector.scaleFactor
-                view.scaleX = Math.max(0.5f, Math.min(scale, 3.0f))
-                view.scaleY = Math.max(0.5f, Math.min(scale, 3.0f))
-                return true
-            }
-        })
-
-        var dX = 0f
-        var dY = 0f
-
-        view.setOnTouchListener { v, event ->
-            scaleDetector.onTouchEvent(event)
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    dX = v.x - event.rawX
-                    dY = v.y - event.rawY
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    if (!scaleDetector.isInProgress && event.pointerCount == 1) {
-                        v.x = event.rawX + dX
-                        v.y = event.rawY + dY
-                    }
-                }
-            }
-            true 
-        }
-    }
-
-    // =========================================================================
     // 🌟 نظام البصمة (Hardware ID) وقيود النشر (24 ساعة) 🌟
     // =========================================================================
     private fun getHardwareId(): String {
         val devInfo = Build.BOARD + Build.BRAND + Build.DEVICE + Build.HARDWARE + Build.MANUFACTURER + Build.MODEL + Build.PRODUCT
         val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown_id"
-        val combined = devInfo + androidId
-        
         val md = java.security.MessageDigest.getInstance("MD5")
-        val hash = md.digest(combined.toByteArray())
-        return hash.joinToString("") { "%02x".format(it) }.take(16).uppercase()
+        return md.digest((devInfo + androidId).toByteArray()).joinToString("") { "%02x".format(it) }.take(16).uppercase()
     }
 
     private fun checkDailyQuota(isVideo: Boolean): Boolean {
@@ -398,9 +456,7 @@ class StoryUploadActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("StoryQuotaPrefs", Context.MODE_PRIVATE)
         val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val key = if (isVideo) "vid_$todayDate" else "img_$todayDate"
-        
-        val currentCount = prefs.getInt(key, 0)
-        prefs.edit().putInt(key, currentCount + 1).apply()
+        prefs.edit().putInt(key, prefs.getInt(key, 0) + 1).apply()
     }
 
     // =========================================================================
@@ -408,55 +464,42 @@ class StoryUploadActivity : AppCompatActivity() {
     // =========================================================================
     private fun captureStoryFrame(view: View): String {
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        view.draw(canvas)
-        
+        view.draw(Canvas(bitmap))
         val baos = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, baos) 
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos) 
         return Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
     }
 
     private fun convertVideoToBase64(uri: Uri): String? {
         return try {
-            val inputStream = contentResolver.openInputStream(uri)
-            val bytes = inputStream?.readBytes() ?: return null
+            val bytes = contentResolver.openInputStream(uri)?.readBytes() ?: return null
             Base64.encodeToString(bytes, Base64.NO_WRAP)
-        } catch (e: Exception) {
-            null
-        }
+        } catch (e: Exception) { null }
     }
 
     private fun uploadStory() {
         layoutLoading.visibility = View.VISIBLE
-        btnPublish.isEnabled = false
-        btnSelectImage.isEnabled = false
-        etText.isEnabled = false
 
         val userId = AuthManager.getId(this)
-        val hardwareId = getHardwareId() // بصمة الجهاز الصارمة
+        val hardwareId = getHardwareId() 
         
         lifecycleScope.launch(Dispatchers.IO) {
             try {
+                // 🌟 التقاط الإطار بالكامل (صورة + ملصقات + نصوص) كصورة واحدة! 🌟
+                val finalCompositeBase64 = captureStoryFrame(storyCaptureFrame)
                 val mediaBase64: String
                 val storyType: String
-                val textContent = etText.text.toString().trim()
 
-                // إذا فيديو: نرسل الفيديو كـ Base64، والنص نرسله كبيانات مفصولة حتى ينعرض فوكاه
-                // إذا صورة/نص: ندمجهم كصورة وحدة Bitmap وندزها
                 if (hasSelectedVideo && selectedVideoUri != null) {
                     val encodedVideo = convertVideoToBase64(selectedVideoUri!!)
                     if (encodedVideo == null) {
-                        withContext(Dispatchers.Main) {
-                            showCustomSnackbar("حجم الفيديو كبير جداً للتحويل", "#F44336")
-                            layoutLoading.visibility = View.GONE
-                            enableControls()
-                        }
+                        withContext(Dispatchers.Main) { showCustomSnackbar("حجم الفيديو كبير جداً", "#F44336"); restoreControls() }
                         return@launch
                     }
                     mediaBase64 = encodedVideo
                     storyType = "video"
                 } else {
-                    mediaBase64 = captureStoryFrame(storyCaptureFrame)
+                    mediaBase64 = finalCompositeBase64
                     storyType = "image"
                 }
 
@@ -470,47 +513,39 @@ class StoryUploadActivity : AppCompatActivity() {
                     put("hardwareId", hardwareId) 
                     put("type", storyType)
                     put("mediaBase64", mediaBase64)
-                    put("textContent", if (storyType == "video") textContent else "") 
-                    put("textStyle", currentTextStyle) // لمعرفة الستايل من قبل الـ Viewer
+                    // إذا كان فيديو، نرسل إطار الملصقات كصورة شفافة تتركب فوق الفيديو بالعارض (Viewer)
+                    put("textContent", if (storyType == "video") finalCompositeBase64 else "") 
                 }
 
                 conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
-                val responseCode = conn.responseCode
-                if (responseCode == 200) {
-                    incrementDailyQuota(isVideo = hasSelectedVideo) // تسجيل العملية بالجهاز محلياً
-                    
+                if (conn.responseCode == 200) {
+                    incrementDailyQuota(isVideo = hasSelectedVideo)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@StoryUploadActivity, "تم نشر القصة بنجاح ✅", Toast.LENGTH_SHORT).show()
                         finish() 
                     }
                 } else {
-                    // 🌟 تم حل مشكلة BufferedReader و InputStreamReader المرفوضة من قبل البناء 🌟
+                    // 🌟 قراءة الخطأ بطريقة آمنة لتجنب أخطاء البناء 🌟
                     val errorMsg = try {
-                        val errorStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: "{}"
-                        JSONObject(errorStr).optString("message", "فشل النشر، حاول مجدداً")
-                    } catch (e: Exception) { "فشل النشر، حدث خطأ بالسيرفر" }
+                        val reader = BufferedReader(InputStreamReader(conn.errorStream))
+                        val errorStr = reader.readText()
+                        reader.close()
+                        JSONObject(errorStr).optString("message", "فشل النشر")
+                    } catch (e: Exception) { "فشل النشر" }
 
-                    withContext(Dispatchers.Main) {
-                        layoutLoading.visibility = View.GONE
-                        showCustomSnackbar(errorMsg, "#F44336")
-                        enableControls()
-                    }
+                    withContext(Dispatchers.Main) { showCustomSnackbar(errorMsg, "#F44336"); restoreControls() }
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    layoutLoading.visibility = View.GONE
-                    showCustomSnackbar("خطأ في الاتصال بالسيرفر أو حجم الملف كبير", "#F44336")
-                    enableControls()
-                }
+                withContext(Dispatchers.Main) { showCustomSnackbar("خطأ بالاتصال أو حجم الملف كبير", "#F44336"); restoreControls() }
             }
         }
     }
 
-    private fun enableControls() {
-        btnPublish.isEnabled = true
-        btnSelectImage.isEnabled = true
-        etText.isEnabled = true
+    private fun restoreControls() {
+        layoutLoading.visibility = View.GONE
+        topToolsLayout.visibility = View.VISIBLE
+        bottomToolsLayout.visibility = View.VISIBLE
     }
 
     private fun showCustomSnackbar(message: String, colorHex: String) {
@@ -524,7 +559,7 @@ class StoryUploadActivity : AppCompatActivity() {
             text = message
             setTextColor(Color.WHITE)
             textSize = 14f
-            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
             setPadding(30, 30, 30, 30)
             background = GradientDrawable().apply {
