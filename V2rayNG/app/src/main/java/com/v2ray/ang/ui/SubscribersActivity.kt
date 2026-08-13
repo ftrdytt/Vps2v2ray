@@ -146,42 +146,80 @@ class SubscribersActivity : AppCompatActivity() {
             val deferreds = allSubscribers.map { sub ->
                 async {
                     try {
-                        // 🌟 إضافة userId للرابط لحل مشكلة رجوع الأرقام بصفر 🌟
+                        var exactActiveCount = 0
+                        var exactCommentsCount = 0
+                        
+                        // 🌟 1. الفحص الشامل (Expiry & Usage & Views/Likes) 🌟
                         val connCheck = URL("$BASE_API_URL/check?guid=${sub.licenseId}&userId=$myUserId").openConnection() as HttpURLConnection
                         connCheck.requestMethod = "GET"
                         connCheck.connectTimeout = 4000
                         connCheck.readTimeout = 4000
                         
+                        var totalUsageBytes = 0L
+                        var views = 0
+                        var likes = 0
+                        var exp = -1L
+                        
                         if (connCheck.responseCode == 200) {
                             val data = JSONObject(BufferedReader(InputStreamReader(connCheck.inputStream)).readText())
-                            val exp = data.optLong("expiryTime", -1L)
+                            // تأمين قراءة التواريخ بكل الصيغ الممكنة
+                            exp = data.optLong("expiryTime", data.optLong("expiry_time", -1L))
+                            exactActiveCount = data.optInt("activeCount", data.optInt("active_count", 0)) 
+                            totalUsageBytes = data.optLong("totalUsageBytes", data.optLong("usage", 0L)) 
                             
-                            val actCount = data.optInt("activeCount", data.optInt("active_count", 0)) 
-                            val totalUsageBytes = data.optLong("totalUsageBytes", data.optLong("usage", 0L)) 
-                            
-                            val views = data.optInt("views", data.optInt("view_count", 0))
-                            val likes = data.optInt("likes", data.optInt("like_count", 0))
-                            val comments = data.optInt("comments", data.optInt("comment_count", 0))
-                            
-                            if (exp >= 0L) {
-                                // 🌟 تحديث عدد النشطين محلياً حتى يقرأه التطبيق 🌟
-                                V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, exp, actCount)
-                                
-                                val baseline = prefs.getLong("baseline_${sub.licenseId}", 0L)
-                                val actualUsage = max(0L, totalUsageBytes - baseline)
-                                
-                                prefs.edit()
-                                    .putLong("raw_usage_${sub.licenseId}", totalUsageBytes)
-                                    .putString("usage_${sub.licenseId}", formatBytes(actualUsage))
-                                    .putInt("views_${sub.licenseId}", views)
-                                    .putInt("likes_${sub.licenseId}", likes)
-                                    .putInt("comments_${sub.licenseId}", comments)
-                                    .apply()
-                                    
-                                isChanged = true
-                            }
+                            views = data.optInt("views", data.optInt("view_count", 0))
+                            likes = data.optInt("likes", data.optInt("like_count", 0))
+                            exactCommentsCount = data.optInt("comments", data.optInt("comment_count", 0))
                         }
 
+                        // 🌟 2. إجبار النظام على حساب عدد النشطين الحقيقي من طول المصفوفة 🌟
+                        try {
+                            val activeConn = URL("$BASE_API_URL/file/get_active?guid=${sub.licenseId}").openConnection() as HttpURLConnection
+                            activeConn.connectTimeout = 3000
+                            if (activeConn.responseCode == 200) {
+                                val activeResp = BufferedReader(InputStreamReader(activeConn.inputStream)).readText().trim()
+                                if (activeResp.startsWith("[")) {
+                                    exactActiveCount = max(exactActiveCount, JSONArray(activeResp).length())
+                                } else if (activeResp.startsWith("{")) {
+                                    val jObj = JSONObject(activeResp)
+                                    val arr = jObj.optJSONArray("data") ?: jObj.optJSONArray("users")
+                                    exactActiveCount = max(exactActiveCount, arr?.length() ?: 0)
+                                }
+                            }
+                        } catch(e: Exception){}
+
+                        // 🌟 3. إجبار النظام على حساب عدد التعليقات الحقيقي من طول المصفوفة 🌟
+                        try {
+                            val commentsConn = URL("$BASE_API_URL/social/comments?guid=${sub.licenseId}").openConnection() as HttpURLConnection
+                            commentsConn.connectTimeout = 3000
+                            if (commentsConn.responseCode == 200) {
+                                val commentsResp = BufferedReader(InputStreamReader(commentsConn.inputStream)).readText().trim()
+                                val jObj = JSONObject(commentsResp)
+                                if (jObj.optBoolean("success", false)) {
+                                    val arr = jObj.optJSONArray("comments")
+                                    exactCommentsCount = max(exactCommentsCount, arr?.length() ?: 0)
+                                }
+                            }
+                        } catch(e: Exception){}
+
+                        // 🌟 4. تحديث الذاكرة بالقيم الدقيقة (بدون شروط معرقلة) 🌟
+                        val baseline = prefs.getLong("baseline_${sub.licenseId}", 0L)
+                        val actualUsage = max(0L, totalUsageBytes - baseline)
+                        
+                        prefs.edit()
+                            .putLong("raw_usage_${sub.licenseId}", totalUsageBytes)
+                            .putString("usage_${sub.licenseId}", formatBytes(actualUsage))
+                            .putInt("views_${sub.licenseId}", views)
+                            .putInt("likes_${sub.licenseId}", likes)
+                            .putInt("comments_${sub.licenseId}", exactCommentsCount)
+                            .apply()
+
+                        // حفظ عدد النشطين ووقت الانتهاء (حتى لو كان الانتهاء ما راجع من السيرفر نعوفه مثل ما هو)
+                        val finalExp = if (exp > 0L) exp else sub.expiryTimeMs
+                        V2rayCrypt.updateSubscriberLocally(this@SubscribersActivity, parentGuid, sub.licenseId, finalExp, exactActiveCount)
+                        isChanged = true
+
+                        // 🌟 5. جلب معلومات الحساب والصورة 🌟
                         val connAuth = URL("$BASE_API_URL/auth/get_user?id=${sub.licenseId}").openConnection() as HttpURLConnection
                         connAuth.requestMethod = "GET"
                         connAuth.connectTimeout = 4000
@@ -623,90 +661,49 @@ class SubscribersAdapter(
             tvDataUsage?.text = "استهلاك: $usage"
             tvDataUsage?.visibility = View.VISIBLE
 
-            // 🌟 إظهار عدد النشطين بشكل صحيح 🌟
-            tvActiveCount.text = "نشط الآن: 🟢 ${item.activeCount}"
+            // 🌟 الحل الجذري لمنع التداخل (Layout Overlap) وعرض الأرقام بوضوح 🌟
+            // دمجنا الأرقام كلها بداخل حقل واحد (نصي) علمود نضمن ماكو أي تداخل رسومي (UI Overlap) نهائياً.
+            tvActiveCount.text = "🟢 نشط: ${item.activeCount}  |  👁️ $viewsCount  |  ❤️ $likesCount  |  💬 $commentsCount"
+            tvActiveCount.setTextColor(Color.parseColor("#B0B0B0"))
+            tvActiveCount.setPadding(0, 15, 0, 15)
+
+            // من تضغط على هذا النص، راح تطلعلك خيارات واضحة شنو تريد تفتح
             tvActiveCount.setOnClickListener {
-                try {
-                    val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.FileActiveUsersActivity"))
-                    intent.putExtra("guid", item.licenseId)
-                    intent.putExtra("apiUrl", apiUrl) 
-                    itemView.context.startActivity(intent)
-                } catch (e: Exception) {}
+                val options = arrayOf("🟢 عرض المتصلين النشطين", "❤️ عرض قائمة المعجبين", "💬 عرض التعليقات")
+                AlertDialog.Builder(itemView.context)
+                    .setTitle("سجل التفاعل والاتصال")
+                    .setItems(options) { _, which ->
+                        when (which) {
+                            0 -> { // النشطين
+                                try {
+                                    val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.FileActiveUsersActivity"))
+                                    intent.putExtra("guid", item.licenseId)
+                                    intent.putExtra("apiUrl", apiUrl) 
+                                    itemView.context.startActivity(intent)
+                                } catch (e: Exception) {}
+                            }
+                            1 -> { // المعجبين
+                                try {
+                                    val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.ConnectionsActivity"))
+                                    intent.putExtra("targetUserId", item.licenseId)
+                                    intent.putExtra("type", "likers") 
+                                    itemView.context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(itemView.context, "حدث خطأ أثناء الفتح", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            2 -> { // التعليقات
+                                try {
+                                    val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.CommentsActivity"))
+                                    intent.putExtra("guid", item.licenseId)
+                                    intent.putExtra("isOwnerOrAdmin", true) 
+                                    itemView.context.startActivity(intent)
+                                } catch (e: Exception) {}
+                            }
+                        }
+                    }.show()
             }
-
-            // 🌟 حل مشكلة التداخل والتكرار بالواجهة جذرياً 🌟
-            val parentLayout = tvActiveCount.parent as? ViewGroup
-            if (parentLayout != null) {
-                // نستخدم tag ثابت لكل الكاردات حتى نمنع تكرار الإضافة
-                var socialBar = parentLayout.findViewWithTag<LinearLayout>("social_bar_view_fixed")
-                
-                if (socialBar == null) {
-                    socialBar = LinearLayout(itemView.context).apply {
-                        tag = "social_bar_view_fixed"
-                        orientation = LinearLayout.HORIZONTAL
-                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 25, 0, 10) 
-                        }
-                        gravity = Gravity.CENTER
-                        weightSum = 3f // توزيع الأيقونات بالتساوي
-                        background = GradientDrawable().apply {
-                            setColor(Color.parseColor("#1AFFFFFF"))
-                            cornerRadius = 25f
-                        }
-                        setPadding(10, 20, 10, 20)
-                    }
-
-                    fun createSocialText(textStr: String): TextView {
-                        return TextView(itemView.context).apply {
-                            text = textStr
-                            setTextColor(Color.LTGRAY)
-                            textSize = 15f 
-                            setTypeface(null, android.graphics.Typeface.BOLD)
-                            gravity = Gravity.CENTER
-                            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                        }
-                    }
-
-                    val tvViews = createSocialText("👁️ $viewsCount")
-                    val tvLikes = createSocialText("❤️ $likesCount")
-                    val tvComments = createSocialText("💬 $commentsCount")
-
-                    socialBar.addView(tvViews)
-                    socialBar.addView(tvLikes)
-                    socialBar.addView(tvComments)
-
-                    val index = parentLayout.indexOfChild(tvActiveCount)
-                    parentLayout.addView(socialBar, index + 1)
-                } else {
-                    // في حال كان الـ Social Bar موجود، فقط نحدث الأرقام داخله
-                    (socialBar.getChildAt(0) as? TextView)?.text = "👁️ $viewsCount"
-                    (socialBar.getChildAt(1) as? TextView)?.text = "❤️ $likesCount"
-                    (socialBar.getChildAt(2) as? TextView)?.text = "💬 $commentsCount"
-                }
-
-                // 🌟 ربط الأحداث (الضغطات) من جديد بعد التحديث 🌟
-                val tvLikesView = socialBar.getChildAt(1) as? TextView
-                tvLikesView?.setOnClickListener {
-                    try {
-                        val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.ConnectionsActivity"))
-                        intent.putExtra("targetUserId", item.licenseId)
-                        intent.putExtra("type", "likers") 
-                        itemView.context.startActivity(intent)
-                    } catch (e: Exception) {
-                        Toast.makeText(itemView.context, "حدث خطأ أثناء الفتح", Toast.LENGTH_SHORT).show()
-                    }
-                }
-
-                val tvCommentsView = socialBar.getChildAt(2) as? TextView
-                tvCommentsView?.setOnClickListener {
-                    try {
-                        val intent = Intent(itemView.context, Class.forName("com.v2ray.ang.ui.CommentsActivity"))
-                        intent.putExtra("guid", item.licenseId)
-                        intent.putExtra("isOwnerOrAdmin", true) 
-                        itemView.context.startActivity(intent)
-                    } catch (e: Exception) {}
-                }
-            }
+            // 🌟 انتهى الحل الجذري 🌟
             
             btnExtend.setOnClickListener { onExtend(item) }
             btnShare.setOnClickListener { onShare(item) }
