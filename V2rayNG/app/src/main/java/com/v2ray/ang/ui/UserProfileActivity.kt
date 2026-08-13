@@ -10,6 +10,7 @@ import android.util.Base64
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
@@ -91,10 +92,22 @@ class UserProfileActivity : AppCompatActivity() {
         
         tvFollowersCount.setOnClickListener {
             Toast.makeText(this, "قائمة المتابعين (قريباً)...", Toast.LENGTH_SHORT).show()
+            /*
+            val intent = Intent(this, ConnectionsActivity::class.java)
+            intent.putExtra("targetUserId", targetUserId)
+            intent.putExtra("type", "followers")
+            startActivity(intent)
+            */
         }
 
         tvFollowingCount.setOnClickListener {
             Toast.makeText(this, "قائمة المتابَعين (قريباً)...", Toast.LENGTH_SHORT).show()
+            /*
+            val intent = Intent(this, ConnectionsActivity::class.java)
+            intent.putExtra("targetUserId", targetUserId)
+            intent.putExtra("type", "following")
+            startActivity(intent)
+            */
         }
 
         fetchUserData()
@@ -237,7 +250,7 @@ class UserProfileActivity : AppCompatActivity() {
                 layoutAvatarContainer.background = null
                 layoutAvatarContainer.setPadding(0, 0, 0, 0)
                 
-                // إذا كان حسابي وليس لدي قصة، بضغطي على صورتي تفتح شاشة نشر قصة
+                // إذا كان حسابي وليس لدي قصة، بضغطي على صورتي تفتح شاشة نشر قصة!
                 if (targetUserId == myUserId) {
                     layoutAvatarContainer.setOnClickListener {
                         try {
