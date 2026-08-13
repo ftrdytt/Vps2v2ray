@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
@@ -261,13 +262,22 @@ class StoryUploadActivity : AppCompatActivity() {
     // =========================================================================
     private fun handleImageSelection(uri: Uri) {
         try {
-            val bitmap = MediaStore.Images.Media.getBitmap(contentResolver, uri)
+            // تم حل مشكلة MediaStore واستبدالها بـ BitmapFactory المباشر والآمن 100%
+            val inputStream = contentResolver.openInputStream(uri)
+            val originalBitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream?.close()
+
+            if (originalBitmap == null) {
+                showCustomSnackbar("فشل في قراءة الصورة", "#F44336")
+                return
+            }
+
             val maxImageSize = 1080f
-            val ratio = min(1f, min(maxImageSize / bitmap.width, maxImageSize / bitmap.height))
-            val width = (ratio * bitmap.width).roundToInt()
-            val height = (ratio * bitmap.height).roundToInt()
+            val ratio = min(1f, min(maxImageSize / originalBitmap.width, maxImageSize / originalBitmap.height))
+            val width = (ratio * originalBitmap.width).roundToInt()
+            val height = (ratio * originalBitmap.height).roundToInt()
             
-            val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
+            val scaled = Bitmap.createScaledBitmap(originalBitmap, width, height, true)
             ivPreview.setImageBitmap(scaled)
             ivPreview.imageTintList = null
             ivPreview.setBackgroundColor(Color.TRANSPARENT)
@@ -475,9 +485,9 @@ class StoryUploadActivity : AppCompatActivity() {
                         finish() 
                     }
                 } else {
-                    // إذا السيرفر رفض (مثلاً تجاوز الحد)
+                    // 🌟 تم حل مشكلة BufferedReader و InputStreamReader المرفوضة من قبل البناء 🌟
                     val errorMsg = try {
-                        val errorStr = BufferedReader(InputStreamReader(conn.errorStream)).readText()
+                        val errorStr = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: "{}"
                         JSONObject(errorStr).optString("message", "فشل النشر، حاول مجدداً")
                     } catch (e: Exception) { "فشل النشر، حدث خطأ بالسيرفر" }
 
