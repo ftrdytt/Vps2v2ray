@@ -10,6 +10,7 @@ import android.util.Base64
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
@@ -91,10 +92,22 @@ class UserProfileActivity : AppCompatActivity() {
         
         tvFollowersCount.setOnClickListener {
             Toast.makeText(this, "قائمة المتابعين (قريباً)...", Toast.LENGTH_SHORT).show()
+            /*
+            val intent = Intent(this, ConnectionsActivity::class.java)
+            intent.putExtra("targetUserId", targetUserId)
+            intent.putExtra("type", "followers")
+            startActivity(intent)
+            */
         }
 
         tvFollowingCount.setOnClickListener {
             Toast.makeText(this, "قائمة المتابَعين (قريباً)...", Toast.LENGTH_SHORT).show()
+            /*
+            val intent = Intent(this, ConnectionsActivity::class.java)
+            intent.putExtra("targetUserId", targetUserId)
+            intent.putExtra("type", "following")
+            startActivity(intent)
+            */
         }
 
         fetchUserData()
@@ -227,55 +240,62 @@ class UserProfileActivity : AppCompatActivity() {
                 layoutAvatarContainer.setPadding(8, 8, 8, 8)
                 
                 layoutAvatarContainer.setOnClickListener {
-                    val intent = Intent(this, Class.forName("com.v2ray.ang.ui.StoryViewerActivity"))
-                    intent.putExtra("targetUserId", targetUserId)
-                    startActivity(intent)
+                    try {
+                        val intent = Intent(this, Class.forName("com.v2ray.ang.ui.StoryViewerActivity"))
+                        intent.putExtra("targetUserId", targetUserId)
+                        startActivity(intent)
+                    } catch (e: Exception) {}
                 }
             } else {
                 layoutAvatarContainer.background = null
                 layoutAvatarContainer.setPadding(0, 0, 0, 0)
                 
+                // إذا كان حسابي وليس لدي قصة، بضغطي على صورتي تفتح شاشة نشر قصة!
                 if (targetUserId == myUserId) {
                     layoutAvatarContainer.setOnClickListener {
-                        val intent = Intent(this, Class.forName("com.v2ray.ang.ui.StoryUploadActivity"))
-                        startActivity(intent)
+                        try {
+                            val intent = Intent(this, Class.forName("com.v2ray.ang.ui.StoryUploadActivity"))
+                            startActivity(intent)
+                        } catch (e: Exception) {}
                     }
                 } else {
                     layoutAvatarContainer.setOnClickListener(null)
                 }
             }
 
-            // 🌟 إضافة زر (+) العائم الاحترافي إذا كان هذا حسابي 🌟
+            // 🌟 تصميم زر إضافة القصة (+) الاحترافي مثل فيسبوك 🌟
             if (targetUserId == myUserId) {
-                val existingAddBtn = layoutAvatarContainer.findViewWithTag<ImageView>("btn_add_story")
-                if (existingAddBtn == null) {
-                    val btnAddStory = ImageView(this).apply {
-                        tag = "btn_add_story"
+                var btnAddStory = layoutAvatarContainer.findViewWithTag<ImageView>("btn_add_story_overlay")
+                if (btnAddStory == null) {
+                    btnAddStory = ImageView(this).apply {
+                        tag = "btn_add_story_overlay"
                         setImageResource(android.R.drawable.ic_input_add) 
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
-                            setColor(Color.parseColor("#2196F3")) 
-                            setStroke(6, Color.parseColor("#0A0A0C")) // إطار سميك بلون الخلفية لعمل عزل
+                            setColor(Color.parseColor("#2196F3")) // لون الزر الأزرق
+                            setStroke(6, Color.parseColor("#1A1A1D")) // إطار عازل بلون خلفية التطبيق
                         }
                         setColorFilter(Color.WHITE)
-                        setPadding(12, 12, 12, 12)
+                        setPadding(10, 10, 10, 10)
                         
-                        val size = 90
-                        layoutParams = FrameLayout.LayoutParams(size, size).apply {
-                            gravity = Gravity.BOTTOM or Gravity.START
-                            setMargins(10, 10, 10, 10)
+                        // تحديد الحجم والتموضع بأسفل الزاوية
+                        layoutParams = FrameLayout.LayoutParams(85, 85).apply {
+                            gravity = Gravity.BOTTOM or Gravity.END
+                            setMargins(0, 0, 5, 5)
                         }
                         
                         setOnClickListener {
-                            val intent = Intent(this@UserProfileActivity, Class.forName("com.v2ray.ang.ui.StoryUploadActivity"))
-                            startActivity(intent)
+                            try {
+                                val intent = Intent(this@UserProfileActivity, Class.forName("com.v2ray.ang.ui.StoryUploadActivity"))
+                                startActivity(intent)
+                            } catch (e: Exception) {}
                         }
                     }
                     layoutAvatarContainer.addView(btnAddStory)
                 }
             } else {
-                // إزالة الزر إذا تم تحميل ملف شخص آخر في نفس الدورة
-                layoutAvatarContainer.findViewWithTag<ImageView>("btn_add_story")?.let {
+                // إزالة الزر لو فتحنا حساب شخص ثاني
+                layoutAvatarContainer.findViewWithTag<ImageView>("btn_add_story_overlay")?.let {
                     layoutAvatarContainer.removeView(it)
                 }
             }
