@@ -753,7 +753,7 @@ class StoryUploadActivity : AppCompatActivity() {
                     put("userId", userId)
                     put("hardwareId", hardwareId) 
                     put("type", storyType)
-                    put("mediaBase64", mediaBase64)
+                    put("imageBase64", mediaBase64) // 🌟 هنا تم التعديل ليطابق السيرفر 🌟
                     put("musicId", selectedMusicId ?: "")
                     put("textContent", if (storyType == "video") finalCompositeBase64 else "") 
                 }
@@ -761,19 +761,23 @@ class StoryUploadActivity : AppCompatActivity() {
                 conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
                 if (conn.responseCode == 200) {
-                    incrementDailyQuota(isVideo = hasSelectedVideo)
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@StoryUploadActivity, "تم النشر بنجاح 🚀", Toast.LENGTH_SHORT).show()
-                        finish() 
+                    // 🌟 هنا تم إضافة الفحص الفعلي لرد السيرفر 🌟
+                    val respReader = BufferedReader(InputStreamReader(conn.inputStream))
+                    val respStr = respReader.readText()
+                    respReader.close()
+                    val respJson = JSONObject(respStr)
+                    
+                    if (respJson.optBoolean("success", false)) {
+                        incrementDailyQuota(isVideo = hasSelectedVideo)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@StoryUploadActivity, "تم النشر بنجاح 🚀", Toast.LENGTH_SHORT).show()
+                            finish() 
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) { showCustomSnackbar("رفض السيرفر القصة 🚫", "#F44336"); restoreControls() }
                     }
                 } else {
-                    val errorMsg = try {
-                        val reader = BufferedReader(InputStreamReader(conn.errorStream))
-                        val errorStr = reader.readText()
-                        reader.close()
-                        JSONObject(errorStr).optString("message", "فشل النشر")
-                    } catch (e: Exception) { "فشل النشر" }
-                    withContext(Dispatchers.Main) { showCustomSnackbar(errorMsg, "#F44336"); restoreControls() }
+                    withContext(Dispatchers.Main) { showCustomSnackbar("فشل النشر", "#F44336"); restoreControls() }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) { showCustomSnackbar("خطأ بالاتصال", "#F44336"); restoreControls() }
