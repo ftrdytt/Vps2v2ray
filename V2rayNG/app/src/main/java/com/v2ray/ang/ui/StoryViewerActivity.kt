@@ -31,6 +31,8 @@ import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.File
+import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -49,6 +51,7 @@ class StoryViewerActivity : AppCompatActivity() {
     private var currentReactionsObj: JSONObject? = null
 
     private lateinit var ivStoryImage: ImageView
+    private lateinit var vvStoryVideo: VideoView // 🌟 مشغل الفيديو الجديد 🌟
     private lateinit var tvStoryText: TextView
     private lateinit var ivPfp: ImageView
     private lateinit var tvName: TextView
@@ -65,24 +68,25 @@ class StoryViewerActivity : AppCompatActivity() {
     private lateinit var reactionAnimationLayer: FrameLayout
 
     private var storyJob: Job? = null
-    private val STORY_DURATION = 5000L 
+    private val STORY_DURATION = 5000L // 5 ثواني للصور
     private var progressAnimators = mutableListOf<ProgressBar>()
     private var isPaused = false
     private var timeLeft = STORY_DURATION
     private lateinit var scaleGestureDetector: ScaleGestureDetector
     private var scaleFactor = 1.0f
+    
+    private var cachedVideoFile: File? = null // 🌟 متغير لتخزين مسار الفيديو المؤقت 🌟
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_story_viewer)
 
-        // 🌟 نستلم targetUserId، سواء جايين من قائمة الملفات أو الأصدقاء 🌟
         targetUserId = intent.getStringExtra("targetUserId") ?: intent.getStringExtra("userId") ?: ""
         myUserId = AuthManager.getId(this)
         myRole = AuthManager.getRole(this)
 
         if (targetUserId.isEmpty()) {
-            Toast.makeText(this, "خطأ في جلب بيانات القصة (لا يوجد ID)", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "خطأ في جلب بيانات القصة", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -97,6 +101,15 @@ class StoryViewerActivity : AppCompatActivity() {
 
     private fun initViews() {
         ivStoryImage = findViewById(R.id.iv_story_image)
+        // سيتم إضافة مشغل الفيديو برمجياً لتجنب الكراش بالـ XML القديم
+        vvStoryVideo = VideoView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply { gravity = Gravity.CENTER }
+            visibility = View.GONE
+        }
+        
+        storyContentContainer = findViewById(R.id.story_content_container)
+        storyContentContainer.addView(vvStoryVideo, 0) // وضعه كأول طبقة في الخلف
+        
         tvStoryText = findViewById(R.id.tv_story_text)
         ivPfp = findViewById(R.id.iv_story_avatar)
         tvName = findViewById(R.id.tv_story_username)
@@ -109,7 +122,6 @@ class StoryViewerActivity : AppCompatActivity() {
         layoutProgressBars = findViewById(R.id.layout_progress_bars)
         viewTouchOverlay = findViewById(R.id.view_touch_overlay)
         btnOptions = findViewById(R.id.btn_story_options)
-        storyContentContainer = findViewById(R.id.story_content_container)
         reactionAnimationLayer = findViewById(R.id.reaction_animation_layer)
     }
 
@@ -279,16 +291,23 @@ class StoryViewerActivity : AppCompatActivity() {
         }
     }
 
+    // 🌟 قلب المحرك: معالجة سريعة وذكية لعرض القصة (صورة أو فيديو) 🌟
     private fun displayStory(index: Int) {
         if (index < 0 || index >= storiesArray.length()) return
         storyJob?.cancel()
         currentIndex = index
         
+        // مسح آثار أي فيديو سابق لتوفير الرام
+        vvStoryVideo.stopPlayback()
+        vvStoryVideo.visibility = View.GONE
+        cachedVideoFile?.delete() 
+
         for (i in 0 until index) progressAnimators[i].progress = 100
         for (i in index until storiesArray.length()) progressAnimators[i].progress = 0
 
         val story = storiesArray.getJSONObject(index)
-        val imageBase64 = story.optString("image", "")
+        val type = story.optString("type", "image") // نوع القصة
+        val mediaBase64 = story.optString("image", "") // يحتوي الصورة أو الفيديو حسب النوع
         val text = story.optString("text", "")
         val storyId = story.getString("id")
         val timestamp = story.optLong("timestamp", System.currentTimeMillis())
@@ -313,26 +332,73 @@ class StoryViewerActivity : AppCompatActivity() {
             checkFollowStatus()
         }
 
-        if (imageBase64.isNotEmpty()) {
-            val bitmap = getSafeBitmap(imageBase64)
-            if (bitmap != null) {
-                ivStoryImage.setImageBitmap(bitmap)
-                ivStoryImage.visibility = View.VISIBLE
-                tvStoryText.visibility = View.GONE
+        // 🌟 المعالجة الذكية للنوع 🌟
+        if (type == "video" && mediaBase64.isNotEmpty()) {
+            ivStoryImage.visibility = View.GONE
+            tvStoryText.visibility = View.GONE
+            progressLoading.visibility = View.VISIBLE
+            
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    // تفريغ הـ Base64 إلى ملف .mp4 مؤقت في خلفية سريعة جداً
+                    val cleanStr = if (mediaBase64.contains(",")) mediaBase64.substringAfter(",") else mediaBase64
+                    val videoBytes = Base64.decode(cleanStr.replace("\\s+".toRegex(), ""), Base64.DEFAULT)
+                    
+                    cachedVideoFile = File(cacheDir, "temp_story_${System.currentTimeMillis()}.mp4")
+                    val fos = FileOutputStream(cachedVideoFile)
+                    fos.write(videoBytes)
+                    fos.close()
+
+                    withContext(Dispatchers.Main) {
+                        progressLoading.visibility = View.GONE
+                        vvStoryVideo.visibility = View.VISIBLE
+                        vvStoryVideo.setVideoPath(cachedVideoFile!!.absolutePath)
+                        
+                        vvStoryVideo.setOnPreparedListener { mp ->
+                            mp.isLooping = true // يشتغل בלوب مستمر
+                            // تحديد مدة الاستوري بمدة الفيديو (إلى 30 ثانية)
+                            val duration = mp.duration.toLong()
+                            startStoryTimer(index, if (duration > 0) duration else STORY_DURATION)
+                            mp.start()
+                        }
+                        
+                        vvStoryVideo.setOnErrorListener { _, _, _ ->
+                            Toast.makeText(this@StoryViewerActivity, "خطأ في تشغيل الفيديو", Toast.LENGTH_SHORT).show()
+                            showNextStory()
+                            true
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        progressLoading.visibility = View.GONE
+                        showNextStory() // تجاوز الاستوري التالف
+                    }
+                }
             }
         } else {
-            ivStoryImage.visibility = View.GONE
-            tvStoryText.text = text
-            tvStoryText.visibility = View.VISIBLE
-            storyContentContainer.setBackgroundColor(Color.parseColor("#${storyId.takeLast(6).padEnd(6, '0')}"))
+            // معالجة الصور والنصوص العادية
+            vvStoryVideo.visibility = View.GONE
+            if (mediaBase64.isNotEmpty()) {
+                val bitmap = getSafeBitmap(mediaBase64)
+                if (bitmap != null) {
+                    ivStoryImage.setImageBitmap(bitmap)
+                    ivStoryImage.visibility = View.VISIBLE
+                    tvStoryText.visibility = View.GONE
+                }
+            } else {
+                ivStoryImage.visibility = View.GONE
+                tvStoryText.text = text
+                tvStoryText.visibility = View.VISIBLE
+                storyContentContainer.setBackgroundColor(Color.parseColor("#${storyId.takeLast(6).padEnd(6, '0')}"))
+            }
+            startStoryTimer(index, STORY_DURATION)
         }
 
         recordStoryView(storyId)
-        startStoryTimer(index)
     }
 
-    private fun startStoryTimer(index: Int) {
-        timeLeft = STORY_DURATION
+    private fun startStoryTimer(index: Int, duration: Long) {
+        timeLeft = duration
         isPaused = false
         val pb = progressAnimators[index]
         pb.progress = 0
@@ -342,7 +408,7 @@ class StoryViewerActivity : AppCompatActivity() {
             while (timeLeft > 0) {
                 if (!isPaused) {
                     timeLeft -= interval
-                    pb.progress = ((STORY_DURATION - timeLeft) * 100 / STORY_DURATION).toInt()
+                    pb.progress = ((duration - timeLeft) * 100 / duration).toInt()
                 }
                 delay(interval)
             }
@@ -350,8 +416,15 @@ class StoryViewerActivity : AppCompatActivity() {
         }
     }
 
-    private fun pauseStory() { isPaused = true }
-    private fun resumeStory() { isPaused = false }
+    private fun pauseStory() { 
+        isPaused = true
+        if (vvStoryVideo.visibility == View.VISIBLE && vvStoryVideo.isPlaying) vvStoryVideo.pause()
+    }
+    
+    private fun resumeStory() { 
+        isPaused = false
+        if (vvStoryVideo.visibility == View.VISIBLE) vvStoryVideo.start()
+    }
 
     private fun showNextStory() {
         if (currentIndex < storiesArray.length() - 1) {
@@ -564,6 +637,8 @@ class StoryViewerActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         storyJob?.cancel()
+        vvStoryVideo.stopPlayback()
+        cachedVideoFile?.delete() // تنظيف فوري لملف الفيديو المؤقت لمنع استهلاك الذاكرة
     }
     
     override fun onResume() {
