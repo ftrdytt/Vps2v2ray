@@ -22,6 +22,7 @@ import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import androidx.cardview.widget.CardView
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -60,6 +61,7 @@ class ProfileFragment : Fragment() {
     private var tvFollowingCount: TextView? = null
     private var btnAddStory: ImageView? = null
     private var layoutAvatarContainer: FrameLayout? = null
+    private var cvStoryRing: CardView? = null // 🌟 المتغير الجديد للتحكم بالدائرة الزرقاء
     
     private var swipeRefreshLayout: SwipeRefreshLayout? = null
     private var currentBase64Pfp: String = ""
@@ -218,6 +220,7 @@ class ProfileFragment : Fragment() {
         tvFollowingCount = view.findViewById(R.id.tv_following_count)
         btnAddStory = view.findViewById(R.id.btn_add_story)
         layoutAvatarContainer = view.findViewById(R.id.layout_avatar_container)
+        cvStoryRing = view.findViewById(R.id.cv_story_ring) // 🌟 ربط المتغير بالتصميم
 
         if (userRole == "admin") {
             etId.isEnabled = true
@@ -488,7 +491,7 @@ class ProfileFragment : Fragment() {
         renderDevices()
     }
 
-    // 🌟 التحديث الجديد: إضافة إطار الدائرة الزرقاء (الاستوري الفعال) حول صورة الحساب 🌟
+    // 🌟 التحديث الجديد: الاعتماد على CardView لتغيير إطار الدائرة الزرقاء (الاستوري الفعال) 🌟
     private fun updateProfilePicture(base64Str: String, name: String, userId: String, hasActiveStory: Boolean) {
         val bitmap = try {
             val cleanStr = if (base64Str.contains(",")) base64Str.substringAfter(",") else base64Str
@@ -500,40 +503,30 @@ class ProfileFragment : Fragment() {
             val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
             ivAvatar.setImageDrawable(circularDrawable)
             
-            layoutAvatarContainer?.let { container ->
-                if (hasActiveStory) {
-                    // إذا عنده استوري شغال نرسم الدائرة الزرقاء 🔵 (ستايل الانستغرام)
-                    container.background = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setStroke(8, Color.parseColor("#2196F3")) 
-                        setColor(Color.TRANSPARENT)
-                    }
-                    container.setPadding(10, 10, 10, 10)
-                    
-                    // إذا ضغط على صورته وعنده استوري، نسأله شنو يريد يسوي (مشاهدة أم إضافة)
-                    ivAvatar.setOnClickListener {
-                        val options = arrayOf("شاهد الاستوري 👁️", "إضافة استوري جديد ➕")
-                        AlertDialog.Builder(requireContext())
-                            .setItems(options) { _, which ->
-                                if (which == 0) {
-                                    val intent = Intent(requireContext(), Class.forName("com.v2ray.ang.ui.StoryViewerActivity"))
-                                    intent.putExtra("targetUserId", userId)
-                                    startActivity(intent)
-                                } else {
-                                    startActivity(Intent(requireContext(), StoryUploadActivity::class.java))
-                                }
+            if (hasActiveStory) {
+                // تلوين الدائرة الخارجية باللون الأزرق (لون الاستوري الفعال)
+                cvStoryRing?.setCardBackgroundColor(Color.parseColor("#2196F3"))
+                
+                ivAvatar.setOnClickListener {
+                    val options = arrayOf("شاهد الاستوري 👁️", "إضافة استوري جديد ➕")
+                    AlertDialog.Builder(requireContext())
+                        .setItems(options) { _, which ->
+                            if (which == 0) {
+                                val intent = Intent(requireContext(), Class.forName("com.v2ray.ang.ui.StoryViewerActivity"))
+                                intent.putExtra("targetUserId", userId)
+                                startActivity(intent)
+                            } else {
+                                startActivity(Intent(requireContext(), StoryUploadActivity::class.java))
                             }
-                            .show()
-                    }
-                } else {
-                    // إذا ما عنده استوري نخفي الدائرة
-                    container.background = null
-                    container.setPadding(0, 0, 0, 0)
-                    
-                    // الضغط العادي يفتح الاستوديو لتغيير صورة الملف الشخصي
-                    ivAvatar.setOnClickListener {
-                        pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
-                    }
+                        }
+                        .show()
+                }
+            } else {
+                // إخفاء الدائرة بجعلها بنفس لون الخلفية الأساسي للتطبيق
+                cvStoryRing?.setCardBackgroundColor(Color.parseColor("#0A0A0C"))
+                
+                ivAvatar.setOnClickListener {
+                    pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
                 }
             }
         }
