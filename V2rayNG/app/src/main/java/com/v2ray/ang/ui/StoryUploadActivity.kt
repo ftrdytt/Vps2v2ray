@@ -29,7 +29,6 @@ import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import androidx.palette.graphics.Palette
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
@@ -195,6 +194,23 @@ class StoryUploadActivity : AppCompatActivity() {
         pickMedia.launch(intent)
     }
 
+    // 🌟 حيلة برمجية لسحب لون الخلفية الذكية بدون مكتبات خارجية 🌟
+    private fun getSmartBackgroundColor(bitmap: Bitmap): Int {
+        return try {
+            val scaled = Bitmap.createScaledBitmap(bitmap, 1, 1, true)
+            val color = scaled.getPixel(0, 0)
+            scaled.recycle()
+            
+            // تغميق اللون بنسبة 50% ليعطي فخامة (Premium Look) ويبرز النص
+            val hsv = FloatArray(3)
+            Color.colorToHSV(color, hsv)
+            hsv[2] *= 0.5f 
+            Color.HSVToColor(hsv)
+        } catch (e: Exception) {
+            Color.parseColor("#0A0A0C")
+        }
+    }
+
     // =========================================================================
     // 🌟 نظام الصورة الحرة (الخلفية الذكية, Drag, Scale, Rotate) 🌟
     // =========================================================================
@@ -206,13 +222,10 @@ class StoryUploadActivity : AppCompatActivity() {
 
             if (originalBitmap == null) return
 
-            // 🌟 سحب اللون الأساسي من الصورة ووضعه كخلفية للشاشة 🌟
-            Palette.from(originalBitmap).generate { palette ->
-                val dominantColor = palette?.getDominantColor(Color.parseColor("#0A0A0C")) ?: Color.parseColor("#0A0A0C")
-                // تأثير متدرج خفيف يعطي فخامة للخلفية الملونة
-                val gradient = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(dominantColor, Color.parseColor("#111111")))
-                storyCaptureFrame.background = gradient
-            }
+            // تطبيق الخلفية الذكية المتدرجة
+            val dominantColor = getSmartBackgroundColor(originalBitmap)
+            val gradient = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(dominantColor, Color.parseColor("#111111")))
+            storyCaptureFrame.background = gradient
 
             // إضافة الصورة كعنصر حر داخل الشاشة بدلاً من أن تكون خلفية ثابتة
             val ivSticker = ImageView(this).apply {
@@ -248,12 +261,10 @@ class StoryUploadActivity : AppCompatActivity() {
 
             val thumbnail = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
             if (thumbnail != null) {
-                // سحب اللون للفيديو أيضاً
-                Palette.from(thumbnail).generate { palette ->
-                    val dominantColor = palette?.getDominantColor(Color.parseColor("#0A0A0C")) ?: Color.parseColor("#0A0A0C")
-                    val gradient = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(dominantColor, Color.parseColor("#111111")))
-                    storyCaptureFrame.background = gradient
-                }
+                // تطبيق الخلفية الذكية المتدرجة للفيديو
+                val dominantColor = getSmartBackgroundColor(thumbnail)
+                val gradient = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(dominantColor, Color.parseColor("#111111")))
+                storyCaptureFrame.background = gradient
 
                 ivVideoPreview.setImageBitmap(thumbnail)
                 ivVideoPreview.visibility = View.VISIBLE
