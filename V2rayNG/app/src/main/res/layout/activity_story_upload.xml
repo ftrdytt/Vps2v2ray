@@ -5,64 +5,76 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- 🌟 حاوية القصة (هذا الجزء الذي سيتم التقاطه ورفعه) 🌟 -->
+    <!-- حاوية الاستوري الرئيسية (شاشة كاملة يتم التقاطها كصورة/فيديو) -->
     <FrameLayout
         android:id="@+id/story_capture_frame"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <!-- المعاينة (صورة أو فيديو تملأ الشاشة) -->
         <ImageView
             android:id="@+id/iv_story_preview"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:scaleType="centerCrop"
-            android:background="#0A0A0C" />
+            android:background="#000000" />
 
-        <!-- طبقة تظليل خفيفة لجعل النصوص واضحة -->
+        <!-- طبقة تظليل خفيفة لجعل النصوص والأدوات واضحة -->
         <View
             android:id="@+id/view_overlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="#33000000"
-            android:visibility="gone"/>
+            android:background="#1A000000" />
 
-        <!-- حاوية العناصر العائمة (النصوص والملصقات والموسيقى) -->
+        <!-- حاوية الرسم والملصقات والنصوص الحرة (Drag & Drop) -->
         <FrameLayout
             android:id="@+id/drawing_view_container"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent"
+            android:clipChildren="false"/>
     </FrameLayout>
 
-    <!-- 🌟 الأزرار العلوية الشفافة (أدوات التعديل) 🌟 -->
+    <!-- الأزرار العلوية الشفافة (زر الإغلاق) -->
     <LinearLayout
         android:id="@+id/top_tools_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingTop="50dp"
-        android:paddingBottom="20dp"
+        android:paddingTop="40dp"
         android:paddingStart="15dp"
-        android:paddingEnd="15dp"
-        android:background="#44000000">
+        android:paddingEnd="15dp">
 
-        <!-- زر الإغلاق -->
         <ImageView
             android:id="@+id/btn_close"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="45dp"
+            android:layout_height="45dp"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
             app:tint="#FFFFFF"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:padding="5dp"/>
+            android:padding="8dp"/>
+    </LinearLayout>
 
-        <View
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1"/>
+    <!-- أدوات الانستغرام (عامودية على اليمين) -->
+    <LinearLayout
+        android:id="@+id/right_tools_layout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="end|top"
+        android:layout_marginTop="100dp"
+        android:layout_marginEnd="15dp"
+        android:background="#22000000"
+        android:padding="10dp">
 
-        <!-- زر الموسيقى -->
+        <ImageView
+            android:id="@+id/btn_add_text"
+            android:layout_width="45dp"
+            android:layout_height="45dp"
+            android:src="@android:drawable/ic_menu_edit"
+            app:tint="#FFFFFF"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:padding="8dp"
+            android:layout_marginBottom="15dp"/>
+
         <ImageView
             android:id="@+id/btn_add_music"
             android:layout_width="45dp"
@@ -71,34 +83,32 @@
             app:tint="#FFFFFF"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:padding="8dp"
-            android:layout_marginEnd="15dp"/>
+            android:layout_marginBottom="15dp"/>
 
-        <!-- زر النص -->
         <ImageView
-            android:id="@+id/btn_add_text"
+            android:id="@+id/btn_add_sticker"
             android:layout_width="45dp"
             android:layout_height="45dp"
-            android:src="@android:drawable/ic_menu_edit"
+            android:src="@android:drawable/ic_menu_gallery"
             app:tint="#FFFFFF"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:padding="8dp"/>
     </LinearLayout>
 
-    <!-- 🌟 زر النشر السفلي (انستغرام ستايل) 🌟 -->
+    <!-- زر النشر السفلي -->
     <LinearLayout
         android:id="@+id/bottom_tools_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:gravity="end"
-        android:padding="20dp"
-        android:background="#44000000">
+        android:gravity="end|bottom"
+        android:padding="20dp">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_publish_story"
             android:layout_width="wrap_content"
             android:layout_height="55dp"
-            android:text="مشاركة 🚀"
+            android:text="قصتك 🚀"
             android:textColor="#000000"
             android:textSize="16sp"
             android:textStyle="bold"
@@ -108,12 +118,12 @@
             android:paddingEnd="25dp"/>
     </LinearLayout>
 
-    <!-- 🌟 شاشة إدخال وتعديل النص (تظهر كطبقة شفافة فوك الصورة) 🌟 -->
+    <!-- محرر النصوص الاحترافي (يظهر كطبقة شفافة فوق كل شيء عند الكتابة) -->
     <FrameLayout
         android:id="@+id/text_editor_layout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#B3000000"
+        android:background="#CC000000"
         android:visibility="gone"
         android:clickable="true"
         android:focusable="true">
@@ -123,7 +133,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="top|end"
-            android:layout_marginTop="50dp"
+            android:layout_marginTop="40dp"
             android:layout_marginEnd="15dp"
             android:text="تم"
             android:textColor="#FFFFFF"
@@ -134,11 +144,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="top|center_horizontal"
-            android:layout_marginTop="55dp"
+            android:layout_marginTop="45dp"
             android:orientation="horizontal"
             android:gravity="center">
             
-            <!-- زر تغيير خلفية النص -->
             <ImageView
                 android:id="@+id/btn_toggle_text_bg"
                 android:layout_width="40dp"
@@ -146,9 +155,9 @@
                 android:src="@android:drawable/ic_menu_sort_by_size"
                 app:tint="#FFFFFF"
                 android:padding="5dp"
-                android:layout_marginEnd="20dp"/>
-
-            <!-- زر تغيير نوع الخط -->
+                android:layout_marginEnd="20dp"
+                android:background="?attr/selectableItemBackgroundBorderless"/>
+                
             <TextView
                 android:id="@+id/btn_toggle_font"
                 android:layout_width="wrap_content"
@@ -158,7 +167,8 @@
                 android:gravity="center"
                 android:textStyle="bold"
                 android:paddingStart="15dp"
-                android:paddingEnd="15dp"/>
+                android:paddingEnd="15dp"
+                android:background="?attr/selectableItemBackgroundBorderless"/>
         </LinearLayout>
 
         <EditText
@@ -167,32 +177,30 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:gravity="center"
-            android:hint="اكتب هنا..."
+            android:hint="اكتب..."
             android:textColorHint="#AAFFFFFF"
             android:textColor="#FFFFFF"
-            android:textSize="32sp"
+            android:textSize="35sp"
             android:background="@null"
             android:inputType="textMultiLine"
             android:padding="20dp"/>
 
-        <!-- شريط الألوان -->
         <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
             android:layout_marginBottom="20dp"
-            android:scrollbars="none"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp">
+            android:scrollbars="none">
             <LinearLayout
                 android:id="@+id/color_picker_container"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"/>
+                android:orientation="horizontal"
+                android:padding="10dp"/>
         </HorizontalScrollView>
     </FrameLayout>
 
-    <!-- شاشة التحميل -->
+    <!-- شاشة التحميل تظهر أثناء الرفع -->
     <FrameLayout
         android:id="@+id/layout_loading"
         android:layout_width="match_parent"
