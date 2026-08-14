@@ -3,45 +3,35 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="#0A0A0C"> <!-- لون خلفية عميق وفخم -->
 
-    <!-- حاوية الاستوري الرئيسية (شاشة كاملة يتم التقاطها كصورة/فيديو) -->
+    <!-- 🌟 حاوية الالتقاط (هنا تنزل الصورة كملصق حر وتقدر تكبر وتصغر) 🌟 -->
     <FrameLayout
         android:id="@+id/story_capture_frame"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
-
+        android:layout_height="match_parent"
+        android:clipChildren="false">
+        
+        <!-- في حالة الفيديو فقط يظهر هنا -->
         <ImageView
-            android:id="@+id/iv_story_preview"
+            android:id="@+id/iv_story_video_preview"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:scaleType="centerCrop"
-            android:background="#000000" />
+            android:visibility="gone" />
 
-        <!-- طبقة تظليل خفيفة لجعل النصوص والأدوات واضحة -->
-        <View
-            android:id="@+id/view_overlay"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="#1A000000" />
-
-        <!-- حاوية الرسم والملصقات والنصوص الحرة (Drag & Drop) -->
         <FrameLayout
             android:id="@+id/drawing_view_container"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:clipChildren="false"/>
+            android:clipChildren="false" />
     </FrameLayout>
 
-    <!-- الأزرار العلوية الشفافة (زر الإغلاق) -->
-    <LinearLayout
-        android:id="@+id/top_tools_layout"
+    <!-- 🌟 الأزرار العلوية والجانبية (أدوات التعديل العائمة) 🌟 -->
+    <RelativeLayout
+        android:id="@+id/tools_overlay_layout"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingTop="40dp"
-        android:paddingStart="15dp"
-        android:paddingEnd="15dp">
+        android:layout_height="match_parent">
 
         <ImageView
             android:id="@+id/btn_close"
@@ -50,75 +40,141 @@
             android:src="@android:drawable/ic_menu_close_clear_cancel"
             app:tint="#FFFFFF"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:padding="8dp"/>
-    </LinearLayout>
+            android:layout_marginTop="40dp"
+            android:layout_marginStart="15dp"
+            android:padding="5dp"/>
 
-    <!-- أدوات الانستغرام (عامودية على اليمين) -->
-    <LinearLayout
-        android:id="@+id/right_tools_layout"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:layout_gravity="end|top"
-        android:layout_marginTop="100dp"
-        android:layout_marginEnd="15dp"
-        android:background="#22000000"
-        android:padding="10dp">
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_alignParentEnd="true"
+            android:layout_marginTop="100dp"
+            android:layout_marginEnd="15dp">
 
-        <ImageView
-            android:id="@+id/btn_add_text"
-            android:layout_width="45dp"
-            android:layout_height="45dp"
-            android:src="@android:drawable/ic_menu_edit"
-            app:tint="#FFFFFF"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:padding="8dp"
-            android:layout_marginBottom="15dp"/>
+            <ImageView
+                android:id="@+id/btn_add_text"
+                android:layout_width="45dp"
+                android:layout_height="45dp"
+                android:src="@android:drawable/ic_menu_edit"
+                app:tint="#FFFFFF"
+                android:background="@drawable/bg_circle_trans_black"
+                android:padding="10dp"
+                android:layout_marginBottom="15dp"/>
 
-        <ImageView
-            android:id="@+id/btn_add_music"
-            android:layout_width="45dp"
-            android:layout_height="45dp"
-            android:src="@android:drawable/ic_media_play"
-            app:tint="#FFFFFF"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:padding="8dp"
-            android:layout_marginBottom="15dp"/>
+            <ImageView
+                android:id="@+id/btn_add_music"
+                android:layout_width="45dp"
+                android:layout_height="45dp"
+                android:src="@android:drawable/ic_media_play"
+                app:tint="#FFFFFF"
+                android:background="@drawable/bg_circle_trans_black"
+                android:padding="10dp"/>
+        </LinearLayout>
 
-        <ImageView
-            android:id="@+id/btn_add_sticker"
-            android:layout_width="45dp"
-            android:layout_height="45dp"
-            android:src="@android:drawable/ic_menu_gallery"
-            app:tint="#FFFFFF"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:padding="8dp"/>
-    </LinearLayout>
-
-    <!-- زر النشر السفلي -->
-    <LinearLayout
-        android:id="@+id/bottom_tools_layout"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:gravity="end|bottom"
-        android:padding="20dp">
-
+        <!-- 🌟 زر النشر الفخم 🌟 -->
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_publish_story"
             android:layout_width="wrap_content"
-            android:layout_height="55dp"
-            android:text="قصتك 🚀"
+            android:layout_height="50dp"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentEnd="true"
+            android:layout_marginEnd="20dp"
+            android:layout_marginBottom="30dp"
+            android:text="قصتك"
             android:textColor="#000000"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textStyle="bold"
-            app:cornerRadius="30dp"
+            app:cornerRadius="25dp"
             app:backgroundTint="#FFFFFF"
-            android:paddingStart="25dp"
-            android:paddingEnd="25dp"/>
-    </LinearLayout>
+            app:icon="@android:drawable/ic_media_play"
+            app:iconTint="#000000"
+            app:iconGravity="textEnd"
+            android:paddingStart="20dp"
+            android:paddingEnd="15dp"/>
+    </RelativeLayout>
 
-    <!-- محرر النصوص الاحترافي (يظهر كطبقة شفافة فوق كل شيء عند الكتابة) -->
+    <!-- 🌟 شاشة الأدمن المنبثقة لإضافة موسيقى للسيرفر 🌟 -->
+    <FrameLayout
+        android:id="@+id/admin_music_upload_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#DD000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone">
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_margin="20dp"
+            app:cardCornerRadius="20dp"
+            app:cardBackgroundColor="#1A1A1D">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="25dp">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="إضافة موسيقى جديدة للسيرفر 🎵"
+                    android:textColor="#FFFFFF"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:gravity="center"
+                    android:layout_marginBottom="20dp"/>
+                <EditText
+                    android:id="@+id/et_admin_music_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:hint="اسم الأغنية أو الترند"
+                    android:textColorHint="#88FFFFFF"
+                    android:textColor="#FFFFFF"
+                    android:background="#252529"
+                    android:paddingStart="15dp"
+                    android:paddingEnd="15dp"
+                    android:layout_marginBottom="15dp"/>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <MaterialButton
+                        android:id="@+id/btn_admin_pick_cover"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="صورة الأغنية"
+                        app:backgroundTint="#33FFFFFF"
+                        android:layout_marginEnd="10dp"/>
+                    <MaterialButton
+                        android:id="@+id/btn_admin_pick_audio"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="الملف الصوتي"
+                        app:backgroundTint="#33FFFFFF"/>
+                </LinearLayout>
+                <MaterialButton
+                    android:id="@+id/btn_admin_upload_music"
+                    android:layout_width="match_parent"
+                    android:layout_height="55dp"
+                    android:text="رفع الموسيقى للسيرفر"
+                    app:backgroundTint="#2196F3"
+                    android:layout_marginTop="20dp"/>
+                <MaterialButton
+                    android:id="@+id/btn_admin_close_music"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="إلغاء"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:textColor="#FF5252"
+                    android:layout_marginTop="5dp"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+    </FrameLayout>
+
+    <!-- 🌟 شاشة محرر النصوص (تظهر كطبقة شفافة) 🌟 -->
     <FrameLayout
         android:id="@+id/text_editor_layout"
         android:layout_width="match_parent"
@@ -200,7 +256,7 @@
         </HorizontalScrollView>
     </FrameLayout>
 
-    <!-- شاشة التحميل تظهر أثناء الرفع -->
+    <!-- شاشة التحميل -->
     <FrameLayout
         android:id="@+id/layout_loading"
         android:layout_width="match_parent"
@@ -219,7 +275,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:layout_marginTop="50dp"
-            android:text="جاري التجهيز والنشر..."
+            android:text="جاري المعالجة..."
             android:textColor="#FFFFFF"
             android:textSize="16sp"
             android:textStyle="bold"/>
