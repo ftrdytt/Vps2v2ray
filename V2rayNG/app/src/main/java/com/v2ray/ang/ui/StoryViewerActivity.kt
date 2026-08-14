@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
 import android.view.Gravity
@@ -31,8 +32,6 @@ import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
-import java.io.File
-import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -51,7 +50,7 @@ class StoryViewerActivity : AppCompatActivity() {
     private var currentReactionsObj: JSONObject? = null
 
     private lateinit var ivStoryImage: ImageView
-    private lateinit var vvStoryVideo: VideoView // 🌟 مشغل الفيديو الجديد 🌟
+    private lateinit var vvStoryVideo: VideoView // 🌟 مشغل البث المباشر 🌟
     private lateinit var tvStoryText: TextView
     private lateinit var ivPfp: ImageView
     private lateinit var tvName: TextView
@@ -74,8 +73,6 @@ class StoryViewerActivity : AppCompatActivity() {
     private var timeLeft = STORY_DURATION
     private lateinit var scaleGestureDetector: ScaleGestureDetector
     private var scaleFactor = 1.0f
-    
-    private var cachedVideoFile: File? = null // 🌟 متغير لتخزين مسار الفيديو المؤقت 🌟
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -101,7 +98,7 @@ class StoryViewerActivity : AppCompatActivity() {
 
     private fun initViews() {
         ivStoryImage = findViewById(R.id.iv_story_image)
-        // سيتم إضافة مشغل الفيديو برمجياً لتجنب الكراش بالـ XML القديم
+        // إضافة مشغل الفيديو برمجياً وتجهيزه لاستقبال البث
         vvStoryVideo = VideoView(this).apply {
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply { gravity = Gravity.CENTER }
             visibility = View.GONE
@@ -291,24 +288,23 @@ class StoryViewerActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 قلب المحرك: معالجة سريعة وذكية لعرض القصة (صورة أو فيديو) 🌟
+    // 🌟 قلب المحرك: معالجة البث المباشر للفيديو أو عرض الصور 🌟
     private fun displayStory(index: Int) {
         if (index < 0 || index >= storiesArray.length()) return
         storyJob?.cancel()
         currentIndex = index
         
-        // مسح آثار أي فيديو سابق لتوفير الرام
+        // إيقاف أي فيديو سابق
         vvStoryVideo.stopPlayback()
         vvStoryVideo.visibility = View.GONE
-        cachedVideoFile?.delete() 
 
         for (i in 0 until index) progressAnimators[i].progress = 100
         for (i in index until storiesArray.length()) progressAnimators[i].progress = 0
 
         val story = storiesArray.getJSONObject(index)
         val type = story.optString("type", "image") // نوع القصة
-        val mediaBase64 = story.optString("image", "") // يحتوي الصورة أو الفيديو حسب النوع
-        val text = story.optString("text", "")
+        val mediaBase64 = story.optString("image", "") // يحتوي الصورة العادية (إن وجدت)
+        val textOrOverlay = story.optString("text", "") // يحتوي النص أو صورة الملصقات للفيديو
         val storyId = story.getString("id")
         val timestamp = story.optLong("timestamp", System.currentTimeMillis())
         
@@ -332,48 +328,42 @@ class StoryViewerActivity : AppCompatActivity() {
             checkFollowStatus()
         }
 
-        // 🌟 المعالجة الذكية للنوع 🌟
-        if (type == "video" && mediaBase64.isNotEmpty()) {
-            ivStoryImage.visibility = View.GONE
+        // 🌟 المعالجة السريعة (البث المباشر) 🌟
+        if (type == "video") {
             tvStoryText.visibility = View.GONE
             progressLoading.visibility = View.VISIBLE
+            vvStoryVideo.visibility = View.VISIBLE
             
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    // تفريغ הـ Base64 إلى ملف .mp4 مؤقت في خلفية سريعة جداً
-                    val cleanStr = if (mediaBase64.contains(",")) mediaBase64.substringAfter(",") else mediaBase64
-                    val videoBytes = Base64.decode(cleanStr.replace("\\s+".toRegex(), ""), Base64.DEFAULT)
-                    
-                    cachedVideoFile = File(cacheDir, "temp_story_${System.currentTimeMillis()}.mp4")
-                    val fos = FileOutputStream(cachedVideoFile)
-                    fos.write(videoBytes)
-                    fos.close()
-
-                    withContext(Dispatchers.Main) {
-                        progressLoading.visibility = View.GONE
-                        vvStoryVideo.visibility = View.VISIBLE
-                        vvStoryVideo.setVideoPath(cachedVideoFile!!.absolutePath)
-                        
-                        vvStoryVideo.setOnPreparedListener { mp ->
-                            mp.isLooping = true // يشتغل בלوب مستمر
-                            // تحديد مدة الاستوري بمدة الفيديو (إلى 30 ثانية)
-                            val duration = mp.duration.toLong()
-                            startStoryTimer(index, if (duration > 0) duration else STORY_DURATION)
-                            mp.start()
-                        }
-                        
-                        vvStoryVideo.setOnErrorListener { _, _, _ ->
-                            Toast.makeText(this@StoryViewerActivity, "خطأ في تشغيل الفيديو", Toast.LENGTH_SHORT).show()
-                            showNextStory()
-                            true
-                        }
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        progressLoading.visibility = View.GONE
-                        showNextStory() // تجاوز الاستوري التالف
-                    }
+            // عرض الملصقات والنصوص فوق الفيديو (إن وجدت)
+            if (textOrOverlay.isNotEmpty()) {
+                val overlayBitmap = getSafeBitmap(textOrOverlay)
+                if (overlayBitmap != null) {
+                    ivStoryImage.setImageBitmap(overlayBitmap)
+                    ivStoryImage.visibility = View.VISIBLE
+                } else {
+                    ivStoryImage.visibility = View.GONE
                 }
+            } else {
+                ivStoryImage.visibility = View.GONE
+            }
+
+            // تشغيل البث المباشر من السيرفر فوراً بدون تحميل الملف
+            val videoUrl = "$BASE_API_URL/story/stream_video?storyId=$storyId"
+            vvStoryVideo.setVideoURI(Uri.parse(videoUrl))
+            
+            vvStoryVideo.setOnPreparedListener { mp ->
+                progressLoading.visibility = View.GONE // إخفاء التحميل أول ما يبدأ التشغيل
+                mp.isLooping = true // يشتغل בלوب مستمر
+                val duration = mp.duration.toLong()
+                startStoryTimer(index, if (duration > 0) duration else STORY_DURATION)
+                mp.start()
+            }
+            
+            vvStoryVideo.setOnErrorListener { _, _, _ ->
+                progressLoading.visibility = View.GONE
+                Toast.makeText(this@StoryViewerActivity, "خطأ في تشغيل الفيديو", Toast.LENGTH_SHORT).show()
+                showNextStory()
+                true
             }
         } else {
             // معالجة الصور والنصوص العادية
@@ -387,7 +377,7 @@ class StoryViewerActivity : AppCompatActivity() {
                 }
             } else {
                 ivStoryImage.visibility = View.GONE
-                tvStoryText.text = text
+                tvStoryText.text = textOrOverlay
                 tvStoryText.visibility = View.VISIBLE
                 storyContentContainer.setBackgroundColor(Color.parseColor("#${storyId.takeLast(6).padEnd(6, '0')}"))
             }
@@ -638,7 +628,6 @@ class StoryViewerActivity : AppCompatActivity() {
         super.onDestroy()
         storyJob?.cancel()
         vvStoryVideo.stopPlayback()
-        cachedVideoFile?.delete() // تنظيف فوري لملف الفيديو المؤقت لمنع استهلاك الذاكرة
     }
     
     override fun onResume() {
