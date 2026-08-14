@@ -6,11 +6,19 @@
     android:background="#000000"
     android:layoutDirection="ltr"> <!-- فرض اتجاه الشاشة لمنع عكس التقليب -->
 
-    <!-- حاوية المحتوى (تدعم التكبير والتصغير وتضم الصورة والنص) -->
+    <!-- حاوية المحتوى (تدعم التكبير والتصغير وتضم الصورة والفيديو والنص) -->
     <FrameLayout
         android:id="@+id/story_content_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
+
+        <!-- 🌟 مشغل الفيديو السريع (تمت إضافته لضمان التشغيل بدون كراش) 🌟 -->
+        <VideoView
+            android:id="@+id/vv_story_video"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:visibility="gone" />
 
         <ImageView
             android:id="@+id/iv_story_image"
