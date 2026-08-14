@@ -52,7 +52,6 @@
             android:layout_marginTop="100dp"
             android:layout_marginEnd="15dp">
 
-            <!-- 🌟 تم حل مشكلة الخلفية المفقودة باستخدام CardView دائري 🌟 -->
             <androidx.cardview.widget.CardView
                 android:layout_width="45dp"
                 android:layout_height="45dp"
@@ -156,7 +155,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal">
-                    <MaterialButton
+                    <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_admin_pick_cover"
                         android:layout_width="0dp"
                         android:layout_weight="1"
@@ -164,7 +163,7 @@
                         android:text="صورة الأغنية"
                         app:backgroundTint="#33FFFFFF"
                         android:layout_marginEnd="10dp"/>
-                    <MaterialButton
+                    <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_admin_pick_audio"
                         android:layout_width="0dp"
                         android:layout_weight="1"
@@ -172,14 +171,14 @@
                         android:text="الملف الصوتي"
                         app:backgroundTint="#33FFFFFF"/>
                 </LinearLayout>
-                <MaterialButton
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_admin_upload_music"
                     android:layout_width="match_parent"
                     android:layout_height="55dp"
                     android:text="رفع الموسيقى للسيرفر"
                     app:backgroundTint="#2196F3"
                     android:layout_marginTop="20dp"/>
-                <MaterialButton
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_admin_close_music"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
