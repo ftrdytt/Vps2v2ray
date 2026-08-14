@@ -40,6 +40,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -62,7 +63,8 @@ class StoryUploadActivity : AppCompatActivity() {
 
     // واجهات أساسية
     private lateinit var storyCaptureFrame: FrameLayout
-    private lateinit var ivVideoPreview: ImageView
+    private lateinit var ivVideoPreview: ImageView // تستخدم الآن كـ VideoView مصغر برمجياً أو خلفية
+    private var videoPlayer: VideoView? = null // 🌟 مشغل الفيديو الجديد 🌟
     private lateinit var drawingContainer: FrameLayout
     private lateinit var toolsOverlayLayout: View
     private lateinit var layoutLoading: FrameLayout
@@ -186,6 +188,12 @@ class StoryUploadActivity : AppCompatActivity() {
         setupAdminMusicTools()
     }
 
+    // إيقاف تشغيل الفيديو عند الخروج من الشاشة لمنع مشاكل الذاكرة
+    override fun onDestroy() {
+        super.onDestroy()
+        videoPlayer?.stopPlayback()
+    }
+
     private fun openGallery() {
         val intent = Intent(Intent.ACTION_PICK).apply {
             type = "*/*"
@@ -227,6 +235,11 @@ class StoryUploadActivity : AppCompatActivity() {
             val gradient = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(dominantColor, Color.parseColor("#111111")))
             storyCaptureFrame.background = gradient
 
+            // تنظيف أي فيديو سابق
+            videoPlayer?.let { storyCaptureFrame.removeView(it) }
+            videoPlayer = null
+            ivVideoPreview.visibility = View.GONE
+
             // إضافة الصورة كعنصر حر داخل الشاشة بدلاً من أن تكون خلفية ثابتة
             val ivSticker = ImageView(this).apply {
                 setImageBitmap(originalBitmap)
@@ -247,6 +260,9 @@ class StoryUploadActivity : AppCompatActivity() {
         }
     }
 
+    // =========================================================================
+    // 🌟 نظام الفيديو الحي (Live Video Player) 🌟
+    // =========================================================================
     private fun handleVideoSelection(uri: Uri) {
         val retriever = MediaMetadataRetriever()
         try {
@@ -259,16 +275,33 @@ class StoryUploadActivity : AppCompatActivity() {
                 return
             }
 
+            // تطبيق الخلفية الذكية المتدرجة للفيديو للحصول على مظهر فخم
             val thumbnail = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
             if (thumbnail != null) {
-                // تطبيق الخلفية الذكية المتدرجة للفيديو
                 val dominantColor = getSmartBackgroundColor(thumbnail)
                 val gradient = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(dominantColor, Color.parseColor("#111111")))
                 storyCaptureFrame.background = gradient
-
-                ivVideoPreview.setImageBitmap(thumbnail)
-                ivVideoPreview.visibility = View.VISIBLE
             }
+
+            // إخفاء صورة المعاينة وبناء مشغل فيديو حقيقي
+            ivVideoPreview.visibility = View.GONE
+            videoPlayer?.let { storyCaptureFrame.removeView(it) }
+
+            videoPlayer = VideoView(this).apply {
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                    gravity = Gravity.CENTER
+                }
+                setVideoURI(uri)
+                // كتم الصوت أثناء العرض حتى لا يزعج المستخدم أثناء التعديل
+                setOnPreparedListener { mp -> 
+                    mp.setVolume(0f, 0f) 
+                    mp.isLooping = true 
+                    mp.start()
+                }
+            }
+            
+            // نضع المشغل في أسفل الشاشة (قبل الـ drawingContainer)
+            storyCaptureFrame.addView(videoPlayer, 0)
             
             hasSelectedVideo = true
             hasSelectedImage = false
@@ -681,7 +714,7 @@ class StoryUploadActivity : AppCompatActivity() {
     }
 
     // =========================================================================
-    // 🌟 القيود وعملية الرفع الخرافية 🌟
+    // 🌟 القيود وعملية الرفع الخرافية (معالجة الرام وصلاحيات الأدمن) 🌟
     // =========================================================================
     private fun getHardwareId(): String {
         val devInfo = Build.BOARD + Build.BRAND + Build.DEVICE + Build.HARDWARE + Build.MANUFACTURER + Build.MODEL + Build.PRODUCT
@@ -690,6 +723,9 @@ class StoryUploadActivity : AppCompatActivity() {
     }
 
     private fun checkDailyQuota(isVideo: Boolean): Boolean {
+        // 🌟 استثناء الأدمن من كافة القيود 🌟
+        if (AuthManager.getRole(this) == "admin") return true
+
         val prefs = getSharedPreferences("StoryQuotaPrefs", Context.MODE_PRIVATE)
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         if (isVideo && prefs.getInt("vid_$today", 0) >= 2) { showCustomSnackbar("استهلكت الحد اليومي للفيديوهات 🚫", "#F44336"); return false }
@@ -698,6 +734,7 @@ class StoryUploadActivity : AppCompatActivity() {
     }
 
     private fun incrementDailyQuota(isVideo: Boolean) {
+        if (AuthManager.getRole(this) == "admin") return // لا نزيد العداد للأدمن
         val prefs = getSharedPreferences("StoryQuotaPrefs", Context.MODE_PRIVATE)
         val key = (if (isVideo) "vid_" else "img_") + SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         prefs.edit().putInt(key, prefs.getInt(key, 0) + 1).apply()
@@ -711,11 +748,24 @@ class StoryUploadActivity : AppCompatActivity() {
         return Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
     }
 
-    private fun convertVideoToBase64(uri: Uri): String? {
+    // 🌟 معالجة آمنة لملفات الفيديو الكبيرة لمنع الكراش (Out of Memory) 🌟
+    private fun convertVideoToBase64Safe(uri: Uri): String? {
+        var inputStream: InputStream? = null
+        val baos = ByteArrayOutputStream()
         return try {
-            val bytes = contentResolver.openInputStream(uri)?.readBytes() ?: return null
-            Base64.encodeToString(bytes, Base64.NO_WRAP)
-        } catch (e: Exception) { null }
+            inputStream = contentResolver.openInputStream(uri)
+            val buffer = ByteArray(8192) // نقرأ بقطع صغيرة
+            var bytesRead: Int
+            while (inputStream?.read(buffer).also { bytesRead = it ?: -1 } != -1) {
+                baos.write(buffer, 0, bytesRead)
+            }
+            Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+        } catch (e: Exception) {
+            null
+        } finally {
+            inputStream?.close()
+            baos.close()
+        }
     }
 
     private fun uploadStory() {
@@ -726,13 +776,14 @@ class StoryUploadActivity : AppCompatActivity() {
         
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // التقاط الشاشة بالكامل بجميع ملصقاتها
+                // إيقاف الفيديو قبل أخذ لقطة للملصقات (مهم جداً للرام)
+                videoPlayer?.pause()
                 val finalCompositeBase64 = captureStoryFrame(storyCaptureFrame)
                 val mediaBase64: String
                 val storyType: String
 
                 if (hasSelectedVideo && selectedVideoUri != null) {
-                    val encodedVideo = convertVideoToBase64(selectedVideoUri!!)
+                    val encodedVideo = convertVideoToBase64Safe(selectedVideoUri!!)
                     if (encodedVideo == null) {
                         withContext(Dispatchers.Main) { showCustomSnackbar("حجم الفيديو كبير جداً", "#F44336"); restoreControls() }
                         return@launch
@@ -753,7 +804,7 @@ class StoryUploadActivity : AppCompatActivity() {
                     put("userId", userId)
                     put("hardwareId", hardwareId) 
                     put("type", storyType)
-                    put("imageBase64", mediaBase64) // 🌟 هنا تم التعديل ليطابق السيرفر 🌟
+                    put("imageBase64", mediaBase64)
                     put("musicId", selectedMusicId ?: "")
                     put("textContent", if (storyType == "video") finalCompositeBase64 else "") 
                 }
@@ -761,7 +812,6 @@ class StoryUploadActivity : AppCompatActivity() {
                 conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
 
                 if (conn.responseCode == 200) {
-                    // 🌟 هنا تم إضافة الفحص الفعلي لرد السيرفر 🌟
                     val respReader = BufferedReader(InputStreamReader(conn.inputStream))
                     val respStr = respReader.readText()
                     respReader.close()
@@ -788,6 +838,8 @@ class StoryUploadActivity : AppCompatActivity() {
     private fun restoreControls() {
         layoutLoading.visibility = View.GONE
         toolsOverlayLayout.visibility = View.VISIBLE
+        // إعادة تشغيل الفيديو إذا فشل النشر
+        videoPlayer?.start()
     }
 
     private fun showCustomSnackbar(message: String, colorHex: String) {
