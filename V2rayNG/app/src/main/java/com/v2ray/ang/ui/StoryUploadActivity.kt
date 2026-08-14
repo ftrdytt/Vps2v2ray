@@ -169,10 +169,6 @@ class StoryUploadActivity : AppCompatActivity() {
         }
 
         findViewById<ImageView>(R.id.btn_add_music).setOnClickListener { showMusicBottomSheet() }
-        
-        findViewById<ImageView>(R.id.btn_add_sticker).setOnClickListener {
-            showCustomSnackbar("ميزة الملصقات الإضافية قادمة قريباً!", "#2196F3")
-        }
 
         findViewById<MaterialButton>(R.id.btn_publish_story).setOnClickListener {
             if (!hasSelectedImage && !hasSelectedVideo && drawingContainer.childCount == 0) {
@@ -448,7 +444,7 @@ class StoryUploadActivity : AppCompatActivity() {
         makeViewFreeTransformable(stickerLayout)
         drawingContainer.addView(stickerLayout)
         selectedMusicId = id
-        showCustomSnackbar("تم إضافة الملصق. دبل كلك عليه لإخفائه!", "#4CAF50")
+        showCustomSnackbar("تم إضافة الملصق. يمكنك تحريكه وتكبيره!", "#4CAF50")
     }
 
     // =========================================================================
@@ -532,12 +528,19 @@ class StoryUploadActivity : AppCompatActivity() {
 
     private fun addDraggableTextSticker(text: String) {
         val tvSticker = TextView(this).apply {
-            this.text = text; textSize = 38f; gravity = Gravity.CENTER
+            this.text = text
+            textSize = 38f
+            gravity = Gravity.CENTER
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
+            
             var lastClickTime: Long = 0
             setOnClickListener {
                 val clickTime = System.currentTimeMillis()
-                if (clickTime - lastClickTime < 300) { activeTextViewToEdit = this; etTextInput.setText(this.text); openTextEditor() }
+                if (clickTime - lastClickTime < 300) {
+                    activeTextViewToEdit = this
+                    etTextInput.setText(this.text)
+                    openTextEditor()
+                }
                 lastClickTime = clickTime
             }
         }
@@ -567,8 +570,10 @@ class StoryUploadActivity : AppCompatActivity() {
     @SuppressLint("ClickableViewAccessibility")
     private fun makeViewFreeTransformable(view: View) {
         var mActivePointerId = MotionEvent.INVALID_POINTER_ID
-        var mLastTouchX = 0f; var mLastTouchY = 0f
-        var mPosX = 0f; var mPosY = 0f
+        var mLastTouchX = 0f
+        var mLastTouchY = 0f
+        var mPosX = 0f
+        var mPosY = 0f
 
         val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -579,21 +584,28 @@ class StoryUploadActivity : AppCompatActivity() {
             }
         })
 
-        var initialRotation = 0f; var initialAngle = 0f
+        var initialRotation = 0f
+        var initialAngle = 0f
 
         view.setOnTouchListener { v, event ->
             scaleDetector.onTouchEvent(event)
-            when (event.actionMasked) {
+            
+            val action = event.actionMasked
+            when (action) {
                 MotionEvent.ACTION_DOWN -> {
-                    mLastTouchX = event.getX(event.actionIndex)
-                    mLastTouchY = event.getY(event.actionIndex)
+                    val pointerIndex = event.actionIndex
+                    mLastTouchX = event.getX(pointerIndex)
+                    mLastTouchY = event.getY(pointerIndex)
                     mActivePointerId = event.getPointerId(0)
-                    mPosX = v.x; mPosY = v.y
-                    v.bringToFront() // جلب للأمام
+                    
+                    mPosX = v.x
+                    mPosY = v.y
+                    v.bringToFront()
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> {
                     if (event.pointerCount == 2) {
-                        val dx = event.getX(1) - event.getX(0); val dy = event.getY(1) - event.getY(0)
+                        val dx = event.getX(1) - event.getX(0)
+                        val dy = event.getY(1) - event.getY(0)
                         initialAngle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
                         initialRotation = v.rotation
                     }
@@ -601,24 +613,39 @@ class StoryUploadActivity : AppCompatActivity() {
                 MotionEvent.ACTION_MOVE -> {
                     val pointerIndex = event.findPointerIndex(mActivePointerId)
                     if (pointerIndex != -1) {
+                        // السحب
                         if (event.pointerCount == 1 && !scaleDetector.isInProgress) {
-                            mPosX += event.getX(pointerIndex) - mLastTouchX
-                            mPosY += event.getY(pointerIndex) - mLastTouchY
-                            v.x = mPosX; v.y = mPosY
+                            val x = event.getX(pointerIndex)
+                            val y = event.getY(pointerIndex)
+                            val dx = x - mLastTouchX
+                            val dy = y - mLastTouchY
+                            mPosX += dx
+                            mPosY += dy
+                            v.x = mPosX
+                            v.y = mPosY
                         }
+                        
+                        // الدوران بإصبعين
                         if (event.pointerCount == 2) {
-                            val dx = event.getX(1) - event.getX(0); val dy = event.getY(1) - event.getY(0)
-                            v.rotation = initialRotation + (Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat() - initialAngle)
+                            val dx = event.getX(1) - event.getX(0)
+                            val dy = event.getY(1) - event.getY(0)
+                            val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                            v.rotation = initialRotation + (angle - initialAngle)
                         }
                     }
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { mActivePointerId = MotionEvent.INVALID_POINTER_ID; v.performClick() }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    mActivePointerId = MotionEvent.INVALID_POINTER_ID
+                    v.performClick() 
+                }
                 MotionEvent.ACTION_POINTER_UP -> {
                     val pointerIndex = event.actionIndex
-                    if (event.getPointerId(pointerIndex) == mActivePointerId) {
-                        val newIndex = if (pointerIndex == 0) 1 else 0
-                        mLastTouchX = event.getX(newIndex); mLastTouchY = event.getY(newIndex)
-                        mActivePointerId = event.getPointerId(newIndex)
+                    val pointerId = event.getPointerId(pointerIndex)
+                    if (pointerId == mActivePointerId) {
+                        val newPointerIndex = if (pointerIndex == 0) 1 else 0
+                        mLastTouchX = event.getX(newPointerIndex)
+                        mLastTouchY = event.getY(newPointerIndex)
+                        mActivePointerId = event.getPointerId(newPointerIndex)
                     }
                 }
             }
