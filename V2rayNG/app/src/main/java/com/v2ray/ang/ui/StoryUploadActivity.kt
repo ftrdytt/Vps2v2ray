@@ -60,14 +60,18 @@ class StoryUploadActivity : AppCompatActivity() {
     private var selectedVideoUri: Uri? = null
     private var selectedMusicId: String? = null
 
-    // واجهات
+    // واجهات أساسية
     private lateinit var storyCaptureFrame: FrameLayout
-    private lateinit var ivPreview: ImageView
+    private lateinit var ivVideoPreview: ImageView
     private lateinit var drawingContainer: FrameLayout
+    private lateinit var toolsOverlayLayout: View
     private lateinit var layoutLoading: FrameLayout
-    private lateinit var topToolsLayout: LinearLayout
-    private lateinit var rightToolsLayout: LinearLayout
-    private lateinit var bottomToolsLayout: LinearLayout
+
+    // واجهة أدمن الموسيقى
+    private lateinit var adminMusicUploadLayout: FrameLayout
+    private lateinit var etAdminMusicTitle: EditText
+    private var adminSelectedCoverBase64: String = ""
+    private var adminSelectedAudioBase64: String = ""
 
     // محرر النصوص
     private lateinit var textEditorLayout: FrameLayout
@@ -79,27 +83,57 @@ class StoryUploadActivity : AppCompatActivity() {
     private val textStoryColors = arrayOf(
         "#FFFFFF", "#000000", "#FF5722", "#9C27B0", "#E91E63", "#009688", "#3F51B5", "#4CAF50", "#FF9800", "#FFEB3B"
     )
-
     private var currentTextColor = Color.WHITE
     private var currentTextStyle = "CLASSIC"
     private var textBgMode = 0
     private var activeTextViewToEdit: TextView? = null
 
-    // رافعات الملفات
+    // 🌟 رافعات الملفات (الاستوديو) 🌟
     private val pickMedia = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val uri = result.data?.data ?: return@registerForActivityResult
             val mimeType = contentResolver.getType(uri) ?: ""
             if (mimeType.startsWith("video/")) handleVideoSelection(uri) else handleImageSelection(uri)
         } else {
+            // إذا المستخدم لم يختار شيئاً في البداية نخرجه
             if (!hasSelectedImage && !hasSelectedVideo) finish()
+        }
+    }
+
+    private val pickAdminCover = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val uri = result.data?.data ?: return@registerForActivityResult
+            try {
+                val inputStream = contentResolver.openInputStream(uri)
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                val baos = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 70, baos)
+                adminSelectedCoverBase64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+                showCustomSnackbar("تم اختيار غلاف الأغنية 🖼️", "#4CAF50")
+            } catch (e: Exception) {
+                showCustomSnackbar("فشل قراءة الصورة", "#F44336")
+            }
         }
     }
 
     private val pickAdminAudio = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val uri = result.data?.data ?: return@registerForActivityResult
-            verifyAndUploadAdminAudio(uri)
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(this, uri)
+                val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                if (duration > 30500L) {
+                    showCustomSnackbar("عذراً، يجب أن يكون المقطع 30 ثانية أو أقل 🚫", "#F44336")
+                    return@registerForActivityResult
+                }
+                val bytes = contentResolver.openInputStream(uri)?.readBytes()
+                adminSelectedAudioBase64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                showCustomSnackbar("تم اختيار المقطع الصوتي 🎵", "#4CAF50")
+            } catch (e: Exception) {
+                showCustomSnackbar("ملف غير مدعوم", "#F44336")
+            } finally { retriever.release() }
         }
     }
 
@@ -109,35 +143,33 @@ class StoryUploadActivity : AppCompatActivity() {
         setContentView(R.layout.activity_story_upload)
 
         storyCaptureFrame = findViewById(R.id.story_capture_frame)
-        ivPreview = findViewById(R.id.iv_story_preview)
+        ivVideoPreview = findViewById(R.id.iv_story_video_preview)
         drawingContainer = findViewById(R.id.drawing_view_container)
+        toolsOverlayLayout = findViewById(R.id.tools_overlay_layout)
         layoutLoading = findViewById(R.id.layout_loading)
-        topToolsLayout = findViewById(R.id.top_tools_layout)
-        rightToolsLayout = findViewById(R.id.right_tools_layout)
-        bottomToolsLayout = findViewById(R.id.bottom_tools_layout)
+        adminMusicUploadLayout = findViewById(R.id.admin_music_upload_layout)
 
         textEditorLayout = findViewById(R.id.text_editor_layout)
         etTextInput = findViewById(R.id.et_story_text_input)
         colorPickerContainer = findViewById(R.id.color_picker_container)
         btnToggleFont = findViewById(R.id.btn_toggle_font)
         btnToggleTextBg = findViewById(R.id.btn_toggle_text_bg)
+        etAdminMusicTitle = findViewById(R.id.et_admin_music_title)
 
-        // فتح الاستوديو فوراً
+        // فتح الاستوديو فوراً عند الدخول
         if (savedInstanceState == null) openGallery()
 
         findViewById<ImageView>(R.id.btn_close).setOnClickListener { finish() }
 
-        // أزرار الانستغرام العائمة
+        // أزرار الواجهة العائمة (انستغرام ستايل)
         findViewById<ImageView>(R.id.btn_add_text).setOnClickListener {
             activeTextViewToEdit = null
             etTextInput.setText("")
             openTextEditor()
         }
 
-        findViewById<ImageView>(R.id.btn_add_music).setOnClickListener {
-            showMusicBottomSheet()
-        }
-
+        findViewById<ImageView>(R.id.btn_add_music).setOnClickListener { showMusicBottomSheet() }
+        
         findViewById<ImageView>(R.id.btn_add_sticker).setOnClickListener {
             showCustomSnackbar("ميزة الملصقات الإضافية قادمة قريباً!", "#2196F3")
         }
@@ -149,14 +181,13 @@ class StoryUploadActivity : AppCompatActivity() {
             }
             if (!checkDailyQuota(isVideo = hasSelectedVideo)) return@setOnClickListener
             
-            topToolsLayout.visibility = View.INVISIBLE
-            rightToolsLayout.visibility = View.INVISIBLE
-            bottomToolsLayout.visibility = View.INVISIBLE
-            
+            // إخفاء الأزرار قبل أخذ لقطة الشاشة
+            toolsOverlayLayout.visibility = View.INVISIBLE
             uploadStory()
         }
 
         setupTextEditorTools()
+        setupAdminMusicTools()
     }
 
     private fun openGallery() {
@@ -168,7 +199,67 @@ class StoryUploadActivity : AppCompatActivity() {
     }
 
     // =========================================================================
-    // 🌟 نظام الموسيقى الخرافي (Music BottomSheet) 🌟
+    // 🌟 نظام الصورة الحرة (Drag, Scale, Rotate) 🌟
+    // =========================================================================
+    private fun handleImageSelection(uri: Uri) {
+        try {
+            val inputStream = contentResolver.openInputStream(uri)
+            val originalBitmap = BitmapFactory.decodeStream(inputStream)
+            inputStream?.close()
+
+            if (originalBitmap == null) return
+
+            // إضافة الصورة كعنصر حر داخل الشاشة بدلاً من أن تكون خلفية ثابتة
+            val ivSticker = ImageView(this).apply {
+                setImageBitmap(originalBitmap)
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                    gravity = Gravity.CENTER
+                }
+            }
+            
+            makeViewFreeTransformable(ivSticker)
+            // نضع الصورة في الخلف (index 0) حتى تكون النصوص فوقها دائماً
+            drawingContainer.addView(ivSticker, 0)
+            
+            hasSelectedImage = true
+            hasSelectedVideo = false
+            selectedVideoUri = null
+        } catch (e: Exception) {
+            showCustomSnackbar("فشل في قراءة الصورة", "#F44336")
+        }
+    }
+
+    private fun handleVideoSelection(uri: Uri) {
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(this, uri)
+            val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+
+            // حد الفيديو 30 ثانية
+            if (durationMs > 30500L) { 
+                showCustomSnackbar("عذراً، يجب أن لا تتجاوز مدة الفيديو 30 ثانية 🚫", "#F44336")
+                return
+            }
+
+            val thumbnail = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            if (thumbnail != null) {
+                ivVideoPreview.setImageBitmap(thumbnail)
+                ivVideoPreview.visibility = View.VISIBLE
+            }
+            
+            hasSelectedVideo = true
+            hasSelectedImage = false
+            selectedVideoUri = uri
+            showCustomSnackbar("تم اختيار الفيديو بنجاح", "#4CAF50")
+        } catch (e: Exception) {
+            showCustomSnackbar("الفيديو غير مدعوم أو تالف", "#F44336")
+        } finally {
+            retriever.release()
+        }
+    }
+
+    // =========================================================================
+    // 🌟 نظام الموسيقى والأدمن الخرافي (BottomSheet) 🌟
     // =========================================================================
     private fun showMusicBottomSheet() {
         val bottomSheet = BottomSheetDialog(this)
@@ -179,43 +270,31 @@ class StoryUploadActivity : AppCompatActivity() {
             setPadding(30, 30, 30, 30)
         }
 
-        // شريط البحث
         val etSearchMusic = EditText(this).apply {
             hint = "🔍 بحث عن موسيقى..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             textSize = 16f
             setPadding(40, 30, 40, 30)
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#252529"))
-                cornerRadius = 30f
-            }
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, 30)
-            }
+            background = GradientDrawable().apply { setColor(Color.parseColor("#252529")); cornerRadius = 30f }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 30) }
         }
         container.addView(etSearchMusic)
 
-        // زر إضافة للأدمن فقط
-        val userRole = AuthManager.getRole(this)
-        if (userRole == "admin") {
+        if (AuthManager.getRole(this) == "admin") {
             val btnAdminAdd = MaterialButton(this).apply {
                 text = "➕ إضافة موسيقى للسيرفر (لأدمن فقط)"
                 setBackgroundColor(Color.parseColor("#9C27B0"))
                 setTextColor(Color.WHITE)
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, 30)
-                }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 30) }
                 setOnClickListener {
                     bottomSheet.dismiss()
-                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply { type = "audio/*" }
-                    pickAdminAudio.launch(intent)
+                    adminMusicUploadLayout.visibility = View.VISIBLE
                 }
             }
             container.addView(btnAdminAdd)
         }
 
-        // قائمة الموسيقى
         val scrollView = ScrollView(this).apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT) }
         val musicListLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         
@@ -224,88 +303,143 @@ class StoryUploadActivity : AppCompatActivity() {
         bottomSheet.setContentView(container)
         bottomSheet.show()
 
-        // محاكاة جلب الأغاني (سيتم ربطها بـ API السيرفر)
-        val mockSongs = listOf(
-            Pair("ترند التيك توك 🔥", "موسيقى اشور"),
-            Pair("لحن حزين 💔", "Ashor Beats"),
-            Pair("حماسيات ببجي 🎮", "DJ Admin"),
-            Pair("موسيقى هادئة 🌙", "Relaxing")
-        )
+        // 🌟 جلب الأغاني من السيرفر (Trends) 🌟
+        fun fetchAndPopulate(query: String) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val conn = URL("$BASE_API_URL/music/list?query=${Uri.encode(query)}").openConnection() as HttpURLConnection
+                    if (conn.responseCode == 200) {
+                        val reader = BufferedReader(InputStreamReader(conn.inputStream))
+                        val resp = reader.readText()
+                        reader.close()
+                        val json = JSONObject(resp)
+                        if (json.getBoolean("success")) {
+                            val array = json.getJSONArray("music")
+                            withContext(Dispatchers.Main) {
+                                musicListLayout.removeAllViews()
+                                for (i in 0 until array.length()) {
+                                    val obj = array.getJSONObject(i)
+                                    val id = obj.getString("id")
+                                    val title = obj.getString("title")
+                                    val artist = obj.optString("artist", "")
+                                    val coverBase64 = obj.optString("coverBase64", "")
+                                    
+                                    val row = LinearLayout(this@StoryUploadActivity).apply {
+                                        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                                        setPadding(20, 20, 20, 20)
+                                        background = GradientDrawable().apply { cornerRadius = 20f; setColor(Color.parseColor("#1A1A1D")) }
+                                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
+                                        
+                                        val ivCover = ImageView(this@StoryUploadActivity).apply {
+                                            layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 30, 0) }
+                                            if (coverBase64.isNotEmpty()) {
+                                                val b = Base64.decode(coverBase64, Base64.DEFAULT)
+                                                setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size))
+                                                scaleType = ImageView.ScaleType.CENTER_CROP
+                                            } else {
+                                                setImageResource(android.R.drawable.ic_media_play)
+                                                setBackgroundColor(Color.parseColor("#333333"))
+                                                setPadding(20, 20, 20, 20)
+                                            }
+                                        }
 
-        fun populateList(query: String) {
-            musicListLayout.removeAllViews()
-            val filtered = mockSongs.filter { it.first.contains(query, true) || it.second.contains(query, true) }
-            
-            for (song in filtered) {
-                val row = LinearLayout(this@StoryUploadActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(20, 20, 20, 20)
-                    background = GradientDrawable().apply { cornerRadius = 20f; setColor(Color.parseColor("#1A1A1D")) }
-                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) }
-                    
-                    val ivCover = ImageView(this@StoryUploadActivity).apply {
-                        layoutParams = LinearLayout.LayoutParams(120, 120).apply { setMargins(0, 0, 30, 0) }
-                        setImageResource(android.R.drawable.ic_media_play)
-                        setBackgroundColor(Color.parseColor("#333333"))
-                        setPadding(20, 20, 20, 20)
+                                        val textLayout = LinearLayout(this@StoryUploadActivity).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
+                                        textLayout.addView(TextView(this@StoryUploadActivity).apply { text = title; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, Typeface.BOLD) })
+                                        textLayout.addView(TextView(this@StoryUploadActivity).apply { text = artist; setTextColor(Color.GRAY); textSize = 12f })
+
+                                        addView(ivCover)
+                                        addView(textLayout)
+                                        setOnClickListener {
+                                            bottomSheet.dismiss()
+                                            addMusicStickerToScreen(id, title, artist, coverBase64)
+                                        }
+                                    }
+                                    musicListLayout.addView(row)
+                                }
+                            }
+                        }
                     }
-
-                    val textLayout = LinearLayout(this@StoryUploadActivity).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
-                    textLayout.addView(TextView(this@StoryUploadActivity).apply { text = song.first; setTextColor(Color.WHITE); textSize = 16f; setTypeface(null, Typeface.BOLD) })
-                    textLayout.addView(TextView(this@StoryUploadActivity).apply { text = song.second; setTextColor(Color.GRAY); textSize = 12f })
-
-                    addView(ivCover)
-                    addView(textLayout)
-
-                    setOnClickListener {
-                        bottomSheet.dismiss()
-                        addMusicStickerToScreen(song.first, song.second)
-                    }
-                }
-                musicListLayout.addView(row)
+                } catch (e: Exception) {}
             }
         }
-
-        populateList("")
+        
+        fetchAndPopulate("")
         etSearchMusic.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) { populateList(s.toString()) }
+            override fun afterTextChanged(s: Editable?) { fetchAndPopulate(s.toString()) }
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
     }
 
-    private fun addMusicStickerToScreen(songName: String, artist: String) {
+    private fun setupAdminMusicTools() {
+        findViewById<MaterialButton>(R.id.btn_admin_pick_cover).setOnClickListener {
+            pickAdminCover.launch(Intent(Intent.ACTION_PICK).apply { type = "image/*" })
+        }
+        findViewById<MaterialButton>(R.id.btn_admin_pick_audio).setOnClickListener {
+            pickAdminAudio.launch(Intent(Intent.ACTION_GET_CONTENT).apply { type = "audio/*" })
+        }
+        findViewById<MaterialButton>(R.id.btn_admin_close_music).setOnClickListener {
+            adminMusicUploadLayout.visibility = View.GONE
+        }
+        findViewById<MaterialButton>(R.id.btn_admin_upload_music).setOnClickListener {
+            val title = etAdminMusicTitle.text.toString().trim()
+            if (title.isEmpty() || adminSelectedAudioBase64.isEmpty()) {
+                showCustomSnackbar("يرجى كتابة الاسم واختيار الملف الصوتي", "#F44336")
+                return@setOnClickListener
+            }
+            layoutLoading.visibility = View.VISIBLE
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val conn = URL("$BASE_API_URL/music/add").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    val payload = JSONObject().apply {
+                        put("adminId", AuthManager.getId(this@StoryUploadActivity))
+                        put("title", title)
+                        put("audioBase64", adminSelectedAudioBase64)
+                        put("coverBase64", adminSelectedCoverBase64)
+                    }
+                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                    if (conn.responseCode == 200) {
+                        withContext(Dispatchers.Main) {
+                            showCustomSnackbar("تم رفع الموسيقى بنجاح!", "#4CAF50")
+                            adminMusicUploadLayout.visibility = View.GONE
+                            layoutLoading.visibility = View.GONE
+                            etAdminMusicTitle.setText("")
+                            adminSelectedAudioBase64 = ""
+                            adminSelectedCoverBase64 = ""
+                        }
+                    }
+                } catch (e: Exception) {}
+            }
+        }
+    }
+
+    private fun addMusicStickerToScreen(id: String, songName: String, artist: String, coverBase64: String) {
         val stickerLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#E6FFFFFF")) 
-                cornerRadius = 50f
-            }
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            background = GradientDrawable().apply { setColor(Color.parseColor("#E6FFFFFF")); cornerRadius = 50f }
             setPadding(30, 20, 40, 20)
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER
-            }
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
         }
 
         val ivArt = ImageView(this).apply {
-            setImageResource(android.R.drawable.ic_media_play)
-            setColorFilter(Color.BLACK)
             layoutParams = LinearLayout.LayoutParams(70, 70).apply { setMargins(0, 0, 20, 0) }
+            if (coverBase64.isNotEmpty()) {
+                val b = Base64.decode(coverBase64, Base64.DEFAULT)
+                setImageBitmap(BitmapFactory.decodeByteArray(b, 0, b.size))
+            } else {
+                setImageResource(android.R.drawable.ic_media_play)
+                setColorFilter(Color.BLACK)
+            }
         }
 
         val textLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        
-        // نص متحرك (Marquee)
-        val tvTitle = TextView(this).apply { 
+        textLayout.addView(TextView(this).apply { 
             text = songName; setTextColor(Color.BLACK); textSize = 14f; setTypeface(null, Typeface.BOLD)
-            ellipsize = TextUtils.TruncateAt.MARQUEE
-            isSingleLine = true
-            isSelected = true
-            marqueeRepeatLimit = -1
-        }
-        textLayout.addView(tvTitle)
+            ellipsize = TextUtils.TruncateAt.MARQUEE; isSingleLine = true; isSelected = true; marqueeRepeatLimit = -1
+        })
         textLayout.addView(TextView(this).apply { text = artist; setTextColor(Color.DKGRAY); textSize = 11f })
 
         stickerLayout.addView(ivArt)
@@ -313,27 +447,8 @@ class StoryUploadActivity : AppCompatActivity() {
 
         makeViewFreeTransformable(stickerLayout)
         drawingContainer.addView(stickerLayout)
-        selectedMusicId = "mock_audio_id"
-    }
-
-    private fun verifyAndUploadAdminAudio(uri: Uri) {
-        val retriever = MediaMetadataRetriever()
-        try {
-            retriever.setDataSource(this, uri)
-            val timeString = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            val durationMs = timeString?.toLongOrNull() ?: 0L
-
-            if (durationMs > 30500L) {
-                showCustomSnackbar("يجب أن يكون المقطع 30 ثانية أو أقل", "#F44336")
-                return
-            }
-            showCustomSnackbar("تم قبول المقطع، جاري الرفع للسيرفر...", "#4CAF50")
-            // هنا يوضع كود الرفع للسيرفر
-        } catch (e: Exception) {
-            showCustomSnackbar("ملف صوتي غير مدعوم", "#F44336")
-        } finally {
-            retriever.release()
-        }
+        selectedMusicId = id
+        showCustomSnackbar("تم إضافة الملصق. دبل كلك عليه لإخفائه!", "#4CAF50")
     }
 
     // =========================================================================
@@ -417,20 +532,12 @@ class StoryUploadActivity : AppCompatActivity() {
 
     private fun addDraggableTextSticker(text: String) {
         val tvSticker = TextView(this).apply {
-            this.text = text
-            textSize = 38f
-            gravity = Gravity.CENTER
+            this.text = text; textSize = 38f; gravity = Gravity.CENTER
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
-            
-            // ضغطة مزدوجة للتعديل
             var lastClickTime: Long = 0
             setOnClickListener {
                 val clickTime = System.currentTimeMillis()
-                if (clickTime - lastClickTime < 300) {
-                    activeTextViewToEdit = this
-                    etTextInput.setText(this.text)
-                    openTextEditor()
-                }
+                if (clickTime - lastClickTime < 300) { activeTextViewToEdit = this; etTextInput.setText(this.text); openTextEditor() }
                 lastClickTime = clickTime
             }
         }
@@ -460,10 +567,8 @@ class StoryUploadActivity : AppCompatActivity() {
     @SuppressLint("ClickableViewAccessibility")
     private fun makeViewFreeTransformable(view: View) {
         var mActivePointerId = MotionEvent.INVALID_POINTER_ID
-        var mLastTouchX = 0f
-        var mLastTouchY = 0f
-        var mPosX = 0f
-        var mPosY = 0f
+        var mLastTouchX = 0f; var mLastTouchY = 0f
+        var mPosX = 0f; var mPosY = 0f
 
         val scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -474,28 +579,21 @@ class StoryUploadActivity : AppCompatActivity() {
             }
         })
 
-        var initialRotation = 0f
-        var initialAngle = 0f
+        var initialRotation = 0f; var initialAngle = 0f
 
         view.setOnTouchListener { v, event ->
             scaleDetector.onTouchEvent(event)
-            
-            val action = event.actionMasked
-            when (action) {
+            when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    val pointerIndex = event.actionIndex
-                    mLastTouchX = event.getX(pointerIndex)
-                    mLastTouchY = event.getY(pointerIndex)
+                    mLastTouchX = event.getX(event.actionIndex)
+                    mLastTouchY = event.getY(event.actionIndex)
                     mActivePointerId = event.getPointerId(0)
-                    
-                    mPosX = v.x
-                    mPosY = v.y
-                    v.bringToFront()
+                    mPosX = v.x; mPosY = v.y
+                    v.bringToFront() // جلب للأمام
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> {
                     if (event.pointerCount == 2) {
-                        val dx = event.getX(1) - event.getX(0)
-                        val dy = event.getY(1) - event.getY(0)
+                        val dx = event.getX(1) - event.getX(0); val dy = event.getY(1) - event.getY(0)
                         initialAngle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
                         initialRotation = v.rotation
                     }
@@ -503,39 +601,24 @@ class StoryUploadActivity : AppCompatActivity() {
                 MotionEvent.ACTION_MOVE -> {
                     val pointerIndex = event.findPointerIndex(mActivePointerId)
                     if (pointerIndex != -1) {
-                        // السحب
                         if (event.pointerCount == 1 && !scaleDetector.isInProgress) {
-                            val x = event.getX(pointerIndex)
-                            val y = event.getY(pointerIndex)
-                            val dx = x - mLastTouchX
-                            val dy = y - mLastTouchY
-                            mPosX += dx
-                            mPosY += dy
-                            v.x = mPosX
-                            v.y = mPosY
+                            mPosX += event.getX(pointerIndex) - mLastTouchX
+                            mPosY += event.getY(pointerIndex) - mLastTouchY
+                            v.x = mPosX; v.y = mPosY
                         }
-                        
-                        // الدوران بإصبعين
                         if (event.pointerCount == 2) {
-                            val dx = event.getX(1) - event.getX(0)
-                            val dy = event.getY(1) - event.getY(0)
-                            val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
-                            v.rotation = initialRotation + (angle - initialAngle)
+                            val dx = event.getX(1) - event.getX(0); val dy = event.getY(1) - event.getY(0)
+                            v.rotation = initialRotation + (Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat() - initialAngle)
                         }
                     }
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    mActivePointerId = MotionEvent.INVALID_POINTER_ID
-                    v.performClick() 
-                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { mActivePointerId = MotionEvent.INVALID_POINTER_ID; v.performClick() }
                 MotionEvent.ACTION_POINTER_UP -> {
                     val pointerIndex = event.actionIndex
-                    val pointerId = event.getPointerId(pointerIndex)
-                    if (pointerId == mActivePointerId) {
-                        val newPointerIndex = if (pointerIndex == 0) 1 else 0
-                        mLastTouchX = event.getX(newPointerIndex)
-                        mLastTouchY = event.getY(newPointerIndex)
-                        mActivePointerId = event.getPointerId(newPointerIndex)
+                    if (event.getPointerId(pointerIndex) == mActivePointerId) {
+                        val newIndex = if (pointerIndex == 0) 1 else 0
+                        mLastTouchX = event.getX(newIndex); mLastTouchY = event.getY(newIndex)
+                        mActivePointerId = event.getPointerId(newIndex)
                     }
                 }
             }
@@ -544,89 +627,25 @@ class StoryUploadActivity : AppCompatActivity() {
     }
 
     // =========================================================================
-    // 🌟 معالجة واختيار الميديا (الفيديو والصور) 🌟
-    // =========================================================================
-    private fun handleImageSelection(uri: Uri) {
-        try {
-            val inputStream = contentResolver.openInputStream(uri)
-            val originalBitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream?.close()
-
-            if (originalBitmap == null) return
-
-            val maxImageSize = 1080f
-            val ratio = min(1f, min(maxImageSize / originalBitmap.width, maxImageSize / originalBitmap.height))
-            val width = (ratio * originalBitmap.width).roundToInt()
-            val height = (ratio * originalBitmap.height).roundToInt()
-            
-            val scaled = Bitmap.createScaledBitmap(originalBitmap, width, height, true)
-            ivPreview.setImageBitmap(scaled)
-            
-            hasSelectedImage = true
-            hasSelectedVideo = false
-            selectedVideoUri = null
-        } catch (e: Exception) {
-            showCustomSnackbar("فشل في قراءة الصورة", "#F44336")
-        }
-    }
-
-    private fun handleVideoSelection(uri: Uri) {
-        val retriever = MediaMetadataRetriever()
-        try {
-            retriever.setDataSource(this, uri)
-            val timeString = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            val durationMs = timeString?.toLongOrNull() ?: 0L
-
-            if (durationMs > 30500L) { 
-                showCustomSnackbar("عذراً، يجب أن لا تتجاوز مدة الفيديو 30 ثانية", "#F44336")
-                return
-            }
-
-            val thumbnail = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            if (thumbnail != null) ivPreview.setImageBitmap(thumbnail)
-            
-            hasSelectedVideo = true
-            hasSelectedImage = false
-            selectedVideoUri = uri
-            showCustomSnackbar("تم اختيار الفيديو بنجاح", "#4CAF50")
-        } catch (e: Exception) {
-            showCustomSnackbar("الفيديو غير مدعوم أو تالف", "#F44336")
-        } finally {
-            retriever.release()
-        }
-    }
-
-    // =========================================================================
-    // 🌟 القيود وعملية الرفع 🌟
+    // 🌟 القيود وعملية الرفع الخرافية 🌟
     // =========================================================================
     private fun getHardwareId(): String {
         val devInfo = Build.BOARD + Build.BRAND + Build.DEVICE + Build.HARDWARE + Build.MANUFACTURER + Build.MODEL + Build.PRODUCT
         val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown_id"
-        val md = java.security.MessageDigest.getInstance("MD5")
-        return md.digest((devInfo + androidId).toByteArray()).joinToString("") { "%02x".format(it) }.take(16).uppercase()
+        return java.security.MessageDigest.getInstance("MD5").digest((devInfo + androidId).toByteArray()).joinToString("") { "%02x".format(it) }.take(16).uppercase()
     }
 
     private fun checkDailyQuota(isVideo: Boolean): Boolean {
         val prefs = getSharedPreferences("StoryQuotaPrefs", Context.MODE_PRIVATE)
-        val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        
-        val videoCount = prefs.getInt("vid_$todayDate", 0)
-        val imageTextCount = prefs.getInt("img_$todayDate", 0)
-
-        if (isVideo && videoCount >= 2) {
-            showCustomSnackbar("استهلكت الحد اليومي للفيديوهات (2/2) لهذا الجهاز 🚫", "#F44336")
-            return false
-        } else if (!isVideo && imageTextCount >= 25) {
-            showCustomSnackbar("استهلكت الحد اليومي للصور (25/25) لهذا الجهاز 🚫", "#F44336")
-            return false
-        }
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        if (isVideo && prefs.getInt("vid_$today", 0) >= 2) { showCustomSnackbar("استهلكت الحد اليومي للفيديوهات 🚫", "#F44336"); return false }
+        if (!isVideo && prefs.getInt("img_$today", 0) >= 25) { showCustomSnackbar("استهلكت الحد اليومي للصور 🚫", "#F44336"); return false }
         return true
     }
 
     private fun incrementDailyQuota(isVideo: Boolean) {
         val prefs = getSharedPreferences("StoryQuotaPrefs", Context.MODE_PRIVATE)
-        val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        val key = if (isVideo) "vid_$todayDate" else "img_$todayDate"
+        val key = (if (isVideo) "vid_" else "img_") + SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         prefs.edit().putInt(key, prefs.getInt(key, 0) + 1).apply()
     }
 
@@ -681,8 +700,7 @@ class StoryUploadActivity : AppCompatActivity() {
                     put("hardwareId", hardwareId) 
                     put("type", storyType)
                     put("mediaBase64", mediaBase64)
-                    put("musicId", selectedMusicId ?: "") // معرف الموسيقى إن وجد
-                    // إرسال طبقة الملصقات كصورة مفرغة للتركيب فوق الفيديو في العارض
+                    put("musicId", selectedMusicId ?: "")
                     put("textContent", if (storyType == "video") finalCompositeBase64 else "") 
                 }
 
@@ -691,7 +709,7 @@ class StoryUploadActivity : AppCompatActivity() {
                 if (conn.responseCode == 200) {
                     incrementDailyQuota(isVideo = hasSelectedVideo)
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@StoryUploadActivity, "تم نشر القصة بنجاح ✅", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@StoryUploadActivity, "تم النشر بنجاح 🚀", Toast.LENGTH_SHORT).show()
                         finish() 
                     }
                 } else {
@@ -711,9 +729,7 @@ class StoryUploadActivity : AppCompatActivity() {
 
     private fun restoreControls() {
         layoutLoading.visibility = View.GONE
-        topToolsLayout.visibility = View.VISIBLE
-        rightToolsLayout.visibility = View.VISIBLE
-        bottomToolsLayout.visibility = View.VISIBLE
+        toolsOverlayLayout.visibility = View.VISIBLE
     }
 
     private fun showCustomSnackbar(message: String, colorHex: String) {
