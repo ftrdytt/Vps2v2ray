@@ -57,39 +57,54 @@
                     app:tint="#4CAF50"
                     android:visibility="gone" />
 
-                <!-- 🌟 قسم الصورة الشخصية وإضافة القصة (تم تحديثه) 🌟 -->
+                <!-- 🌟 قسم الصورة الشخصية وإضافة القصة (تم حل المشكلة وتحديثه) 🌟 -->
                 <FrameLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center">
 
-                    <!-- هذا الإطار ستتغير حدوده للأزرق برمجياً في حال وجود قصة -->
+                    <!-- الحاوية الأساسية للصورة والستوري -->
                     <FrameLayout
                         android:id="@+id/layout_avatar_container"
-                        android:layout_width="140dp"
-                        android:layout_height="140dp">
+                        android:layout_width="146dp"
+                        android:layout_height="146dp">
 
-                        <View
+                        <!-- 1. الإطار الخارجي الأزرق (حلقة الستوري) -->
+                        <androidx.cardview.widget.CardView
+                            android:id="@+id/cv_story_ring"
                             android:layout_width="match_parent"
                             android:layout_height="match_parent"
-                            android:background="@drawable/ic_circle"
-                            android:backgroundTint="#FF9800"
-                            android:alpha="0.2"/>
-
-                        <androidx.cardview.widget.CardView
-                            android:layout_width="128dp"
-                            android:layout_height="128dp"
-                            android:layout_gravity="center"
-                            app:cardCornerRadius="64dp"
-                            app:cardBackgroundColor="#1A1A1D"
+                            app:cardCornerRadius="73dp"
+                            app:cardBackgroundColor="#2196F3"
                             app:cardElevation="0dp">
-                            
-                            <ImageView
-                                android:id="@+id/iv_profile_pic"
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:scaleType="centerCrop"
-                                android:src="@drawable/ic_stat_name" />
+
+                            <!-- 2. فاصل داكن (لعمل مسافة سوداء بين الدائرة الزرقاء والصورة) -->
+                            <androidx.cardview.widget.CardView
+                                android:layout_width="138dp"
+                                android:layout_height="138dp"
+                                android:layout_gravity="center"
+                                app:cardCornerRadius="69dp"
+                                app:cardBackgroundColor="#0A0A0C"
+                                app:cardElevation="0dp">
+                                
+                                <!-- 3. الصورة الشخصية -->
+                                <androidx.cardview.widget.CardView
+                                    android:layout_width="128dp"
+                                    android:layout_height="128dp"
+                                    android:layout_gravity="center"
+                                    app:cardCornerRadius="64dp"
+                                    app:cardBackgroundColor="#1A1A1D"
+                                    app:cardElevation="0dp">
+                                    
+                                    <ImageView
+                                        android:id="@+id/iv_profile_pic"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="match_parent"
+                                        android:scaleType="centerCrop"
+                                        android:src="@drawable/ic_stat_name" />
+                                </androidx.cardview.widget.CardView>
+
+                            </androidx.cardview.widget.CardView>
                         </androidx.cardview.widget.CardView>
                     </FrameLayout>
 
@@ -100,7 +115,8 @@
                         android:layout_gravity="bottom|end"
                         android:layout_margin="8dp"
                         app:cardCornerRadius="18dp"
-                        app:cardBackgroundColor="#FF9800">
+                        app:cardBackgroundColor="#FF9800"
+                        app:cardElevation="4dp">
                         <ImageView
                             android:id="@+id/btn_change_avatar"
                             android:layout_width="20dp"
