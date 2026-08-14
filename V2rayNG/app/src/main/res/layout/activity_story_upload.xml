@@ -5,14 +5,16 @@
     android:layout_height="match_parent"
     android:background="#0A0A0C"> <!-- لون خلفية عميق وفخم -->
 
-    <!-- 🌟 حاوية الالتقاط (هنا تنزل الصورة كملصق حر وتقدر تكبر وتصغر) 🌟 -->
+    <!-- 🌟 حاوية الالتقاط (هنا يشتغل الفيديو وتنزل الصور والملصقات) 🌟 -->
     <FrameLayout
         android:id="@+id/story_capture_frame"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clipChildren="false">
         
-        <!-- في حالة الفيديو فقط يظهر هنا -->
+        <!-- مشغل الفيديو الأساسي سيتم إضافته هنا برمجياً لضمان عدم الكراش -->
+
+        <!-- صورة المعاينة (تستخدم كخلفية أو للصور الثابتة قبل التشغيل) -->
         <ImageView
             android:id="@+id/iv_story_video_preview"
             android:layout_width="match_parent"
@@ -20,6 +22,14 @@
             android:scaleType="centerCrop"
             android:visibility="gone" />
 
+        <!-- طبقة التظليل العلوية لإبراز الأزرار البيضاء (فخامة التصميم) -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="120dp"
+            android:layout_gravity="top"
+            android:background="#33000000" />
+
+        <!-- حاوية الرسم والملصقات والنصوص (تكون فوق الفيديو دائماً) -->
         <FrameLayout
             android:id="@+id/drawing_view_container"
             android:layout_width="match_parent"
