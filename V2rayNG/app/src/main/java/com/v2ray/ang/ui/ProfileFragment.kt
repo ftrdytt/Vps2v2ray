@@ -488,6 +488,7 @@ class ProfileFragment : Fragment() {
         renderDevices()
     }
 
+    // 🌟 التحديث الجديد: إضافة إطار الدائرة الزرقاء (الاستوري الفعال) حول صورة الحساب 🌟
     private fun updateProfilePicture(base64Str: String, name: String, userId: String, hasActiveStory: Boolean) {
         val bitmap = try {
             val cleanStr = if (base64Str.contains(",")) base64Str.substringAfter(",") else base64Str
@@ -499,23 +500,40 @@ class ProfileFragment : Fragment() {
             val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
             ivAvatar.setImageDrawable(circularDrawable)
             
-            layoutAvatarContainer?.let {
+            layoutAvatarContainer?.let { container ->
                 if (hasActiveStory) {
-                    it.background = GradientDrawable().apply {
+                    // إذا عنده استوري شغال نرسم الدائرة الزرقاء 🔵 (ستايل الانستغرام)
+                    container.background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
                         setStroke(8, Color.parseColor("#2196F3")) 
                         setColor(Color.TRANSPARENT)
                     }
-                    it.setPadding(8, 8, 8, 8)
-                    it.setOnClickListener {
-                        val intent = Intent(requireContext(), StoryViewerActivity::class.java)
-                        intent.putExtra("targetUserId", userId)
-                        startActivity(intent)
+                    container.setPadding(10, 10, 10, 10)
+                    
+                    // إذا ضغط على صورته وعنده استوري، نسأله شنو يريد يسوي (مشاهدة أم إضافة)
+                    ivAvatar.setOnClickListener {
+                        val options = arrayOf("شاهد الاستوري 👁️", "إضافة استوري جديد ➕")
+                        AlertDialog.Builder(requireContext())
+                            .setItems(options) { _, which ->
+                                if (which == 0) {
+                                    val intent = Intent(requireContext(), Class.forName("com.v2ray.ang.ui.StoryViewerActivity"))
+                                    intent.putExtra("targetUserId", userId)
+                                    startActivity(intent)
+                                } else {
+                                    startActivity(Intent(requireContext(), StoryUploadActivity::class.java))
+                                }
+                            }
+                            .show()
                     }
                 } else {
-                    it.background = null
-                    it.setPadding(0, 0, 0, 0)
-                    it.setOnClickListener(null)
+                    // إذا ما عنده استوري نخفي الدائرة
+                    container.background = null
+                    container.setPadding(0, 0, 0, 0)
+                    
+                    // الضغط العادي يفتح الاستوديو لتغيير صورة الملف الشخصي
+                    ivAvatar.setOnClickListener {
+                        pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
+                    }
                 }
             }
         }
