@@ -64,13 +64,13 @@
         android:background="@drawable/shadow_gradient_top"
         app:layout_constraintTop_toTopOf="parent"/>
 
-    <!-- شريط التقدم للقصص -->
+    <!-- 🌟 تم التعديل: شريط التقدم يمشي من اليمين لليسار 🌟 -->
     <LinearLayout
         android:id="@+id/layout_progress_bars"
         android:layout_width="match_parent"
         android:layout_height="3dp"
         android:orientation="horizontal"
-        android:layoutDirection="rtl" <!-- 🌟 تم التعديل: شريط التقدم يمشي من اليمين لليسار 🌟 -->
+        android:layoutDirection="rtl" 
         android:layout_marginTop="10dp"
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
