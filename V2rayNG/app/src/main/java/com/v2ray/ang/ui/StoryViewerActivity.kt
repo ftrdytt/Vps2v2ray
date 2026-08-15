@@ -290,7 +290,7 @@ class StoryViewerActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             while (isActive && uId == targetUserId) {
                 try {
-                    val conn = URL("$BASE_API_URL/story/get_user_stories?targetId=$uId").openConnection() as HttpURLConnection
+                    val conn = URL("$BASE_API_URL/story/get_user_stories?targetId=$uId&viewerId=$myUserId").openConnection() as HttpURLConnection
                     conn.connectTimeout = 8000
                     conn.readTimeout = 8000
                     if (conn.responseCode == 200) {
