@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000"
-    android:layoutDirection="ltr"> <!-- فرض اتجاه الشاشة لمنع عكس التقليب -->
+    android:layoutDirection="rtl"> <!-- 🌟 تم التعديل: فرض الاتجاه العربي (من اليمين لليسار) 🌟 -->
 
     <!-- حاوية المحتوى (تدعم التكبير والتصغير وتضم الصورة والفيديو والنص) -->
     <FrameLayout
@@ -70,7 +70,7 @@
         android:layout_width="match_parent"
         android:layout_height="3dp"
         android:orientation="horizontal"
-        android:layoutDirection="ltr"
+        android:layoutDirection="rtl" <!-- 🌟 تم التعديل: شريط التقدم يمشي من اليمين لليسار 🌟 -->
         android:layout_marginTop="10dp"
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
