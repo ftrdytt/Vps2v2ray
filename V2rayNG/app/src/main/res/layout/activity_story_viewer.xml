@@ -4,21 +4,19 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000"
-    android:layoutDirection="rtl"> <!-- فرض الاتجاه العربي (من اليمين لليسار) -->
+    android:layoutDirection="rtl">
 
-    <!-- 🌟 تم التعديل: حاوية المحتوى تسحب الفيديو لأعلى الشاشة وتلغي الحواف العلوية السوداء 🌟 -->
     <FrameLayout
         android:id="@+id/story_content_container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_gravity="top|center_horizontal"> <!-- سحب المحتوى للأعلى -->
+        android:layout_gravity="top|center_horizontal">
 
-        <!-- مشغل الفيديو السريع -->
         <VideoView
             android:id="@+id/vv_story_video"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_gravity="top|center_horizontal" <!-- 🌟 دفع الفيديو للقمة 🌟 -->
+            android:layout_gravity="top|center_horizontal"
             android:visibility="gone" />
 
         <ImageView
@@ -26,7 +24,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_gravity="top|center_horizontal"
-            android:scaleType="centerCrop" <!-- هذا الإعداد يخفي الحواف السوداء للصور -->
+            android:scaleType="centerCrop"
             android:visibility="gone"/>
 
         <TextView
@@ -45,13 +43,11 @@
             android:visibility="gone"/>
     </FrameLayout>
 
-    <!-- طبقة اللمس (لإدارة التكبير، الإيقاف المؤقت، والتقليب) -->
     <View
         android:id="@+id/view_touch_overlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- طبقة تطاير الإيموجي الحديثة -->
     <FrameLayout
         android:id="@+id/reaction_animation_layer"
         android:layout_width="match_parent"
@@ -59,14 +55,12 @@
         android:elevation="10dp"
         android:clipChildren="false"/>
 
-    <!-- طبقة التظليل العلوية لحماية الشريط والبروفايل -->
     <View
         android:layout_width="match_parent"
         android:layout_height="120dp"
         android:background="@drawable/shadow_gradient_top"
         app:layout_constraintTop_toTopOf="parent"/>
 
-    <!-- شريط التقدم للقصص -->
     <LinearLayout
         android:id="@+id/layout_progress_bars"
         android:layout_width="match_parent"
@@ -78,7 +72,6 @@
         android:layout_marginEnd="8dp"
         app:layout_constraintTop_toTopOf="parent"/>
 
-    <!-- شريط المعلومات العلوي -->
     <LinearLayout
         android:id="@+id/layout_top_bar"
         android:layout_width="match_parent"
@@ -169,7 +162,6 @@
         android:background="@drawable/shadow_gradient_bottom"
         app:layout_constraintBottom_toBottomOf="parent"/>
 
-    <!-- شريط التفاعل السفلي -->
     <LinearLayout
         android:id="@+id/layout_footer"
         android:layout_width="match_parent"
