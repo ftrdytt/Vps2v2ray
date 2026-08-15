@@ -4,27 +4,29 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000"
-    android:layoutDirection="rtl"> <!-- 🌟 تم التعديل: فرض الاتجاه العربي (من اليمين لليسار) 🌟 -->
+    android:layoutDirection="rtl"> <!-- فرض الاتجاه العربي (من اليمين لليسار) -->
 
-    <!-- حاوية المحتوى (تدعم التكبير والتصغير وتضم الصورة والفيديو والنص) -->
+    <!-- 🌟 تم التعديل: حاوية المحتوى تسحب الفيديو لأعلى الشاشة وتلغي الحواف العلوية السوداء 🌟 -->
     <FrameLayout
         android:id="@+id/story_content_container"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        android:layout_gravity="top|center_horizontal"> <!-- سحب المحتوى للأعلى -->
 
-        <!-- 🌟 مشغل الفيديو السريع (تمت إضافته لضمان التشغيل بدون كراش) 🌟 -->
+        <!-- مشغل الفيديو السريع -->
         <VideoView
             android:id="@+id/vv_story_video"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_gravity="center"
+            android:layout_gravity="top|center_horizontal" <!-- 🌟 دفع الفيديو للقمة 🌟 -->
             android:visibility="gone" />
 
         <ImageView
             android:id="@+id/iv_story_image"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:scaleType="centerCrop"
+            android:layout_gravity="top|center_horizontal"
+            android:scaleType="centerCrop" <!-- هذا الإعداد يخفي الحواف السوداء للصور -->
             android:visibility="gone"/>
 
         <TextView
@@ -49,7 +51,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- طبقة تطاير الإيموجي الحديثة (Facebook Style) -->
+    <!-- طبقة تطاير الإيموجي الحديثة -->
     <FrameLayout
         android:id="@+id/reaction_animation_layer"
         android:layout_width="match_parent"
@@ -57,14 +59,14 @@
         android:elevation="10dp"
         android:clipChildren="false"/>
 
-    <!-- طبقة التظليل العلوية -->
+    <!-- طبقة التظليل العلوية لحماية الشريط والبروفايل -->
     <View
         android:layout_width="match_parent"
-        android:layout_height="100dp"
+        android:layout_height="120dp"
         android:background="@drawable/shadow_gradient_top"
         app:layout_constraintTop_toTopOf="parent"/>
 
-    <!-- 🌟 تم التعديل: شريط التقدم يمشي من اليمين لليسار 🌟 -->
+    <!-- شريط التقدم للقصص -->
     <LinearLayout
         android:id="@+id/layout_progress_bars"
         android:layout_width="match_parent"
@@ -163,7 +165,7 @@
 
     <View
         android:layout_width="match_parent"
-        android:layout_height="100dp"
+        android:layout_height="120dp"
         android:background="@drawable/shadow_gradient_bottom"
         app:layout_constraintBottom_toBottomOf="parent"/>
 
