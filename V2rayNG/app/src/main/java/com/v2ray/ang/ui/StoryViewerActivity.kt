@@ -72,6 +72,7 @@ class StoryViewerActivity : AppCompatActivity() {
     
     private lateinit var tvTime: TextView
     private lateinit var tvViews: TextView
+    private lateinit var layoutViewsContainer: LinearLayout
     private lateinit var layoutProgressBars: LinearLayout
     private lateinit var viewTouchOverlay: View
     private lateinit var btnOptions: ImageView
@@ -130,6 +131,7 @@ class StoryViewerActivity : AppCompatActivity() {
         
         tvTime = findViewById(R.id.tv_story_time)
         tvViews = findViewById(R.id.tv_story_views)
+        layoutViewsContainer = findViewById(R.id.layout_story_views_container)
         layoutProgressBars = findViewById(R.id.layout_progress_bars)
         
         // 🌟 فرض اتجاه شريط التقدم ليكون من اليمين لليسار (RTL) 🌟
@@ -284,30 +286,35 @@ class StoryViewerActivity : AppCompatActivity() {
 
     private fun fetchStories(uId: String, startIndex: Int = 0) {
         progressLoading.visibility = View.VISIBLE
+        // 🌟 نطلب القصص بمحاولات متكررة: إذا ماكو نت نستنى ونعيد المحاولة، ما نسكر الشاشة 🌟
         lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val conn = URL("$BASE_API_URL/story/get_user_stories?targetId=$uId").openConnection() as HttpURLConnection
-                if (conn.responseCode == 200) {
-                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                    val obj = JSONObject(resp)
-                    if (obj.getBoolean("success")) {
-                        storiesArray = obj.getJSONArray("stories")
-                        withContext(Dispatchers.Main) {
-                            progressLoading.visibility = View.GONE
-                            if (storiesArray.length() > 0) {
-                                setupProgressBars()
-                                val startAt = if (startIndex == -1) storiesArray.length() - 1 else 0
-                                displayStory(startAt)
-                            } else {
-                                jumpToNextUserStory()
+            while (isActive && uId == targetUserId) {
+                try {
+                    val conn = URL("$BASE_API_URL/story/get_user_stories?targetId=$uId").openConnection() as HttpURLConnection
+                    conn.connectTimeout = 8000
+                    conn.readTimeout = 8000
+                    if (conn.responseCode == 200) {
+                        val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                        val obj = JSONObject(resp)
+                        if (obj.getBoolean("success")) {
+                            storiesArray = obj.getJSONArray("stories")
+                            withContext(Dispatchers.Main) {
+                                progressLoading.visibility = View.GONE
+                                if (storiesArray.length() > 0) {
+                                    setupProgressBars()
+                                    val startAt = if (startIndex == -1) storiesArray.length() - 1 else 0
+                                    displayStory(startAt)
+                                } else {
+                                    jumpToNextUserStory()
+                                }
                             }
+                            return@launch
                         }
                     }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    progressLoading.visibility = View.GONE
-                    finish()
+                    delay(2500)
+                } catch (e: Exception) {
+                    // ماكو نت أو فشل الاتصال: نستنى شوي ونعاود المحاولة تلقائياً بدون إغلاق الشاشة
+                    delay(2500)
                 }
             }
         }
@@ -359,7 +366,11 @@ class StoryViewerActivity : AppCompatActivity() {
         tvViews.text = (currentViewsArray?.length() ?: 0).toString()
         tvTime.text = getTimeAgo(timestamp)
 
-        if (targetUserId == myUserId || myRole == "admin") {
+        // 🌟 عدد المشاهدات يبان بس لصاحب القصة أو الأدمن، وباقي المستخدمين ما يشوفونه ولا الزر 🌟
+        val isOwnerOrAdmin = (targetUserId == myUserId || myRole == "admin")
+        layoutViewsContainer.visibility = if (isOwnerOrAdmin) View.VISIBLE else View.GONE
+
+        if (isOwnerOrAdmin) {
             btnFollow.visibility = View.GONE
             btnOptions.visibility = View.VISIBLE
             btnOptions.setOnClickListener { 
@@ -392,52 +403,53 @@ class StoryViewerActivity : AppCompatActivity() {
                 progressLoading.visibility = View.GONE
                 playVideo(cachedContent, index)
             } else {
-                // الفيديو غير موجود بالكاش، نحمله من السيرفر ونخزنه بالكاش
+                // 🌟 الفيديو غير موجود بالكاش: نحمله من السيرفر، وإذا ماكو نت نستنى ونعيد المحاولة
+                // بدون ما نتخطى القصة ولا نحرك شريط التقدم لين يوصل الفيديو فعلياً 🌟
                 progressLoading.visibility = View.VISIBLE
                 lifecycleScope.launch(Dispatchers.IO) {
-                    try {
-                        val cachedFile = File(cacheDir, "vid_${storyId}.mp4")
-                        if (!cachedFile.exists() || cachedFile.length() == 0L) {
-                            val url = URL("$BASE_API_URL/story/stream_video?storyId=$storyId")
-                            val conn = url.openConnection() as HttpURLConnection
-                            conn.requestMethod = "GET"
-                            conn.connectTimeout = 15000
-                            conn.readTimeout = 20000
-                            conn.connect()
+                    val cachedFile = File(cacheDir, "vid_${storyId}.mp4")
+                    while (isActive && currentIndex == index) {
+                        try {
+                            if (!cachedFile.exists() || cachedFile.length() == 0L) {
+                                val url = URL("$BASE_API_URL/story/stream_video?storyId=$storyId")
+                                val conn = url.openConnection() as HttpURLConnection
+                                conn.requestMethod = "GET"
+                                conn.connectTimeout = 15000
+                                conn.readTimeout = 20000
+                                conn.connect()
 
-                            if (conn.responseCode in 200..299) {
-                                val inputStream = conn.inputStream
-                                val fos = FileOutputStream(cachedFile)
-                                val buffer = ByteArray(8192)
-                                var bytesRead: Int
-                                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                                    fos.write(buffer, 0, bytesRead)
+                                if (conn.responseCode in 200..299) {
+                                    val inputStream = conn.inputStream
+                                    val fos = FileOutputStream(cachedFile)
+                                    val buffer = ByteArray(8192)
+                                    var bytesRead: Int
+                                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                                        fos.write(buffer, 0, bytesRead)
+                                    }
+                                    fos.flush()
+                                    fos.close()
+                                    inputStream.close()
+
+                                    // حفظ المسار بالكاش
+                                    storyMediaCache.put(storyId, cachedFile.absolutePath)
+                                } else {
+                                    throw Exception("HTTP ${conn.responseCode}")
                                 }
-                                fos.flush()
-                                fos.close()
-                                inputStream.close()
-                                
-                                // حفظ المسار بالكاش
+                            } else {
                                 storyMediaCache.put(storyId, cachedFile.absolutePath)
                             }
-                        } else {
-                            storyMediaCache.put(storyId, cachedFile.absolutePath)
-                        }
 
-                        withContext(Dispatchers.Main) {
-                            if (currentIndex == index) {
-                                progressLoading.visibility = View.GONE
-                                playVideo(cachedFile.absolutePath, index)
+                            withContext(Dispatchers.Main) {
+                                if (currentIndex == index) {
+                                    progressLoading.visibility = View.GONE
+                                    playVideo(cachedFile.absolutePath, index)
+                                }
                             }
-                        }
-                    } catch (e: Exception) {
-                        File(cacheDir, "vid_${storyId}.mp4").delete()
-                        withContext(Dispatchers.Main) {
-                            if (currentIndex == index) {
-                                progressLoading.visibility = View.GONE
-                                Toast.makeText(this@StoryViewerActivity, "خطأ بالاتصال", Toast.LENGTH_SHORT).show()
-                                showNextStory()
-                            }
+                            return@launch
+                        } catch (e: Exception) {
+                            cachedFile.delete()
+                            // ماكو نت: نستنى شوي (الشريط بالأعلى يضل واقف عالصفر) وبعدين نعيد المحاولة تلقائياً
+                            delay(2500)
                         }
                     }
                 }
@@ -475,6 +487,26 @@ class StoryViewerActivity : AppCompatActivity() {
         vvStoryVideo.setOnPreparedListener { mp ->
             mp.isLooping = true 
             val duration = mp.duration.toLong()
+
+            // 🌟 تكبير الفيديو (Crop) ليملأ الشاشة بالكامل ويوصل حافة الأعلى بدون أي فراغ،
+            // مثبّت من فوق (Gravity.TOP) والزيادة تنكرز تلقائياً من الأسفل 🌟
+            val videoW = mp.videoWidth
+            val videoH = mp.videoHeight
+            if (videoW > 0 && videoH > 0) {
+                storyContentContainer.post {
+                    val containerW = storyContentContainer.width
+                    val containerH = storyContentContainer.height
+                    if (containerW > 0 && containerH > 0) {
+                        val scale = maxOf(containerW.toFloat() / videoW, containerH.toFloat() / videoH)
+                        val newW = (videoW * scale).toInt()
+                        val newH = (videoH * scale).toInt()
+                        vvStoryVideo.layoutParams = FrameLayout.LayoutParams(newW, newH).apply {
+                            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                        }
+                    }
+                }
+            }
+
             mp.setOnInfoListener { _, what, _ ->
                 if (what == android.media.MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) {
                     ivStoryImage.visibility = View.GONE
@@ -485,6 +517,7 @@ class StoryViewerActivity : AppCompatActivity() {
             mp.start()
         }
         vvStoryVideo.setOnErrorListener { _, _, _ ->
+            File(cacheDir, "vid_${storiesArray.getJSONObject(index).getString("id")}.mp4").delete()
             Toast.makeText(this@StoryViewerActivity, "خطأ في تشغيل الفيديو", Toast.LENGTH_SHORT).show()
             showNextStory()
             true
