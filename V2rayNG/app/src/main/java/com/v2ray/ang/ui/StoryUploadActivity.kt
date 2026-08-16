@@ -61,21 +61,18 @@ class StoryUploadActivity : AppCompatActivity() {
     private var selectedVideoUri: Uri? = null
     private var selectedMusicId: String? = null
 
-    // واجهات أساسية
     private lateinit var storyCaptureFrame: FrameLayout
-    private lateinit var ivVideoPreview: ImageView // تستخدم الآن كـ VideoView مصغر برمجياً أو خلفية
-    private var videoPlayer: VideoView? = null // 🌟 مشغل الفيديو الجديد 🌟
+    private lateinit var ivVideoPreview: ImageView 
+    private var videoPlayer: VideoView? = null 
     private lateinit var drawingContainer: FrameLayout
     private lateinit var toolsOverlayLayout: View
     private lateinit var layoutLoading: FrameLayout
 
-    // واجهة أدمن الموسيقى
     private lateinit var adminMusicUploadLayout: FrameLayout
     private lateinit var etAdminMusicTitle: EditText
     private var adminSelectedCoverBase64: String = ""
     private var adminSelectedAudioBase64: String = ""
 
-    // محرر النصوص
     private lateinit var textEditorLayout: FrameLayout
     private lateinit var etTextInput: EditText
     private lateinit var colorPickerContainer: LinearLayout
@@ -90,14 +87,12 @@ class StoryUploadActivity : AppCompatActivity() {
     private var textBgMode = 0
     private var activeTextViewToEdit: TextView? = null
 
-    // 🌟 رافعات الملفات (الاستوديو) 🌟
     private val pickMedia = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val uri = result.data?.data ?: return@registerForActivityResult
             val mimeType = contentResolver.getType(uri) ?: ""
             if (mimeType.startsWith("video/")) handleVideoSelection(uri) else handleImageSelection(uri)
         } else {
-            // إذا المستخدم لم يختار شيئاً في البداية نخرجه
             if (!hasSelectedImage && !hasSelectedVideo) finish()
         }
     }
@@ -141,7 +136,7 @@ class StoryUploadActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        supportActionBar?.hide() // شاشة كاملة
+        supportActionBar?.hide() 
         setContentView(R.layout.activity_story_upload)
 
         storyCaptureFrame = findViewById(R.id.story_capture_frame)
@@ -158,12 +153,10 @@ class StoryUploadActivity : AppCompatActivity() {
         btnToggleTextBg = findViewById(R.id.btn_toggle_text_bg)
         etAdminMusicTitle = findViewById(R.id.et_admin_music_title)
 
-        // فتح الاستوديو فوراً عند الدخول
         if (savedInstanceState == null) openGallery()
 
         findViewById<ImageView>(R.id.btn_close).setOnClickListener { finish() }
 
-        // أزرار الواجهة العائمة (انستغرام ستايل)
         findViewById<ImageView>(R.id.btn_add_text).setOnClickListener {
             activeTextViewToEdit = null
             etTextInput.setText("")
@@ -179,7 +172,6 @@ class StoryUploadActivity : AppCompatActivity() {
             }
             if (!checkDailyQuota(isVideo = hasSelectedVideo)) return@setOnClickListener
             
-            // إخفاء الأزرار قبل أخذ لقطة الشاشة
             toolsOverlayLayout.visibility = View.INVISIBLE
             uploadStory()
         }
@@ -188,7 +180,6 @@ class StoryUploadActivity : AppCompatActivity() {
         setupAdminMusicTools()
     }
 
-    // إيقاف تشغيل الفيديو عند الخروج من الشاشة لمنع مشاكل الذاكرة
     override fun onDestroy() {
         super.onDestroy()
         videoPlayer?.stopPlayback()
@@ -202,14 +193,12 @@ class StoryUploadActivity : AppCompatActivity() {
         pickMedia.launch(intent)
     }
 
-    // 🌟 حيلة برمجية لسحب لون الخلفية الذكية بدون مكتبات خارجية 🌟
     private fun getSmartBackgroundColor(bitmap: Bitmap): Int {
         return try {
             val scaled = Bitmap.createScaledBitmap(bitmap, 1, 1, true)
             val color = scaled.getPixel(0, 0)
             scaled.recycle()
             
-            // تغميق اللون بنسبة 50% ليعطي فخامة (Premium Look) ويبرز النص
             val hsv = FloatArray(3)
             Color.colorToHSV(color, hsv)
             hsv[2] *= 0.5f 
@@ -219,9 +208,6 @@ class StoryUploadActivity : AppCompatActivity() {
         }
     }
 
-    // =========================================================================
-    // 🌟 نظام الصورة الحرة (الخلفية الذكية, Drag, Scale, Rotate) 🌟
-    // =========================================================================
     private fun handleImageSelection(uri: Uri) {
         try {
             val inputStream = contentResolver.openInputStream(uri)
@@ -230,17 +216,14 @@ class StoryUploadActivity : AppCompatActivity() {
 
             if (originalBitmap == null) return
 
-            // تطبيق الخلفية الذكية المتدرجة
             val dominantColor = getSmartBackgroundColor(originalBitmap)
             val gradient = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(dominantColor, Color.parseColor("#111111")))
             storyCaptureFrame.background = gradient
 
-            // تنظيف أي فيديو سابق
             videoPlayer?.let { storyCaptureFrame.removeView(it) }
             videoPlayer = null
             ivVideoPreview.visibility = View.GONE
 
-            // إضافة الصورة كعنصر حر داخل الشاشة بدلاً من أن تكون خلفية ثابتة
             val ivSticker = ImageView(this).apply {
                 setImageBitmap(originalBitmap)
                 layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT).apply {
@@ -249,7 +232,6 @@ class StoryUploadActivity : AppCompatActivity() {
             }
             
             makeViewFreeTransformable(ivSticker)
-            // نضع الصورة في الخلف (index 0) حتى تكون النصوص فوقها دائماً
             drawingContainer.addView(ivSticker, 0)
             
             hasSelectedImage = true
@@ -260,22 +242,17 @@ class StoryUploadActivity : AppCompatActivity() {
         }
     }
 
-    // =========================================================================
-    // 🌟 نظام الفيديو الحي (Live Video Player) 🌟
-    // =========================================================================
     private fun handleVideoSelection(uri: Uri) {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(this, uri)
             val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
 
-            // حد الفيديو 30 ثانية
             if (durationMs > 30500L) { 
                 showCustomSnackbar("عذراً، يجب أن لا تتجاوز مدة الفيديو 30 ثانية 🚫", "#F44336")
                 return
             }
 
-            // تطبيق الخلفية الذكية المتدرجة للفيديو للحصول على مظهر فخم
             val thumbnail = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
             if (thumbnail != null) {
                 val dominantColor = getSmartBackgroundColor(thumbnail)
@@ -283,7 +260,6 @@ class StoryUploadActivity : AppCompatActivity() {
                 storyCaptureFrame.background = gradient
             }
 
-            // إخفاء صورة المعاينة وبناء مشغل فيديو حقيقي
             ivVideoPreview.visibility = View.GONE
             videoPlayer?.let { storyCaptureFrame.removeView(it) }
 
@@ -292,7 +268,6 @@ class StoryUploadActivity : AppCompatActivity() {
                     gravity = Gravity.CENTER
                 }
                 setVideoURI(uri)
-                // كتم الصوت أثناء العرض حتى لا يزعج المستخدم أثناء التعديل
                 setOnPreparedListener { mp -> 
                     mp.setVolume(0f, 0f) 
                     mp.isLooping = true 
@@ -300,7 +275,6 @@ class StoryUploadActivity : AppCompatActivity() {
                 }
             }
             
-            // نضع المشغل في أسفل الشاشة (قبل الـ drawingContainer)
             storyCaptureFrame.addView(videoPlayer, 0)
             
             hasSelectedVideo = true
@@ -314,9 +288,6 @@ class StoryUploadActivity : AppCompatActivity() {
         }
     }
 
-    // =========================================================================
-    // 🌟 نظام الموسيقى والأدمن الخرافي (BottomSheet) 🌟
-    // =========================================================================
     private fun showMusicBottomSheet() {
         val bottomSheet = BottomSheetDialog(this)
         val container = LinearLayout(this).apply {
@@ -359,7 +330,6 @@ class StoryUploadActivity : AppCompatActivity() {
         bottomSheet.setContentView(container)
         bottomSheet.show()
 
-        // 🌟 جلب الأغاني من السيرفر (Trends) 🌟
         fun fetchAndPopulate(query: String) {
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
@@ -507,9 +477,6 @@ class StoryUploadActivity : AppCompatActivity() {
         showCustomSnackbar("تم إضافة الملصق. يمكنك تحريكه وتكبيره!", "#4CAF50")
     }
 
-    // =========================================================================
-    // 🌟 أدوات محرر النصوص (Drag, Color, Font, Background) 🌟
-    // =========================================================================
     private fun setupTextEditorTools() {
         for (colorHex in textStoryColors) {
             val colorView = View(this).apply {
@@ -624,9 +591,6 @@ class StoryUploadActivity : AppCompatActivity() {
         }
     }
 
-    // =========================================================================
-    // 🌟 المحرك الجبار للتحكم الحر (Multi-Touch: Drag, Scale, Rotate) 🌟
-    // =========================================================================
     @SuppressLint("ClickableViewAccessibility")
     private fun makeViewFreeTransformable(view: View) {
         var mActivePointerId = MotionEvent.INVALID_POINTER_ID
@@ -673,7 +637,6 @@ class StoryUploadActivity : AppCompatActivity() {
                 MotionEvent.ACTION_MOVE -> {
                     val pointerIndex = event.findPointerIndex(mActivePointerId)
                     if (pointerIndex != -1) {
-                        // السحب
                         if (event.pointerCount == 1 && !scaleDetector.isInProgress) {
                             val x = event.getX(pointerIndex)
                             val y = event.getY(pointerIndex)
@@ -685,7 +648,6 @@ class StoryUploadActivity : AppCompatActivity() {
                             v.y = mPosY
                         }
                         
-                        // الدوران بإصبعين
                         if (event.pointerCount == 2) {
                             val dx = event.getX(1) - event.getX(0)
                             val dy = event.getY(1) - event.getY(0)
@@ -713,9 +675,6 @@ class StoryUploadActivity : AppCompatActivity() {
         }
     }
 
-    // =========================================================================
-    // 🌟 القيود وعملية الرفع الخرافية (معالجة الرام وصلاحيات الأدمن) 🌟
-    // =========================================================================
     private fun getHardwareId(): String {
         val devInfo = Build.BOARD + Build.BRAND + Build.DEVICE + Build.HARDWARE + Build.MANUFACTURER + Build.MODEL + Build.PRODUCT
         val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown_id"
@@ -723,7 +682,6 @@ class StoryUploadActivity : AppCompatActivity() {
     }
 
     private fun checkDailyQuota(isVideo: Boolean): Boolean {
-        // 🌟 استثناء الأدمن من كافة القيود 🌟
         if (AuthManager.getRole(this) == "admin") return true
 
         val prefs = getSharedPreferences("StoryQuotaPrefs", Context.MODE_PRIVATE)
@@ -734,7 +692,7 @@ class StoryUploadActivity : AppCompatActivity() {
     }
 
     private fun incrementDailyQuota(isVideo: Boolean) {
-        if (AuthManager.getRole(this) == "admin") return // لا نزيد العداد للأدمن
+        if (AuthManager.getRole(this) == "admin") return 
         val prefs = getSharedPreferences("StoryQuotaPrefs", Context.MODE_PRIVATE)
         val key = (if (isVideo) "vid_" else "img_") + SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         prefs.edit().putInt(key, prefs.getInt(key, 0) + 1).apply()
@@ -748,13 +706,12 @@ class StoryUploadActivity : AppCompatActivity() {
         return Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
     }
 
-    // 🌟 معالجة آمنة لملفات الفيديو الكبيرة لمنع الكراش (Out of Memory) 🌟
     private fun convertVideoToBase64Safe(uri: Uri): String? {
         var inputStream: InputStream? = null
         val baos = ByteArrayOutputStream()
         return try {
             inputStream = contentResolver.openInputStream(uri)
-            val buffer = ByteArray(8192) // نقرأ بقطع صغيرة
+            val buffer = ByteArray(8192) 
             var bytesRead: Int
             while (inputStream?.read(buffer).also { bytesRead = it ?: -1 } != -1) {
                 baos.write(buffer, 0, bytesRead)
@@ -768,6 +725,7 @@ class StoryUploadActivity : AppCompatActivity() {
         }
     }
 
+    // 🌟 الإصلاح الأساسي لمشكلة نشر الصور: التفريق الدقيق بين الصورة الثابتة والفيديو 🌟
     private fun uploadStory() {
         layoutLoading.visibility = View.VISIBLE
 
@@ -776,11 +734,11 @@ class StoryUploadActivity : AppCompatActivity() {
         
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // إيقاف الفيديو قبل أخذ لقطة للملصقات (مهم جداً للرام)
                 videoPlayer?.pause()
                 val finalCompositeBase64 = captureStoryFrame(storyCaptureFrame)
                 val mediaBase64: String
                 val storyType: String
+                var textOverlay = ""
 
                 if (hasSelectedVideo && selectedVideoUri != null) {
                     val encodedVideo = convertVideoToBase64Safe(selectedVideoUri!!)
@@ -790,7 +748,9 @@ class StoryUploadActivity : AppCompatActivity() {
                     }
                     mediaBase64 = encodedVideo
                     storyType = "video"
+                    textOverlay = finalCompositeBase64 // للملصقات فوق الفيديو
                 } else {
+                    // إذا كانت صورة ثابتة أو نص فقط
                     mediaBase64 = finalCompositeBase64
                     storyType = "image"
                 }
@@ -806,7 +766,7 @@ class StoryUploadActivity : AppCompatActivity() {
                     put("type", storyType)
                     put("imageBase64", mediaBase64)
                     put("musicId", selectedMusicId ?: "")
-                    put("textContent", if (storyType == "video") finalCompositeBase64 else "") 
+                    put("textContent", textOverlay) 
                 }
 
                 conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
@@ -838,7 +798,6 @@ class StoryUploadActivity : AppCompatActivity() {
     private fun restoreControls() {
         layoutLoading.visibility = View.GONE
         toolsOverlayLayout.visibility = View.VISIBLE
-        // إعادة تشغيل الفيديو إذا فشل النشر
         videoPlayer?.start()
     }
 
