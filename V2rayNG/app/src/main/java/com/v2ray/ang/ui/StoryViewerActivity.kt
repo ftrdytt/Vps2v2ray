@@ -44,6 +44,82 @@ import kotlin.random.Random
 
 class StoryViewerActivity : AppCompatActivity() {
 
+    companion object {
+        // 🌟 كاش عالمي مشترك (يضل حي طول عمر التطبيق) حتى نقدر نحمل ستوريات مسبقاً من صفحات ثانية
+        // (البروفايل، القائمة الرئيسية) قبل حتى ما يفتح المستخدم شاشة الاستوري 🌟
+        val globalStoryCache = LruCache<String, Any>(20)
+        private const val PRELOAD_API_URL = "https://education.ashor.shop"
+        private val preloadedUsers = mutableSetOf<String>()
+        private const val MAX_CACHED_VIDEO_FILES = 15
+
+        // 🌟 يستدعى من أي صفحة فيها مؤشر استوري (بروفايل / قائمة) حتى يبدأ التحميل بالخلفية فوراً
+        // بدل ما ينتظر لين يفتح المستخدم شاشة الاستوري نفسها 🌟
+        fun preloadUserStories(context: Context, targetUserId: String, viewerId: String, maxCount: Int = 3) {
+            if (targetUserId.isEmpty() || !preloadedUsers.add(targetUserId)) return
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val conn = URL("$PRELOAD_API_URL/story/get_user_stories?targetId=$targetUserId&viewerId=$viewerId").openConnection() as HttpURLConnection
+                    conn.connectTimeout = 8000; conn.readTimeout = 8000
+                    if (conn.responseCode == 200) {
+                        val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                        val obj = JSONObject(resp)
+                        if (obj.optBoolean("success", false)) {
+                            val arr = obj.getJSONArray("stories")
+                            val count = minOf(arr.length(), maxCount)
+                            for (i in 0 until count) {
+                                preloadSingleStoryStatic(context, arr.getJSONObject(i))
+                            }
+                        }
+                    }
+                } catch (e: Exception) { /* تحميل مسبق اختياري، نتجاهل الفشل بصمت */ }
+            }
+        }
+
+        private fun preloadSingleStoryStatic(context: Context, story: JSONObject) {
+            val storyId = story.optString("id")
+            if (storyId.isEmpty() || globalStoryCache.get(storyId) != null) return
+            try {
+                if (story.optString("type") == "video") {
+                    val cachedFile = File(context.cacheDir, "vid_${storyId}.mp4")
+                    if (!cachedFile.exists() || cachedFile.length() == 0L) {
+                        val vConn = URL("$PRELOAD_API_URL/story/stream_video?storyId=$storyId").openConnection() as HttpURLConnection
+                        vConn.connectTimeout = 15000; vConn.readTimeout = 20000
+                        if (vConn.responseCode in 200..299) {
+                            val ins = vConn.inputStream
+                            val fos = FileOutputStream(cachedFile)
+                            val buf = ByteArray(8192); var n: Int
+                            while (ins.read(buf).also { n = it } != -1) fos.write(buf, 0, n)
+                            fos.flush(); fos.close(); ins.close()
+                            globalStoryCache.put(storyId, cachedFile.absolutePath)
+                            pruneVideoDiskCache(context)
+                        }
+                    } else {
+                        globalStoryCache.put(storyId, cachedFile.absolutePath)
+                    }
+                } else {
+                    val b64 = story.optString("image", "")
+                    if (b64.isNotEmpty()) {
+                        val clean = if (b64.contains(",")) b64.substringAfter(",") else b64
+                        val bytes = Base64.decode(clean.replace("\\s+".toRegex(), ""), Base64.DEFAULT)
+                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        if (bmp != null) globalStoryCache.put(storyId, bmp)
+                    }
+                }
+            } catch (e: Exception) {}
+        }
+
+        // 🌟 نحافظ على حجم كاش الفيديوهات بالتخزين محدود بعد ما ألغينا مسحه عند إغلاق الشاشة 🌟
+        fun pruneVideoDiskCache(context: Context) {
+            try {
+                val files = context.cacheDir.listFiles { f -> f.name.startsWith("vid_") && f.name.endsWith(".mp4") } ?: return
+                if (files.size <= MAX_CACHED_VIDEO_FILES) return
+                files.sortedBy { it.lastModified() }
+                    .take(files.size - MAX_CACHED_VIDEO_FILES)
+                    .forEach { it.delete() }
+            } catch (e: Exception) {}
+        }
+    }
+
     private val BASE_API_URL = "https://education.ashor.shop"
     private lateinit var targetUserId: String
     private var myUserId: String = ""
@@ -58,8 +134,9 @@ class StoryViewerActivity : AppCompatActivity() {
     private var usersWithStoriesList = mutableListOf<String>()
     private var previousUsersStack = mutableListOf<String>()
 
-    // 🌟 نظام التخزين المؤقت الذكي (Cache) لآخر 10 استوريات (صور أو ملفات فيديو) 🌟
-    private val storyMediaCache = LruCache<String, Any>(10) // يخزن Bitmap للصور أو String لمسار الفيديو
+    // 🌟 نستخدم نفس الكاش العالمي المشترك حتى نستفيد من أي تحميل مسبق صار من صفحات ثانية 🌟
+    private val storyMediaCache get() = globalStoryCache
+    private var preloadJob: Job? = null
 
     private lateinit var ivStoryImage: ImageView
     private lateinit var vvStoryVideo: VideoView
@@ -218,6 +295,25 @@ class StoryViewerActivity : AppCompatActivity() {
         bottomSheet.show(supportFragmentManager, "StoryViewersBottomSheet")
     }
 
+    // 🌟 حالة التكبير/التحريك/التدوير الحالية للمحتوى (تضل مستمرة لين تغير القصة) 🌟
+    private var panX = 0f
+    private var panY = 0f
+    private var rotationAngle = 0f
+    private var lastRotationTouchAngle = 0f
+    private var lastPanRawX = 0f
+    private var lastPanRawY = 0f
+
+    private fun resetZoomPanRotation() {
+        scaleFactor = 1.0f
+        panX = 0f; panY = 0f
+        rotationAngle = 0f
+        storyContentContainer.scaleX = 1f
+        storyContentContainer.scaleY = 1f
+        storyContentContainer.translationX = 0f
+        storyContentContainer.translationY = 0f
+        storyContentContainer.rotation = 0f
+    }
+
     private fun setupTouchListener() {
         scaleGestureDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -227,35 +323,90 @@ class StoryViewerActivity : AppCompatActivity() {
                 storyContentContainer.scaleY = scaleFactor
                 return true
             }
-            override fun onScaleEnd(detector: ScaleGestureDetector) {
-                storyContentContainer.animate().scaleX(1.0f).scaleY(1.0f).setDuration(200).start()
-                scaleFactor = 1.0f
-            }
+            // 🌟 ما نرجع الحجم لـ 1.0 بعد ما يرفع صباعه، خلي التكبير يضل زي ما هو (زوم حقيقي مو مؤقت) 🌟
         })
 
         var touchDownTime = 0L
+        var downX = 0f
+        var downY = 0f
+        var isSwiping = false
         val screenWidth = resources.displayMetrics.widthPixels
+        val swipeThreshold = screenWidth * 0.18f
 
         viewTouchOverlay.setOnTouchListener { _, event ->
             scaleGestureDetector.onTouchEvent(event)
 
+            // 🌟 دوران بإصبعين (تدوير المحتوى) 🌟
+            if (event.pointerCount == 2) {
+                val dxA = (event.getX(0) - event.getX(1)).toDouble()
+                val dyA = (event.getY(0) - event.getY(1)).toDouble()
+                val angle = Math.toDegrees(Math.atan2(dyA, dxA)).toFloat()
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_POINTER_DOWN -> lastRotationTouchAngle = angle
+                    MotionEvent.ACTION_MOVE -> {
+                        rotationAngle += (angle - lastRotationTouchAngle)
+                        storyContentContainer.rotation = rotationAngle
+                        lastRotationTouchAngle = angle
+                    }
+                }
+            }
+
+            // 🌟 تحريك (Pan) المحتوى لما يكون مكبر 🌟
+            if (scaleFactor > 1.01f && event.pointerCount == 1) {
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> { lastPanRawX = event.rawX; lastPanRawY = event.rawY }
+                    MotionEvent.ACTION_MOVE -> {
+                        panX += (event.rawX - lastPanRawX)
+                        panY += (event.rawY - lastPanRawY)
+                        storyContentContainer.translationX = panX
+                        storyContentContainer.translationY = panY
+                        lastPanRawX = event.rawX; lastPanRawY = event.rawY
+                    }
+                }
+                return@setOnTouchListener true
+            }
+
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     touchDownTime = System.currentTimeMillis()
+                    downX = event.x; downY = event.y
+                    isSwiping = false
                     pauseStory()
                 }
+                MotionEvent.ACTION_MOVE -> {
+                    if (scaleFactor <= 1.01f) {
+                        val dx = event.x - downX
+                        if (kotlin.math.abs(dx) > 25 && kotlin.math.abs(dx) > kotlin.math.abs(event.y - downY)) {
+                            isSwiping = true
+                            // 🌟 نحرك المحتوى مع الإصبع أثناء السحب (إحساس فيسبوك) 🌟
+                            storyContentContainer.translationX = dx * 0.5f
+                        }
+                    }
+                }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    resumeStory()
-                    if (!scaleGestureDetector.isInProgress) {
+                    var navigated = false
+                    if (!scaleGestureDetector.isInProgress && event.pointerCount == 1) {
+                        val dx = event.x - downX
                         val touchDuration = System.currentTimeMillis() - touchDownTime
-                        if (touchDuration < 200) {
-                            if (event.x < screenWidth / 2) { 
+
+                        if (isSwiping && kotlin.math.abs(dx) > swipeThreshold) {
+                            navigated = true
+                            // 🌟 سحب من اليسار لليمين (dx > 0) = ينتقل للاستوري اللي على اليسار (التالي)
+                            // سحب من اليمين لليسار (dx < 0) = ينتقل للاستوري اللي على اليمين (السابق) 🌟
+                            if (dx > 0) showNextStory() else showPreviousStory()
+                        } else if (isSwiping) {
+                            storyContentContainer.animate().translationX(0f).setDuration(200).start()
+                        } else if (touchDuration < 200) {
+                            navigated = true
+                            if (event.x < screenWidth / 2) {
                                 showNextStory()
-                            } else { 
+                            } else {
                                 showPreviousStory()
                             }
                         }
                     }
+                    isSwiping = false
+                    if (!navigated) resumeStory()
                 }
             }
             true
@@ -285,6 +436,17 @@ class StoryViewerActivity : AppCompatActivity() {
     }
 
     private fun fetchStories(uId: String, startIndex: Int = 0) {
+        // 🌟 نتحقق أول شي من كاش التحميل المسبق: إذا محملة أصلاً، تشتغل فوراً بدون أي انتظار 🌟
+        val preloaded = com.v2ray.ang.util.StoryPreloadManager.storiesCache[uId]
+        if (preloaded != null && preloaded.length() > 0) {
+            storiesArray = preloaded
+            progressLoading.visibility = View.GONE
+            setupProgressBars()
+            val startAt = if (startIndex == -1) storiesArray.length() - 1 else 0
+            displayStory(startAt)
+            return
+        }
+
         progressLoading.visibility = View.VISIBLE
         // 🌟 نطلب القصص بمحاولات متكررة: إذا ماكو نت نستنى ونعيد المحاولة، ما نسكر الشاشة 🌟
         lifecycleScope.launch(Dispatchers.IO) {
@@ -344,7 +506,10 @@ class StoryViewerActivity : AppCompatActivity() {
         if (index < 0 || index >= storiesArray.length()) return
         progressAnimator?.cancel()
         currentIndex = index
-        
+
+        // 🌟 نصفر التكبير/التحريك/التدوير عند كل قصة جديدة 🌟
+        resetZoomPanRotation()
+
         vvStoryVideo.stopPlayback()
         vvStoryVideo.visibility = View.GONE
 
@@ -478,27 +643,28 @@ class StoryViewerActivity : AppCompatActivity() {
 
         recordStoryView(storyId)
         
-        // 🌟 التحضير المسبق (Pre-buffering) للمحتوى القادم 🌟
-        preloadNextContent(index)
+        // 🌟 التحضير المسبق العميق (5-10 استوريات جاية) 🌟
+        startDeepPreload(index)
     }
 
     private fun playVideo(videoPath: String, index: Int) {
         vvStoryVideo.setVideoPath(videoPath)
+        var timerStarted = false
         vvStoryVideo.setOnPreparedListener { mp ->
             mp.isLooping = true 
             val duration = mp.duration.toLong()
 
-            // 🌟 تكبير الفيديو (Crop) ليملأ الشاشة بالكامل ويوصل حافة الأعلى بدون أي فراغ،
-            // مثبّت من فوق (Gravity.TOP) والزيادة تنكرز تلقائياً من الأسفل 🌟
+            // 🌟 نعرض الفيديو بحجمه الطبيعي (بدون تكبير/قص) مثبّت من فوق تماماً بدون فراغ،
+            // وإذا زاد فراغ من تحت (نسبة الفيديو مختلفة) يضل أسود عادي زي الفيس 🌟
             val videoW = mp.videoWidth
             val videoH = mp.videoHeight
             if (videoW > 0 && videoH > 0) {
                 storyContentContainer.post {
                     val containerW = storyContentContainer.width
-                    val containerH = storyContentContainer.height
-                    if (containerW > 0 && containerH > 0) {
-                        val scale = maxOf(containerW.toFloat() / videoW, containerH.toFloat() / videoH)
-                        val newW = (videoW * scale).toInt()
+                    if (containerW > 0) {
+                        // نكبر/نصغر بس على أساس العرض (Fit width)، الارتفاع يبقى بنفس نسبة الفيديو الحقيقية
+                        val scale = containerW.toFloat() / videoW
+                        val newW = containerW
                         val newH = (videoH * scale).toInt()
                         vvStoryVideo.layoutParams = FrameLayout.LayoutParams(newW, newH).apply {
                             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
@@ -507,14 +673,25 @@ class StoryViewerActivity : AppCompatActivity() {
                 }
             }
 
-            mp.setOnInfoListener { _, what, _ ->
-                if (what == android.media.MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) {
+            // 🌟 ما نبدأ الشريط إلا لما الفيديو يبدأ يعرض فعلياً (مو بس ندز أمر التشغيل).
+            // نستخدم حدث "بداية العرض" الحقيقي، ومعه ضمان احتياطي بمدة قصيرة جداً
+            // (لبعض الأجهزة اللي ما ترسل هذا الحدث إطلاقاً) حتى ما يضل الشريط واقف للأبد 🌟
+            fun startTimerOnce() {
+                if (!timerStarted && currentIndex == index) {
+                    timerStarted = true
                     ivStoryImage.visibility = View.GONE
                     startStoryTimer(index, if (duration > 0) duration else STORY_DURATION)
+                }
+            }
+
+            mp.setOnInfoListener { _, what, _ ->
+                if (what == android.media.MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) {
+                    startTimerOnce()
                     true
                 } else false
             }
             mp.start()
+            vvStoryVideo.postDelayed({ startTimerOnce() }, 400)
         }
         vvStoryVideo.setOnErrorListener { _, _, _ ->
             File(cacheDir, "vid_${storiesArray.getJSONObject(index).getString("id")}.mp4").delete()
@@ -525,51 +702,96 @@ class StoryViewerActivity : AppCompatActivity() {
     }
 
     // 🌟 دالة التحميل المسبق العميق 🌟
-    private fun preloadNextContent(currentIndex: Int) {
-        lifecycleScope.launch(Dispatchers.IO) {
+    // 🌟 تحميل مسبق عميق: يحمل من ٥ إلى ١٠ استوريات جاية بالتسلسل (وحدة وره الثانية بالخلفية)،
+    // وكمان أول استوري لأقرب مستخدمين جايين بالطابور، حتى التنقل يصير فوري بدون أي وقفة 🌟
+    private fun startDeepPreload(fromIndex: Int) {
+        preloadJob?.cancel()
+        preloadJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
-                if (currentIndex < storiesArray.length() - 1) {
-                    val nextStory = storiesArray.getJSONObject(currentIndex + 1)
-                    val nextStoryId = nextStory.getString("id")
-                    
-                    if (storyMediaCache.get(nextStoryId) == null) {
-                        if (nextStory.optString("type") == "video") {
-                            val cachedFile = File(cacheDir, "vid_${nextStoryId}.mp4")
-                            if (!cachedFile.exists() || cachedFile.length() == 0L) {
-                                val url = URL("$BASE_API_URL/story/stream_video?storyId=$nextStoryId")
-                                val conn = url.openConnection() as HttpURLConnection
-                                conn.requestMethod = "GET"
-                                conn.connectTimeout = 15000
-                                conn.readTimeout = 20000
-                                
-                                if (conn.responseCode in 200..299) {
-                                    val inputStream = conn.inputStream
-                                    val fos = FileOutputStream(cachedFile)
-                                    val buffer = ByteArray(8192)
-                                    var bytesRead: Int
-                                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                                        fos.write(buffer, 0, bytesRead)
-                                    }
-                                    fos.flush()
-                                    fos.close()
-                                    inputStream.close()
-                                    storyMediaCache.put(nextStoryId, cachedFile.absolutePath)
-                                }
-                            } else {
-                                storyMediaCache.put(nextStoryId, cachedFile.absolutePath)
-                            }
-                        } else {
-                            val imgBase64 = nextStory.optString("image", "")
-                            if (imgBase64.isNotEmpty()) {
-                                val bmp = getSafeBitmap(imgBase64)
-                                if (bmp != null) storyMediaCache.put(nextStoryId, bmp)
-                            }
+                val maxAhead = 8
+                var loadedCount = 0
+                var i = fromIndex + 1
+                while (isActive && i < storiesArray.length() && loadedCount < maxAhead) {
+                    val story = storiesArray.optJSONObject(i)
+                    if (story != null) {
+                        val sid = story.optString("id")
+                        if (sid.isNotEmpty() && storyMediaCache.get(sid) == null) {
+                            preloadStoryContent(story, sid)
+                            loadedCount++
                         }
                     }
-                } 
+                    i++
+                }
+
+                // نحمل أول استوري لأقرب مستخدمين بالطابور حتى تحويل الحساب يصير سلس هو الثاني
+                var usersDone = 0
+                for (uid in usersWithStoriesList) {
+                    if (!isActive || usersDone >= 2) break
+                    preloadFirstStoryOfUser(uid)
+                    usersDone++
+                }
             } catch (e: Exception) {}
         }
     }
+
+    private suspend fun preloadStoryContent(story: JSONObject, storyId: String) {
+        try {
+            if (story.optString("type") == "video") {
+                val cachedFile = File(cacheDir, "vid_${storyId}.mp4")
+                if (!cachedFile.exists() || cachedFile.length() == 0L) {
+                    val url = URL("$BASE_API_URL/story/stream_video?storyId=$storyId")
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.requestMethod = "GET"
+                    conn.connectTimeout = 15000
+                    conn.readTimeout = 20000
+                    if (conn.responseCode in 200..299) {
+                        val inputStream = conn.inputStream
+                        val fos = FileOutputStream(cachedFile)
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                            fos.write(buffer, 0, bytesRead)
+                        }
+                        fos.flush()
+                        fos.close()
+                        inputStream.close()
+                        storyMediaCache.put(storyId, cachedFile.absolutePath)
+                        pruneVideoDiskCache(this@StoryViewerActivity)
+                    }
+                } else {
+                    storyMediaCache.put(storyId, cachedFile.absolutePath)
+                }
+            } else {
+                val imgBase64 = story.optString("image", "")
+                if (imgBase64.isNotEmpty()) {
+                    val bmp = getSafeBitmap(imgBase64)
+                    if (bmp != null) storyMediaCache.put(storyId, bmp)
+                }
+            }
+        } catch (e: Exception) { /* تحميل مسبق: نتجاهل الفشل، بيتحمل عادي وقت الوصول الفعلي للستوري */ }
+    }
+
+    private suspend fun preloadFirstStoryOfUser(uid: String) {
+        try {
+            val conn = URL("$BASE_API_URL/story/get_user_stories?targetId=$uid&viewerId=$myUserId").openConnection() as HttpURLConnection
+            conn.connectTimeout = 8000; conn.readTimeout = 8000
+            if (conn.responseCode == 200) {
+                val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                val obj = JSONObject(resp)
+                if (obj.optBoolean("success", false)) {
+                    val arr = obj.getJSONArray("stories")
+                    if (arr.length() > 0) {
+                        val first = arr.getJSONObject(0)
+                        val sid = first.optString("id")
+                        if (sid.isNotEmpty() && storyMediaCache.get(sid) == null) {
+                            preloadStoryContent(first, sid)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {}
+    }
+
 
     // 🌟 محرك الأنيميشن السلس جداً (Smooth Animation 60fps) 🌟
     private fun startStoryTimer(index: Int, duration: Long) {
@@ -612,20 +834,42 @@ class StoryViewerActivity : AppCompatActivity() {
         if (vvStoryVideo.visibility == View.VISIBLE) vvStoryVideo.start()
     }
 
-    private fun showNextStory() {
-        if (currentIndex < storiesArray.length() - 1) {
-            displayStory(currentIndex + 1)
-        } else {
-            jumpToNextUserStory()
-        }
+    private fun showNextStory() { animateStoryTransition(goNext = true) }
+
+    private fun showPreviousStory() { animateStoryTransition(goNext = false) }
+
+    // 🌟 انتقال أنيق بين الاستوريات (Slide) بنفس روح فيسبوك: يخرج المحتوى الحالي للجهة المناسبة
+    // وبعدين يدخل المحتوى الجديد من الجهة المقابلة 🌟
+    private fun animateStoryTransition(goNext: Boolean) {
+        val screenW = resources.displayMetrics.widthPixels.toFloat()
+        val outX = if (goNext) -screenW else screenW
+        storyContentContainer.animate()
+            .translationX(outX)
+            .alpha(0.4f)
+            .setDuration(160)
+            .withEndAction {
+                goToAdjacentStoryOrUser(goNext)
+                if (isFinishing || isDestroyed) return@withEndAction
+                storyContentContainer.translationX = -outX
+                storyContentContainer.alpha = 1f
+                storyContentContainer.animate().translationX(0f).setDuration(220).start()
+            }.start()
     }
 
-    private fun showPreviousStory() {
-        if (currentIndex > 0) {
-            progressBarsList[currentIndex].progress = 0
-            displayStory(currentIndex - 1)
+    private fun goToAdjacentStoryOrUser(goNext: Boolean) {
+        if (goNext) {
+            if (currentIndex < storiesArray.length() - 1) {
+                displayStory(currentIndex + 1)
+            } else {
+                jumpToNextUserStory()
+            }
         } else {
-            jumpToPreviousUserStory()
+            if (currentIndex > 0) {
+                progressBarsList[currentIndex].progress = 0
+                displayStory(currentIndex - 1)
+            } else {
+                jumpToPreviousUserStory()
+            }
         }
     }
 
@@ -844,23 +1088,12 @@ class StoryViewerActivity : AppCompatActivity() {
         } catch (e: Exception) { null }
     }
 
-    // 🌟 التنظيف التام عند الخروج لمنع امتلاء مساحة الهاتف 🌟
+    // 🌟 ما نمسح الكاش عند الخروج، حتى يضل المحتوى المحمّل مسبقاً جاهز لو المستخدم يرجع يفتح استوري ثاني قريب 🌟
     override fun onDestroy() {
         super.onDestroy()
+        preloadJob?.cancel()
         progressAnimator?.cancel()
         vvStoryVideo.stopPlayback()
-        storyMediaCache.evictAll() // مسح الكاش من الرام
-        clearVideoCache() // مسح الفيديوهات المؤقتة من الذاكرة
-    }
-    
-    private fun clearVideoCache() {
-        try {
-            cacheDir.listFiles()?.forEach { file ->
-                if (file.name.startsWith("vid_") && file.name.endsWith(".mp4")) {
-                    file.delete()
-                }
-            }
-        } catch (e: Exception) {}
     }
     
     override fun onResume() {
