@@ -86,7 +86,7 @@
             android:layout_width="40dp"
             android:layout_height="40dp"
             app:cardCornerRadius="20dp"
-            app:cardBackgroundColor="#33FFFFFF" <!-- تعديل للخلفية لتبدو شفافة -->
+            app:cardBackgroundColor="#33FFFFFF"
             app:cardElevation="0dp">
             <ImageView
                 android:id="@+id/iv_story_avatar"
@@ -115,7 +115,7 @@
                 android:id="@+id/tv_story_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="#EEEEEE"
+                android:textColor="#DDDDDD"
                 android:textSize="12sp"
                 android:shadowColor="#000000"
                 android:shadowRadius="3"/>
@@ -124,11 +124,11 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_follow"
             android:layout_width="wrap_content"
-            android:layout_height="36dp" <!-- تصغير الزر قليلاً للأناقة -->
+            android:layout_height="36dp"
             android:layout_marginStart="12dp"
             android:text="متابعة"
             android:textSize="12sp"
-            app:cornerRadius="18dp" <!-- زوايا دائرية بالكامل -->
+            app:cornerRadius="18dp"
             app:backgroundTint="#2196F3"
             android:visibility="gone"/>
 
@@ -145,7 +145,7 @@
             android:layout_marginEnd="8dp"
             android:src="@android:drawable/ic_menu_more"
             android:visibility="gone"
-            android:background="@drawable/bg_rounded_dark" <!-- إضافة خلفية زجاجية للزر -->
+            android:background="@drawable/bg_rounded_dark"
             app:tint="#FFFFFF"/>
 
         <ImageView
@@ -154,17 +154,16 @@
             android:layout_height="36dp"
             android:padding="6dp"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
-            android:background="@drawable/bg_rounded_dark" <!-- إضافة خلفية زجاجية للزر -->
+            android:background="@drawable/bg_rounded_dark"
             app:tint="#FFFFFF"/>
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
-        android:layout_height="150dp" <!-- زيادة مساحة التظليل السفلي لتبدو أعمق -->
+        android:layout_height="150dp"
         android:background="@drawable/shadow_gradient_bottom"
         app:layout_constraintBottom_toBottomOf="parent"/>
 
-    <!-- 🌟 شريط التفاعل السفلي بتصميم Glassmorphism 🌟 -->
     <LinearLayout
         android:id="@+id/layout_footer"
         android:layout_width="match_parent"
@@ -173,16 +172,16 @@
         android:layoutDirection="rtl"
         android:gravity="center_vertical"
         android:padding="16dp"
-        android:layout_marginBottom="8dp" <!-- رفع الشريط قليلاً عن الحافة السفلية -->
+        android:layout_marginBottom="8dp"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <LinearLayout
             android:id="@+id/layout_story_views_container"
             android:layout_width="wrap_content"
-            android:layout_height="48dp" <!-- ارتفاع ثابت للأناقة -->
+            android:layout_height="48dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:background="@drawable/bg_rounded_dark" <!-- يفترض أن هذا الملف يعطي شكل نصف شفاف -->
+            android:background="@drawable/bg_rounded_dark"
             android:paddingHorizontal="16dp"
             android:layout_marginEnd="12dp">
             
@@ -205,7 +204,7 @@
 
         <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="48dp" <!-- ارتفاع ثابت -->
+            android:layout_height="48dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:background="@drawable/bg_rounded_dark"
@@ -216,7 +215,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="❤️"
-                android:textSize="26sp" <!-- تكبير الإيموجي قليلاً -->
+                android:textSize="26sp"
                 android:padding="4dp"/>
             
             <TextView
@@ -243,11 +242,10 @@
             android:layout_height="0dp"
             android:layout_weight="1"/>
 
-        <!-- زر التعليقات -->
         <LinearLayout
             android:id="@+id/btn_open_comments"
             android:layout_width="wrap_content"
-            android:layout_height="48dp" <!-- ارتفاع ثابت متناسق -->
+            android:layout_height="48dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:background="@drawable/bg_rounded_dark"
