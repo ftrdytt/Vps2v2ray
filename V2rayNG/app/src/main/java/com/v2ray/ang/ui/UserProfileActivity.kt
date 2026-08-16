@@ -133,6 +133,10 @@ class UserProfileActivity : AppCompatActivity() {
                         val followers = obj.optInt("followersCount", 0)
                         val following = obj.optInt("followingCount", 0)
                         hasActiveStory = obj.optBoolean("hasActiveStory", false)
+                        if (hasActiveStory) {
+                            // 🌟 نبدأ تحميل الاستوري بالخلفية من صفحة البروفايل نفسها 🌟
+                            StoryViewerActivity.preloadUserStories(this@UserProfileActivity, targetUserId, AuthManager.getId(this@UserProfileActivity))
+                        }
 
                         withContext(Dispatchers.Main) {
                             tvUserName.text = name
