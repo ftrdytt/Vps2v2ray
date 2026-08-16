@@ -19,7 +19,9 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
@@ -45,14 +47,15 @@ import kotlin.random.Random
 class StoryViewerActivity : AppCompatActivity() {
 
     companion object {
-        val globalStoryCache = LruCache<String, Any>(20)
+        // 🌟 كاش عملاق يحفظ لحد 30 قصة، مخصص لقصصك الخاصة والـ Preload 🌟
+        val globalStoryCache = LruCache<String, Any>(30)
         private const val PRELOAD_API_URL = "https://education.ashor.shop"
         private val preloadedUsers = mutableSetOf<String>()
-        private const val MAX_CACHED_VIDEO_FILES = 15
+        private const val MAX_CACHED_VIDEO_FILES = 20
 
         val storiesCache = mutableMapOf<String, String>() 
 
-        fun preloadUserStories(context: Context, targetUserId: String, viewerId: String, maxCount: Int = 3) {
+        fun preloadUserStories(context: Context, targetUserId: String, viewerId: String, maxCount: Int = 5) {
             if (targetUserId.isEmpty() || !preloadedUsers.add(targetUserId)) return
             CoroutineScope(Dispatchers.IO).launch {
                 try {
@@ -178,7 +181,6 @@ class StoryViewerActivity : AppCompatActivity() {
         setupTouchListener()
         setupButtons()
 
-        // استخدام الـ Smart Feed لجلب باقي المستخدمين (سيتم بناء الخوارزمية في السيرفر لاحقاً)
         buildSmartUsersFeed {
             fetchPublisherInfo(targetUserId)
             fetchStories(targetUserId, 0)
@@ -217,7 +219,6 @@ class StoryViewerActivity : AppCompatActivity() {
     private fun buildSmartUsersFeed(onComplete: () -> Unit) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // سنقوم بتحديث المسار إلى الـ Smart Feed الذي سيتم تنفيذه في السيرفر
                 val conn = URL("$BASE_API_URL/social/get_smart_feed?myId=$myUserId").openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
@@ -240,17 +241,39 @@ class StoryViewerActivity : AppCompatActivity() {
         }
     }
 
+    // 🌟 تأثير النبض الخرافي (Alive Reactions) للأزرار 🌟
+    private fun animateReactionClick(view: View) {
+        view.animate()
+            .scaleX(1.4f)
+            .scaleY(1.4f)
+            .setDuration(150)
+            .setInterpolator(OvershootInterpolator())
+            .withEndAction {
+                view.animate().scaleX(1f).scaleY(1f).setDuration(150).start()
+            }.start()
+    }
+
     private fun setupButtons() {
         findViewById<ImageView>(R.id.btn_close_story).setOnClickListener { finish() }
 
-        findViewById<TextView>(R.id.btn_react_heart).setOnClickListener { reactToStory("❤️") }
-        findViewById<TextView>(R.id.btn_react_fire).setOnClickListener { reactToStory("🔥") }
-        findViewById<TextView>(R.id.btn_react_laugh).setOnClickListener { reactToStory("😂") }
+        findViewById<TextView>(R.id.btn_react_heart).setOnClickListener { 
+            animateReactionClick(it)
+            reactToStory("❤️") 
+        }
+        findViewById<TextView>(R.id.btn_react_fire).setOnClickListener { 
+            animateReactionClick(it)
+            reactToStory("🔥") 
+        }
+        findViewById<TextView>(R.id.btn_react_laugh).setOnClickListener { 
+            animateReactionClick(it)
+            reactToStory("😂") 
+        }
 
         findViewById<LinearLayout>(R.id.btn_open_comments).setOnClickListener {
             if (storiesArray.length() > 0) {
                 pauseStory()
                 val currentStoryId = storiesArray.getJSONObject(currentIndex).getString("id")
+                // من هنا نستدعي البوتوم شيت الخاص بالتعليقات (راح نجهزه بالملف الجاي)
                 val bottomSheet = CommentsBottomSheet.newInstance(currentStoryId, myUserId)
                 bottomSheet.show(supportFragmentManager, "CommentsBottomSheet")
             }
@@ -484,6 +507,8 @@ class StoryViewerActivity : AppCompatActivity() {
                 max = 10000 
                 progress = 0
                 progressTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+                // 🌟 تفعيل التسريع العتادي لضمان نعومة الشريط على كل الأجهزة 🌟
+                setLayerType(View.LAYER_TYPE_HARDWARE, null)
             }
             layoutProgressBars.addView(pb)
             progressBarsList.add(pb)
@@ -758,6 +783,7 @@ class StoryViewerActivity : AppCompatActivity() {
         } catch (e: Exception) {}
     }
 
+    // 🌟 الأنيميشن السلس جداً متزامن مع شاشة الهاتف 🌟
     private fun startStoryTimer(index: Int, duration: Long) {
         progressAnimator?.cancel()
         val pb = progressBarsList[index]
@@ -797,7 +823,6 @@ class StoryViewerActivity : AppCompatActivity() {
         if (vvStoryVideo.visibility == View.VISIBLE) vvStoryVideo.start()
     }
 
-    // 🌟 2. استرجاع الأنيميشن القديم (Fade) بدلاً من الانزلاق (Slide) 🌟
     private fun animateStoryTransition(goNext: Boolean) {
         storyContentContainer.animate()
             .alpha(0.3f)
@@ -920,21 +945,29 @@ class StoryViewerActivity : AppCompatActivity() {
         }
     }
 
+    // 🌟 حيوية تفاعلات الإيموجي بطريقة 2055 🌟
     private fun animateFloatingEmoji(emoji: String) {
         val tvEmoji = TextView(this).apply {
             text = emoji
             textSize = 50f
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.BOTTOM or Gravity.END
-                bottomMargin = 150
-                marginEnd = Random.nextInt(50, 300)
+                bottomMargin = 180
+                marginEnd = 100
             }
         }
         reactionAnimationLayer.addView(tvEmoji)
+        
+        // أنيميشن طيران وتكبير فخم جداً
+        val randomX = Random.nextInt(-300, 300).toFloat()
         tvEmoji.animate()
-            .translationYBy(-800f)
+            .translationYBy(-(800f + Random.nextInt(300)))
+            .translationXBy(randomX)
+            .scaleX(1.8f)
+            .scaleY(1.8f)
             .alpha(0f)
-            .setDuration(1500)
+            .setDuration(2200)
+            .setInterpolator(DecelerateInterpolator())
             .withEndAction { reactionAnimationLayer.removeView(tvEmoji) }
             .start()
     }
@@ -1045,7 +1078,6 @@ class StoryViewerActivity : AppCompatActivity() {
         } catch (e: Exception) { null }
     }
 
-    // 🌟 لن نقوم بحذف الكاش هنا للحفاظ على القصص الخاصة باليوزر والـ Preload محملة 🌟
     override fun onDestroy() {
         super.onDestroy()
         preloadJob?.cancel()
@@ -1059,6 +1091,7 @@ class StoryViewerActivity : AppCompatActivity() {
     }
 }
 
+// 🌟 قائمة المشاهدات بتصميم VIP (Glassmorphism) 🌟
 class StoryViewersBottomSheet : BottomSheetDialogFragment() {
     var userIds: List<String> = listOf()
     var myUserId: String = ""
@@ -1074,9 +1107,27 @@ class StoryViewersBottomSheet : BottomSheetDialogFragment() {
         val context = requireContext()
         val layout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0A0A0C"))
-            setPadding(0, 40, 0, 0)
+            // تصميم زجاجي عصري
+            background = GradientDrawable().apply {
+                colors = intArrayOf(Color.parseColor("#E60A0A0C"), Color.parseColor("#CC1A1A1D"))
+                cornerRadii = floatArrayOf(80f, 80f, 80f, 80f, 0f, 0f, 0f, 0f)
+                setStroke(2, Color.parseColor("#33FFFFFF"))
+            }
+            setPadding(0, 30, 0, 0)
         }
+
+        // خط السحب (Handle) بالأعلى
+        val handle = View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(120, 12).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                bottomMargin = 40
+            }
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#55FFFFFF"))
+                cornerRadius = 10f
+            }
+        }
+        layout.addView(handle)
 
         val title = TextView(context).apply {
             text = "المشاهدات (${userIds.size})"
@@ -1115,6 +1166,17 @@ class StoryViewersBottomSheet : BottomSheetDialogFragment() {
 
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val id = ids[position]
+            
+            // إضافة لمسة زجاجية لكل مستخدم بالقائمة
+            holder.itemView.background = GradientDrawable().apply {
+                setColor(Color.parseColor("#1AFFFFFF")) 
+                cornerRadius = 40f
+                setStroke(1, Color.parseColor("#33FFFFFF"))
+            }
+            (holder.itemView.layoutParams as? ViewGroup.MarginLayoutParams)?.apply {
+                setMargins(20, 10, 20, 10)
+            }
+
             holder.tvName.text = "جاري التحميل..."
             holder.tvUsername.text = "ID: $id"
             holder.btnFollow.visibility = View.GONE
