@@ -50,7 +50,6 @@ class StoryViewerActivity : AppCompatActivity() {
         private val preloadedUsers = mutableSetOf<String>()
         private const val MAX_CACHED_VIDEO_FILES = 15
 
-        // 🌟 قمنا بتغيير نوع التخزين المسبق لمصفوفات القصص حتى نتجنب الخطأ الخاص بـ MatchGroup 🌟
         val storiesCache = mutableMapOf<String, String>() 
 
         fun preloadUserStories(context: Context, targetUserId: String, viewerId: String, maxCount: Int = 3) {
@@ -64,7 +63,6 @@ class StoryViewerActivity : AppCompatActivity() {
                         val obj = JSONObject(resp)
                         if (obj.optBoolean("success", false)) {
                             val arr = obj.getJSONArray("stories")
-                            // 🌟 نحفظ الـ JSONArray كنص (String) حتى لا يسبب تعارض 🌟
                             storiesCache[targetUserId] = arr.toString()
                             
                             val count = minOf(arr.length(), maxCount)
@@ -180,6 +178,7 @@ class StoryViewerActivity : AppCompatActivity() {
         setupTouchListener()
         setupButtons()
 
+        // استخدام الـ Smart Feed لجلب باقي المستخدمين (سيتم بناء الخوارزمية في السيرفر لاحقاً)
         buildSmartUsersFeed {
             fetchPublisherInfo(targetUserId)
             fetchStories(targetUserId, 0)
@@ -218,23 +217,23 @@ class StoryViewerActivity : AppCompatActivity() {
     private fun buildSmartUsersFeed(onComplete: () -> Unit) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val conn = URL("$BASE_API_URL/admin/get_all_users").openConnection() as HttpURLConnection
+                // سنقوم بتحديث المسار إلى الـ Smart Feed الذي سيتم تنفيذه في السيرفر
+                val conn = URL("$BASE_API_URL/social/get_smart_feed?myId=$myUserId").openConnection() as HttpURLConnection
                 if (conn.responseCode == 200) {
                     val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
-                    val usersArray = JSONArray(resp)
-                    val tempList = mutableListOf<String>()
-                    
-                    for (i in 0 until usersArray.length()) {
-                        val uObj = usersArray.getJSONObject(i)
-                        val uId = uObj.getString("id")
-                        val hasStory = uObj.optBoolean("hasActiveStory", false)
+                    val obj = JSONObject(resp)
+                    if (obj.optBoolean("success", false)) {
+                        val usersArray = obj.optJSONArray("feed") ?: JSONArray()
+                        val tempList = mutableListOf<String>()
                         
-                        if (hasStory && uId != targetUserId && uId != myUserId) {
-                            tempList.add(uId)
+                        for (i in 0 until usersArray.length()) {
+                            val uId = usersArray.getString(i)
+                            if (uId != targetUserId && uId != myUserId) {
+                                tempList.add(uId)
+                            }
                         }
+                        usersWithStoriesList.addAll(tempList)
                     }
-                    tempList.shuffle() 
-                    usersWithStoriesList.addAll(tempList)
                 }
             } catch (e: Exception) {}
             withContext(Dispatchers.Main) { onComplete() }
@@ -424,7 +423,6 @@ class StoryViewerActivity : AppCompatActivity() {
     }
 
     private fun fetchStories(uId: String, startIndex: Int = 0) {
-        // 🌟 نستخدم التحميل المسبق المحفوظ كنص String ونحوله لـ JSONArray هنا 🌟
         val preloadedStr = storiesCache[uId]
         if (preloadedStr != null) {
             try {
@@ -799,25 +797,21 @@ class StoryViewerActivity : AppCompatActivity() {
         if (vvStoryVideo.visibility == View.VISIBLE) vvStoryVideo.start()
     }
 
-    private fun showNextStory() { animateStoryTransition(goNext = true) }
-
-    private fun showPreviousStory() { animateStoryTransition(goNext = false) }
-
+    // 🌟 2. استرجاع الأنيميشن القديم (Fade) بدلاً من الانزلاق (Slide) 🌟
     private fun animateStoryTransition(goNext: Boolean) {
-        val screenW = resources.displayMetrics.widthPixels.toFloat()
-        val outX = if (goNext) -screenW else screenW
         storyContentContainer.animate()
-            .translationX(outX)
-            .alpha(0.4f)
-            .setDuration(160)
+            .alpha(0.3f)
+            .setDuration(120)
             .withEndAction {
                 goToAdjacentStoryOrUser(goNext)
                 if (isFinishing || isDestroyed) return@withEndAction
-                storyContentContainer.translationX = -outX
                 storyContentContainer.alpha = 1f
-                storyContentContainer.animate().translationX(0f).setDuration(220).start()
             }.start()
     }
+
+    private fun showNextStory() { animateStoryTransition(goNext = true) }
+
+    private fun showPreviousStory() { animateStoryTransition(goNext = false) }
 
     private fun goToAdjacentStoryOrUser(goNext: Boolean) {
         if (goNext) {
@@ -1051,6 +1045,7 @@ class StoryViewerActivity : AppCompatActivity() {
         } catch (e: Exception) { null }
     }
 
+    // 🌟 لن نقوم بحذف الكاش هنا للحفاظ على القصص الخاصة باليوزر والـ Preload محملة 🌟
     override fun onDestroy() {
         super.onDestroy()
         preloadJob?.cancel()
