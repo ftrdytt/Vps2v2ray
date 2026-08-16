@@ -178,6 +178,9 @@ class ProfileFragment : Fragment() {
         val userId = AuthManager.getId(requireContext())
         val userRole = AuthManager.getRole(requireContext())
 
+        // 🌟 نبدأ نحمل الاستوريات بالخلفية من أول ما تفتح صفحة البروفايل 🌟
+        com.v2ray.ang.util.StoryPreloadManager.start(requireContext(), userId)
+
         val rootLayout = view as? ViewGroup
         var scrollView: ScrollView? = null
         rootLayout?.let {
@@ -313,6 +316,12 @@ class ProfileFragment : Fragment() {
                     performLogout()
                 }.setNegativeButton("إلغاء", null).show()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 🌟 نعيد تحديث الاستوريات بالخلفية كل ما ترجع صفحة البروفايل لقدام 🌟
+        com.v2ray.ang.util.StoryPreloadManager.start(requireContext(), AuthManager.getId(requireContext()))
     }
 
     override fun onDestroyView() {
@@ -506,7 +515,10 @@ class ProfileFragment : Fragment() {
             if (hasActiveStory) {
                 // تلوين الدائرة الخارجية باللون الأزرق (لون الاستوري الفعال)
                 cvStoryRing?.setCardBackgroundColor(Color.parseColor("#2196F3"))
-                
+
+                // 🌟 نبدأ تحميل الاستوري بالخلفية فوراً من هذه الصفحة، قبل حتى ما يضغط المستخدم عليها 🌟
+                StoryViewerActivity.preloadUserStories(requireContext(), userId, AuthManager.getId(requireContext()))
+
                 ivAvatar.setOnClickListener {
                     val options = arrayOf("شاهد الاستوري 👁️", "إضافة استوري جديد ➕")
                     AlertDialog.Builder(requireContext())
