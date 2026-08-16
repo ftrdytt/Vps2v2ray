@@ -86,7 +86,7 @@
             android:layout_width="40dp"
             android:layout_height="40dp"
             app:cardCornerRadius="20dp"
-            app:cardBackgroundColor="#252529"
+            app:cardBackgroundColor="#33FFFFFF" <!-- تعديل للخلفية لتبدو شفافة -->
             app:cardElevation="0dp">
             <ImageView
                 android:id="@+id/iv_story_avatar"
@@ -115,7 +115,7 @@
                 android:id="@+id/tv_story_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="#DDDDDD"
+                android:textColor="#EEEEEE"
                 android:textSize="12sp"
                 android:shadowColor="#000000"
                 android:shadowRadius="3"/>
@@ -124,11 +124,11 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_follow"
             android:layout_width="wrap_content"
-            android:layout_height="40dp"
+            android:layout_height="36dp" <!-- تصغير الزر قليلاً للأناقة -->
             android:layout_marginStart="12dp"
             android:text="متابعة"
             android:textSize="12sp"
-            app:cornerRadius="8dp"
+            app:cornerRadius="18dp" <!-- زوايا دائرية بالكامل -->
             app:backgroundTint="#2196F3"
             android:visibility="gone"/>
 
@@ -139,29 +139,32 @@
 
         <ImageView
             android:id="@+id/btn_story_options"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:padding="4dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:padding="6dp"
             android:layout_marginEnd="8dp"
             android:src="@android:drawable/ic_menu_more"
             android:visibility="gone"
+            android:background="@drawable/bg_rounded_dark" <!-- إضافة خلفية زجاجية للزر -->
             app:tint="#FFFFFF"/>
 
         <ImageView
             android:id="@+id/btn_close_story"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:padding="4dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:padding="6dp"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:background="@drawable/bg_rounded_dark" <!-- إضافة خلفية زجاجية للزر -->
             app:tint="#FFFFFF"/>
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
-        android:layout_height="120dp"
+        android:layout_height="150dp" <!-- زيادة مساحة التظليل السفلي لتبدو أعمق -->
         android:background="@drawable/shadow_gradient_bottom"
         app:layout_constraintBottom_toBottomOf="parent"/>
 
+    <!-- 🌟 شريط التفاعل السفلي بتصميم Glassmorphism 🌟 -->
     <LinearLayout
         android:id="@+id/layout_footer"
         android:layout_width="match_parent"
@@ -170,22 +173,22 @@
         android:layoutDirection="rtl"
         android:gravity="center_vertical"
         android:padding="16dp"
+        android:layout_marginBottom="8dp" <!-- رفع الشريط قليلاً عن الحافة السفلية -->
         app:layout_constraintBottom_toBottomOf="parent">
 
         <LinearLayout
             android:id="@+id/layout_story_views_container"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp" <!-- ارتفاع ثابت للأناقة -->
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:background="@drawable/bg_rounded_dark"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="10dp"
+            android:background="@drawable/bg_rounded_dark" <!-- يفترض أن هذا الملف يعطي شكل نصف شفاف -->
+            android:paddingHorizontal="16dp"
             android:layout_marginEnd="12dp">
             
             <ImageView
-                android:layout_width="18dp"
-                android:layout_height="18dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:src="@android:drawable/ic_menu_view"
                 app:tint="#FFFFFF" />
 
@@ -193,26 +196,27 @@
                 android:id="@+id/tv_story_views"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
+                android:layout_marginStart="8dp"
                 android:textColor="#FFFFFF"
-                android:textSize="14sp"
+                android:textSize="15sp"
                 android:text="0"
                 android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp" <!-- ارتفاع ثابت -->
             android:orientation="horizontal"
+            android:gravity="center_vertical"
             android:background="@drawable/bg_rounded_dark"
-            android:padding="8dp">
+            android:paddingHorizontal="12dp">
             
             <TextView
                 android:id="@+id/btn_react_heart"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="❤️"
-                android:textSize="24sp"
+                android:textSize="26sp" <!-- تكبير الإيموجي قليلاً -->
                 android:padding="4dp"/>
             
             <TextView
@@ -220,18 +224,18 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="🔥"
-                android:textSize="24sp"
+                android:textSize="26sp"
                 android:padding="4dp"
-                android:layout_marginStart="8dp"/>
+                android:layout_marginStart="12dp"/>
             
             <TextView
                 android:id="@+id/btn_react_laugh"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="😂"
-                android:textSize="24sp"
+                android:textSize="26sp"
                 android:padding="4dp"
-                android:layout_marginStart="8dp"/>
+                android:layout_marginStart="12dp"/>
         </LinearLayout>
 
         <View
@@ -239,20 +243,24 @@
             android:layout_height="0dp"
             android:layout_weight="1"/>
 
+        <!-- زر التعليقات -->
         <LinearLayout
             android:id="@+id/btn_open_comments"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp" <!-- ارتفاع ثابت متناسق -->
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:background="@drawable/bg_rounded_dark"
-            android:padding="10dp">
+            android:paddingHorizontal="16dp">
+            
             <TextView
                 android:id="@+id/tv_comments_count"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="0"
+                android:textSize="15sp"
                 android:textColor="#FFFFFF"
+                android:textStyle="bold"
                 android:layout_marginEnd="8dp"/>
             <ImageView
                 android:layout_width="24dp"
