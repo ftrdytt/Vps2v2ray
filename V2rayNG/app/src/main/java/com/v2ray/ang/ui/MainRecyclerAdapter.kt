@@ -300,6 +300,8 @@ class MainRecyclerAdapter(
                         setColor(Color.TRANSPARENT)
                     }
                     it.setPadding(8, 8, 8, 8)
+                    // 🌟 نبدأ تحميل الاستوري بالخلفية من هنا مباشرة (بدون ما ننطر ضغطة المستخدم) 🌟
+                    StoryViewerActivity.preloadUserStories(context, actualTargetId, myUserId.ifEmpty { actualTargetId }, 2)
                     it.setOnClickListener {
                         try {
                             val intent = Intent(context, Class.forName("com.v2ray.ang.ui.StoryViewerActivity"))
