@@ -61,7 +61,7 @@ class ProfileFragment : Fragment() {
     private var tvFollowingCount: TextView? = null
     private var btnAddStory: ImageView? = null
     private var layoutAvatarContainer: FrameLayout? = null
-    private var cvStoryRing: CardView? = null // 🌟 المتغير الجديد للتحكم بالدائرة الزرقاء
+    private var cvStoryRing: CardView? = null 
     
     private var swipeRefreshLayout: SwipeRefreshLayout? = null
     private var currentBase64Pfp: String = ""
@@ -178,8 +178,8 @@ class ProfileFragment : Fragment() {
         val userId = AuthManager.getId(requireContext())
         val userRole = AuthManager.getRole(requireContext())
 
-        // 🌟 نبدأ نحمل الاستوريات بالخلفية من أول ما تفتح صفحة البروفايل 🌟
-        com.v2ray.ang.util.StoryPreloadManager.start(requireContext(), userId)
+        // 🌟 استدعاء التحميل المسبق من المكان الصحيح 🌟
+        StoryViewerActivity.preloadUserStories(requireContext(), userId, userId)
 
         val rootLayout = view as? ViewGroup
         var scrollView: ScrollView? = null
@@ -223,7 +223,7 @@ class ProfileFragment : Fragment() {
         tvFollowingCount = view.findViewById(R.id.tv_following_count)
         btnAddStory = view.findViewById(R.id.btn_add_story)
         layoutAvatarContainer = view.findViewById(R.id.layout_avatar_container)
-        cvStoryRing = view.findViewById(R.id.cv_story_ring) // 🌟 ربط المتغير بالتصميم
+        cvStoryRing = view.findViewById(R.id.cv_story_ring) 
 
         if (userRole == "admin") {
             etId.isEnabled = true
@@ -300,7 +300,6 @@ class ProfileFragment : Fragment() {
             saveProfile(newName, newUsername, newPass, userRole, newId)
         }
 
-        // 🌟 زر تسجيل الخروج، يمسح الملفات 🌟
         btnLogout.setOnClickListener {
             AlertDialog.Builder(requireContext()).setTitle("تسجيل خروج").setMessage("هل أنت متأكد من الخروج التام؟ (سيتم مسح كافة الملفات من هذا الجهاز)")
                 .setPositiveButton("نعم") { _, _ ->
@@ -320,8 +319,8 @@ class ProfileFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        // 🌟 نعيد تحديث الاستوريات بالخلفية كل ما ترجع صفحة البروفايل لقدام 🌟
-        com.v2ray.ang.util.StoryPreloadManager.start(requireContext(), AuthManager.getId(requireContext()))
+        // 🌟 استدعاء التحميل المسبق من المكان الصحيح 🌟
+        StoryViewerActivity.preloadUserStories(requireContext(), AuthManager.getId(requireContext()), AuthManager.getId(requireContext()))
     }
 
     override fun onDestroyView() {
@@ -335,7 +334,6 @@ class ProfileFragment : Fragment() {
                 Toast.makeText(requireContext(), kickedMessage, Toast.LENGTH_LONG).show()
             }
             
-            // 🌟 مسح الملفات من الجهاز نهائياً 🌟
             MmkvManager.clearAllConfigs()
             
             AuthManager.logout(requireContext())
@@ -500,7 +498,6 @@ class ProfileFragment : Fragment() {
         renderDevices()
     }
 
-    // 🌟 التحديث الجديد: الاعتماد على CardView لتغيير إطار الدائرة الزرقاء (الاستوري الفعال) 🌟
     private fun updateProfilePicture(base64Str: String, name: String, userId: String, hasActiveStory: Boolean) {
         val bitmap = try {
             val cleanStr = if (base64Str.contains(",")) base64Str.substringAfter(",") else base64Str
@@ -513,10 +510,9 @@ class ProfileFragment : Fragment() {
             ivAvatar.setImageDrawable(circularDrawable)
             
             if (hasActiveStory) {
-                // تلوين الدائرة الخارجية باللون الأزرق (لون الاستوري الفعال)
                 cvStoryRing?.setCardBackgroundColor(Color.parseColor("#2196F3"))
 
-                // 🌟 نبدأ تحميل الاستوري بالخلفية فوراً من هذه الصفحة، قبل حتى ما يضغط المستخدم عليها 🌟
+                // 🌟 استدعاء التحميل المسبق من المكان الصحيح 🌟
                 StoryViewerActivity.preloadUserStories(requireContext(), userId, AuthManager.getId(requireContext()))
 
                 ivAvatar.setOnClickListener {
@@ -534,7 +530,6 @@ class ProfileFragment : Fragment() {
                         .show()
                 }
             } else {
-                // إخفاء الدائرة بجعلها بنفس لون الخلفية الأساسي للتطبيق
                 cvStoryRing?.setCardBackgroundColor(Color.parseColor("#0A0A0C"))
                 
                 ivAvatar.setOnClickListener {
