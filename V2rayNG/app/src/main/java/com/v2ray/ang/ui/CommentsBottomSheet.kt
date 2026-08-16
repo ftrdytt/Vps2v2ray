@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Base64
 import android.view.HapticFeedbackConstants
@@ -14,6 +15,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.animation.OvershootInterpolator
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
@@ -65,12 +67,13 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
         }
     }
 
-    // 🌟 جعل النافذة تفتح بكامل الشاشة وتدعم الكيبورد بشكل صحيح 🌟
+    // 🌟 فتح النافذة بكامل الشاشة مع دعم الكيبورد السلس 🌟
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val dialog = super.onCreateDialog(savedInstanceState) as BottomSheetDialog
         dialog.setOnShowListener {
             val bottomSheet = dialog.findViewById<View>(com.google.android.material.R.id.design_bottom_sheet)
             bottomSheet?.let {
+                it.setBackgroundColor(Color.TRANSPARENT) // جعل الخلفية شفافة للتصميم الزجاجي
                 val behavior = BottomSheetBehavior.from(it)
                 behavior.state = BottomSheetBehavior.STATE_EXPANDED
                 behavior.skipCollapsed = true
@@ -95,11 +98,38 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
         btnSend = view.findViewById(R.id.btn_send_comment)
         tvReplyingTo = view.findViewById(R.id.tv_replying_to)
 
+        // 🌟 تطبيق تصميم Glassmorphism (زجاجي) على النافذة بالكامل برمجياً 🌟
+        view.background = GradientDrawable().apply {
+            colors = intArrayOf(Color.parseColor("#F2050505"), Color.parseColor("#E6121212")) // لون أسود زجاجي عميق
+            cornerRadii = floatArrayOf(80f, 80f, 80f, 80f, 0f, 0f, 0f, 0f) // حواف دائرية قوية من الأعلى
+            setStroke(3, Color.parseColor("#1AFFFFFF")) // خط مضيء خفيف يعطي إحساس 3D
+        }
+
+        // 🌟 تفعيل التسريع العتادي لضمان نعومة الفريمات (120Hz/60Hz) 🌟
+        view.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        rvComments.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        rvComments.overScrollMode = View.OVER_SCROLL_NEVER // إزالة ظل التمرير المزعج للأناقة
+
+        // 🌟 تصميم كبسولة زجاجية لحقل الكتابة 🌟
+        val inputContainer = etInput.parent as? ViewGroup
+        inputContainer?.background = GradientDrawable().apply {
+            setColor(Color.parseColor("#1AFFFFFF"))
+            cornerRadius = 60f
+            setStroke(2, Color.parseColor("#26FFFFFF"))
+        }
+        inputContainer?.setPadding(16.dpToPx(), 4.dpToPx(), 16.dpToPx(), 4.dpToPx())
+
+        // 🌟 تصميم مؤشر الرد (Replying To) 🌟
+        tvReplyingTo.background = GradientDrawable().apply {
+            setColor(Color.parseColor("#332196F3"))
+            cornerRadius = 40f
+        }
+        tvReplyingTo.setPadding(24, 12, 24, 12)
+
         adapter = CommentsAdapter()
         rvComments.layoutManager = LinearLayoutManager(requireContext())
         rvComments.adapter = adapter
-        // إزالة الأنيميشن الافتراضي المزعج عند تحديث عنصر واحد
-        rvComments.itemAnimator = null 
+        rvComments.itemAnimator = null // إزالة الوميض عند الإعجاب
 
         tvReplyingTo.setOnClickListener {
             cancelReply()
@@ -108,6 +138,10 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
         btnSend.setOnClickListener {
             val text = etInput.text.toString().trim()
             if (text.isNotEmpty()) {
+                // أنيميشن النبض لزر الإرسال
+                it.animate().scaleX(0.7f).scaleY(0.7f).setDuration(100).withEndAction {
+                    it.animate().scaleX(1f).scaleY(1f).setInterpolator(OvershootInterpolator()).setDuration(200).start()
+                }.start()
                 sendComment(text)
             }
         }
@@ -148,7 +182,7 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
                             )
                         }
 
-                        // 🌟 تنظيم القائمة (التعليق الأساسي وتحته الردود الخاصة به) 🌟
+                        // تنظيم القائمة
                         val organizedList = mutableListOf<CommentModel>()
                         val parents = rawList.filter { it.parentId == "null" || it.parentId.isEmpty() }.sortedBy { it.timestamp }
                         for (p in parents) {
@@ -217,7 +251,6 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
         }
     }
 
-    // 🌟 دالة مساعدة لتحويل الأرقام إلى DP لتناسب جميع الشاشات 🌟
     private fun Int.dpToPx(): Int = (this * resources.displayMetrics.density).toInt()
 
     inner class CommentsAdapter : RecyclerView.Adapter<CommentsAdapter.VH>() {
@@ -240,12 +273,11 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val c = commentsList[position]
             
-            // 🌟 تصميم ستايل فيسبوك: إضافة إزاحة للردود لتظهر بشكل متداخل 🌟
+            // 🌟 تصميم الردود بشكل متداخل وحديث 🌟
             val isReply = c.parentId != "null" && c.parentId.isNotEmpty()
-            val paddingStartEnd = if (isReply) 56.dpToPx() else 16.dpToPx()
+            val paddingStartEnd = if (isReply) 64.dpToPx() else 16.dpToPx()
             
-            // بما أن التطبيق عربي (RTL)، الإزاحة ستكون من اليمين
-            holder.rootLayout.setPadding(16.dpToPx(), 8.dpToPx(), paddingStartEnd, 8.dpToPx())
+            holder.rootLayout.setPadding(16.dpToPx(), 12.dpToPx(), paddingStartEnd, 12.dpToPx())
 
             holder.tvName.text = c.name
             holder.tvText.text = c.text
@@ -275,13 +307,12 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
             
             holder.ivPfp.setImageDrawable(RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true })
 
-            // 🌟 أنيميشن واهتزاز عند الإعجاب (مثل انستغرام وتويتر) 🌟
+            // 🌟 أنيميشن واهتزاز متطور عند الإعجاب 🌟
             holder.btnLike.setOnClickListener {
-                it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY) // اهتزاز خفيف
+                it.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 
-                // أنيميشن النبض
-                holder.ivLikeIcon.animate().scaleX(1.4f).scaleY(1.4f).setDuration(150).withEndAction {
-                    holder.ivLikeIcon.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
+                holder.ivLikeIcon.animate().scaleX(1.5f).scaleY(1.5f).setDuration(120).withEndAction {
+                    holder.ivLikeIcon.animate().scaleX(1.0f).scaleY(1.0f).setInterpolator(OvershootInterpolator()).setDuration(150).start()
                 }.start()
 
                 if (isLikedByMe) c.likes.remove(myUserId) else c.likes.add(myUserId)
@@ -290,6 +321,7 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
             }
 
             holder.btnReply.setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 replyingToCommentId = if (isReply) c.parentId else c.id
                 replyingToName = c.name
                 tvReplyingTo.visibility = View.VISIBLE
@@ -298,7 +330,6 @@ class CommentsBottomSheet : BottomSheetDialogFragment() {
                 etInput.requestFocus()
             }
 
-            // 🌟 ميزة النسخ عند الضغط المطول 🌟
             holder.rootLayout.setOnLongClickListener {
                 holder.rootLayout.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                 val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
