@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.text.Editable
+import android.text.InputType
 import android.text.TextWatcher
 import android.util.Base64
 import android.view.Gravity
@@ -26,7 +27,10 @@ import androidx.cardview.widget.CardView
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
 import com.v2ray.ang.R
@@ -62,6 +66,7 @@ class ProfileFragment : Fragment() {
     private var btnAddStory: ImageView? = null
     private var layoutAvatarContainer: FrameLayout? = null
     private var cvStoryRing: CardView? = null 
+    private var adminReportsButton: FrameLayout? = null // 🌟 زر الإبلاغات الخاص بالأدمن
     
     private var swipeRefreshLayout: SwipeRefreshLayout? = null
     private var currentBase64Pfp: String = ""
@@ -178,7 +183,6 @@ class ProfileFragment : Fragment() {
         val userId = AuthManager.getId(requireContext())
         val userRole = AuthManager.getRole(requireContext())
 
-        // 🌟 استدعاء التحميل المسبق من المكان الصحيح 🌟
         StoryViewerActivity.preloadUserStories(requireContext(), userId, userId)
 
         val rootLayout = view as? ViewGroup
@@ -271,6 +275,7 @@ class ProfileFragment : Fragment() {
                 visibility = View.VISIBLE
                 setOnClickListener { startActivity(Intent(requireContext(), UpdateLogsActivity::class.java)) }
             }
+            setupAdminReportsButton(view) // 🌟 تهيئة زر الإبلاغات للأدمن 🌟
         }
 
         updateProfilePicture(currentBase64Pfp, AuthManager.getName(requireContext()), userId, false)
@@ -317,10 +322,269 @@ class ProfileFragment : Fragment() {
         }
     }
 
+    // =================================================================================
+    // 🌟 نظام الإبلاغات السحري للأدمن (Admin Reports Dashboard) 🌟
+    // =================================================================================
+    private fun setupAdminReportsButton(view: View) {
+        val rootLayout = view.findViewById<ViewGroup>(R.id.layout_avatar_container)?.parent as? ViewGroup ?: return
+        
+        adminReportsButton = FrameLayout(requireContext()).apply {
+            layoutParams = RelativeLayout.LayoutParams(140, 140).apply {
+                // وضع الزر في مكان أنيق بجانب صورة البروفايل
+                addRule(RelativeLayout.ALIGN_PARENT_TOP)
+                addRule(RelativeLayout.ALIGN_PARENT_START)
+                setMargins(40, 40, 0, 0)
+            }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#1A1A1D"))
+                setStroke(2, Color.parseColor("#33FFFFFF"))
+            }
+
+            val icon = ImageView(requireContext()).apply {
+                setImageResource(android.R.drawable.ic_dialog_alert) // رمز تنبيه
+                setColorFilter(Color.parseColor("#FF5722")) // برتقالي تحذيري
+                layoutParams = FrameLayout.LayoutParams(70, 70).apply { gravity = Gravity.CENTER }
+            }
+            addView(icon)
+
+            // العداد (Badge)
+            val badge = TextView(requireContext()).apply {
+                id = View.generateViewId()
+                text = "0"
+                setTextColor(Color.WHITE)
+                textSize = 10f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.RED) }
+                layoutParams = FrameLayout.LayoutParams(50, 50).apply { 
+                    gravity = Gravity.TOP or Gravity.END
+                    setMargins(0, -10, -10, 0)
+                }
+                visibility = View.GONE // يخفى إذا كان العدد 0
+            }
+            addView(badge)
+
+            setOnClickListener { showAdminReportsDashboard() }
+        }
+        rootLayout.addView(adminReportsButton)
+        
+        fetchReportsCount()
+    }
+
+    private fun fetchReportsCount() {
+        val myId = AuthManager.getId(requireContext())
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val conn = URL("$BASE_API_URL/admin/get_story_reports?adminId=$myId").openConnection() as HttpURLConnection
+                if (conn.responseCode == 200) {
+                    val resp = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
+                    if (resp.getBoolean("success")) {
+                        val reportsArr = resp.getJSONArray("reports")
+                        val count = reportsArr.length()
+                        withContext(Dispatchers.Main) {
+                            val badge = adminReportsButton?.getChildAt(1) as? TextView
+                            if (count > 0) {
+                                badge?.text = count.toString()
+                                badge?.visibility = View.VISIBLE
+                            } else {
+                                badge?.visibility = View.GONE
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {}
+        }
+    }
+
+    private fun showAdminReportsDashboard() {
+        val bottomSheet = BottomSheetDialog(requireContext())
+        val container = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#0A0A0C"))
+            setPadding(0, 40, 0, 0)
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1500)
+        }
+
+        val title = TextView(requireContext()).apply {
+            text = "إدارة الإبلاغات 🚨"
+            setTextColor(Color.parseColor("#FF5722"))
+            textSize = 20f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 40)
+        }
+        container.addView(title)
+
+        val loadingText = TextView(requireContext()).apply {
+            text = "جاري جلب الإبلاغات..."
+            setTextColor(Color.GRAY)
+            gravity = Gravity.CENTER
+            setPadding(40, 40, 40, 40)
+        }
+        container.addView(loadingText)
+
+        val recyclerView = RecyclerView(requireContext()).apply { layoutManager = LinearLayoutManager(requireContext()) }
+        container.addView(recyclerView)
+        bottomSheet.setContentView(container)
+        bottomSheet.show()
+
+        val myId = AuthManager.getId(requireContext())
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val conn = URL("$BASE_API_URL/admin/get_story_reports?adminId=$myId").openConnection() as HttpURLConnection
+                if (conn.responseCode == 200) {
+                    val resp = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
+                    if (resp.getBoolean("success")) {
+                        val reportsArr = resp.getJSONArray("reports")
+                        withContext(Dispatchers.Main) {
+                            loadingText.visibility = View.GONE
+                            if (reportsArr.length() == 0) {
+                                loadingText.text = "لا توجد إبلاغات حالياً ✅"
+                                loadingText.visibility = View.VISIBLE
+                            } else {
+                                recyclerView.adapter = ReportsAdapter(reportsArr, bottomSheet)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { loadingText.text = "فشل الاتصال بالسيرفر ❌" }
+            }
+        }
+    }
+
+    inner class ReportsAdapter(private val reportsArr: JSONArray, private val dialog: BottomSheetDialog) : RecyclerView.Adapter<ReportsAdapter.VH>() {
+        inner class VH(val view: LinearLayout) : RecyclerView.ViewHolder(view)
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+            val ctx = parent.context
+            val layout = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable().apply { setColor(Color.parseColor("#1A1A1D")); cornerRadius = 30f; setStroke(2, Color.parseColor("#33FFFFFF")) }
+                layoutParams = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(40, 20, 40, 20) }
+                setPadding(40, 40, 40, 40)
+            }
+            return VH(layout)
+        }
+
+        override fun getItemCount(): Int = reportsArr.length()
+
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val r = reportsArr.getJSONObject(position)
+            holder.view.removeAllViews()
+
+            val infoText = TextView(holder.view.context).apply {
+                text = "🚩 إبلاغ من: ${r.getString("reporterName")}\n👤 المخالف: ${r.getString("reportedName")}"
+                setTextColor(Color.WHITE)
+                textSize = 14f
+                setPadding(0, 0, 0, 30)
+            }
+            holder.view.addView(infoText)
+
+            val buttonsLayout = LinearLayout(holder.view.context).apply { orientation = LinearLayout.HORIZONTAL }
+            
+            // زر عرض القصة
+            val btnView = MaterialButton(holder.view.context).apply {
+                text = "عرض القصة 👁️"
+                setBackgroundColor(Color.parseColor("#2196F3"))
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
+                setOnClickListener {
+                    dialog.dismiss()
+                    val intent = Intent(requireContext(), StoryViewerActivity::class.java)
+                    intent.putExtra("targetUserId", r.getString("reportedUserId"))
+                    startActivity(intent)
+                }
+            }
+            
+            // زر معاقبة المخالف
+            val btnPunish = MaterialButton(holder.view.context).apply {
+                text = "إجراء 🔨"
+                setBackgroundColor(Color.parseColor("#F44336"))
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
+                setOnClickListener {
+                    showPunishOptions(r.getString("storyId"), r.getString("reportedUserId"))
+                    dialog.dismiss()
+                }
+            }
+
+            buttonsLayout.addView(btnView)
+            buttonsLayout.addView(btnPunish)
+            holder.view.addView(buttonsLayout)
+        }
+
+        private fun showPunishOptions(storyId: String, targetUserId: String) {
+            val options = arrayOf("حذف القصة فقط 🗑️", "حظر المستخدم من الاستوريات 🚫")
+            AlertDialog.Builder(requireContext())
+                .setTitle("اختر الإجراء المناسب")
+                .setItems(options) { _, which ->
+                    when (which) {
+                        0 -> deleteReportedStory(storyId)
+                        1 -> showBanDialog(targetUserId, storyId)
+                    }
+                }.show()
+        }
+
+        private fun deleteReportedStory(storyId: String) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val conn = URL("$BASE_API_URL/story/delete").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    conn.outputStream.use { it.write(JSONObject().put("storyId", storyId).put("userId", AuthManager.getId(requireContext())).toString().toByteArray()) }
+                    
+                    if (conn.responseCode == 200) {
+                        withContext(Dispatchers.Main) { 
+                            showCustomSnackbar("تم حذف القصة المخالفة بنجاح!", "#4CAF50", "success")
+                            fetchReportsCount() // تحديث العداد
+                        }
+                    }
+                } catch (e: Exception) {}
+            }
+        }
+
+        private fun showBanDialog(targetId: String, storyId: String) {
+            val input = EditText(requireContext()).apply {
+                inputType = InputType.TYPE_CLASS_NUMBER
+                hint = "عدد ساعات الحظر (مثال: 24)"
+                setPadding(40, 40, 40, 40)
+            }
+            AlertDialog.Builder(requireContext())
+                .setTitle("حظر المستخدم 🚫")
+                .setView(input)
+                .setPositiveButton("حظر") { _, _ ->
+                    val hours = input.text.toString().trim()
+                    if (hours.isNotEmpty()) {
+                        banUserFromStories(targetId, hours)
+                        deleteReportedStory(storyId) // نحذف القصة مع الحظر كإجراء احترازي
+                    }
+                }.show()
+        }
+
+        private fun banUserFromStories(targetId: String, hours: String) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val conn = URL("$BASE_API_URL/admin/ban_story_user").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    conn.outputStream.use { it.write(JSONObject().put("adminId", AuthManager.getId(requireContext())).put("targetUserId", targetId).put("hours", hours).toString().toByteArray()) }
+                    
+                    val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
+                    withContext(Dispatchers.Main) {
+                        showCustomSnackbar(obj.optString("message", "تم حظر المستخدم"), "#F44336", "error")
+                    }
+                } catch (e: Exception) {}
+            }
+        }
+    }
+    // =================================================================================
+
     override fun onResume() {
         super.onResume()
-        // 🌟 استدعاء التحميل المسبق من المكان الصحيح 🌟
         StoryViewerActivity.preloadUserStories(requireContext(), AuthManager.getId(requireContext()), AuthManager.getId(requireContext()))
+        if (AuthManager.getRole(requireContext()) == "admin") fetchReportsCount()
     }
 
     override fun onDestroyView() {
@@ -512,7 +776,6 @@ class ProfileFragment : Fragment() {
             if (hasActiveStory) {
                 cvStoryRing?.setCardBackgroundColor(Color.parseColor("#2196F3"))
 
-                // 🌟 استدعاء التحميل المسبق من المكان الصحيح 🌟
                 StoryViewerActivity.preloadUserStories(requireContext(), userId, AuthManager.getId(requireContext()))
 
                 ivAvatar.setOnClickListener {
