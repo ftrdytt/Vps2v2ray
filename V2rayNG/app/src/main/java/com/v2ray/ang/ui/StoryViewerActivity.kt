@@ -11,6 +11,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.text.InputType
 import android.util.Base64
 import android.util.LruCache
 import android.view.Gravity
@@ -23,6 +24,7 @@ import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.lifecycle.lifecycleScope
@@ -47,7 +49,6 @@ import kotlin.random.Random
 class StoryViewerActivity : AppCompatActivity() {
 
     companion object {
-        // 🌟 كاش عملاق يحفظ لحد 30 قصة، مخصص لقصصك الخاصة والـ Preload 🌟
         val globalStoryCache = LruCache<String, Any>(30)
         private const val PRELOAD_API_URL = "https://education.ashor.shop"
         private val preloadedUsers = mutableSetOf<String>()
@@ -241,7 +242,6 @@ class StoryViewerActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 تأثير النبض الخرافي (Alive Reactions) للأزرار 🌟
     private fun animateReactionClick(view: View) {
         view.animate()
             .scaleX(1.4f)
@@ -273,7 +273,6 @@ class StoryViewerActivity : AppCompatActivity() {
             if (storiesArray.length() > 0) {
                 pauseStory()
                 val currentStoryId = storiesArray.getJSONObject(currentIndex).getString("id")
-                // من هنا نستدعي البوتوم شيت الخاص بالتعليقات (راح نجهزه بالملف الجاي)
                 val bottomSheet = CommentsBottomSheet.newInstance(currentStoryId, myUserId)
                 bottomSheet.show(supportFragmentManager, "CommentsBottomSheet")
             }
@@ -507,7 +506,6 @@ class StoryViewerActivity : AppCompatActivity() {
                 max = 10000 
                 progress = 0
                 progressTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
-                // 🌟 تفعيل التسريع العتادي لضمان نعومة الشريط على كل الأجهزة 🌟
                 setLayerType(View.LAYER_TYPE_HARDWARE, null)
             }
             layoutProgressBars.addView(pb)
@@ -545,17 +543,14 @@ class StoryViewerActivity : AppCompatActivity() {
         val isOwnerOrAdmin = (targetUserId == myUserId || myRole == "admin")
         layoutViewsContainer.visibility = if (isOwnerOrAdmin) View.VISIBLE else View.GONE
 
-        if (isOwnerOrAdmin) {
-            btnFollow.visibility = View.GONE
-            btnOptions.visibility = View.VISIBLE
-            btnOptions.setOnClickListener { 
-                pauseStory()
-                showStoryOptions(storyId)
-            }
-        } else {
-            btnOptions.visibility = View.GONE
-            btnFollow.visibility = View.VISIBLE
-            checkFollowStatus()
+        // 🌟 إظهار النقاط الثلاث دائماً مع تفعيل الخيارات الخاصة 🌟
+        btnOptions.visibility = View.VISIBLE
+        btnFollow.visibility = if (isOwnerOrAdmin) View.GONE else View.VISIBLE
+        if (!isOwnerOrAdmin) checkFollowStatus()
+
+        btnOptions.setOnClickListener { 
+            pauseStory()
+            showStoryOptions(storyId, targetUserId)
         }
 
         val cachedContent = storyMediaCache.get(storyId)
@@ -783,7 +778,6 @@ class StoryViewerActivity : AppCompatActivity() {
         } catch (e: Exception) {}
     }
 
-    // 🌟 الأنيميشن السلس جداً متزامن مع شاشة الهاتف 🌟
     private fun startStoryTimer(index: Int, duration: Long) {
         progressAnimator?.cancel()
         val pb = progressBarsList[index]
@@ -893,15 +887,95 @@ class StoryViewerActivity : AppCompatActivity() {
         }
     }
 
-    private fun showStoryOptions(storyId: String) {
+    // 🌟 نظام الخيارات (إبلاغ، حذف، حظر) 🌟
+    private fun showStoryOptions(storyId: String, storyOwnerId: String) {
         val popup = PopupMenu(this, btnOptions)
-        popup.menu.add("حذف القصة 🗑️")
-        popup.setOnMenuItemClickListener {
-            deleteStory(storyId)
-            true
+        
+        if (storyOwnerId == myUserId) {
+            popup.menu.add("حذف القصة 🗑️")
+            popup.setOnMenuItemClickListener {
+                deleteStory(storyId)
+                true
+            }
+        } else {
+            popup.menu.add("إبلاغ عن القصة 🚩")
+            if (myRole == "admin") {
+                popup.menu.add("حذف القصة (أدمن) 🗑️")
+                popup.menu.add("حظر المستخدم (أدمن) 🚫")
+            }
+            
+            popup.setOnMenuItemClickListener { item ->
+                when (item.title) {
+                    "إبلاغ عن القصة 🚩" -> reportStory(storyId)
+                    "حذف القصة (أدمن) 🗑️" -> deleteStory(storyId)
+                    "حظر المستخدم (أدمن) 🚫" -> showBanDialog(storyOwnerId)
+                }
+                true
+            }
         }
+        
         popup.setOnDismissListener { resumeStory() }
         popup.show()
+    }
+
+    private fun reportStory(storyId: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val conn = URL("$BASE_API_URL/story/report").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.outputStream.use { it.write(JSONObject().put("storyId", storyId).put("reporterId", myUserId).toString().toByteArray()) }
+                
+                val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@StoryViewerActivity, obj.optString("message", "تم الإرسال"), Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { Toast.makeText(this@StoryViewerActivity, "فشل الاتصال", Toast.LENGTH_SHORT).show() }
+            }
+        }
+    }
+
+    private fun showBanDialog(targetId: String) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            hint = "عدد الساعات (مثال: 24)"
+            setPadding(40, 40, 40, 40)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("حظر من الاستوريات 🚫")
+            .setView(input)
+            .setPositiveButton("حظر") { _, _ ->
+                val hours = input.text.toString().trim()
+                if (hours.isNotEmpty()) banUserFromStories(targetId, hours)
+            }
+            .setNegativeButton("إلغاء") { _, _ -> resumeStory() }
+            .setOnCancelListener { resumeStory() }
+            .show()
+    }
+
+    private fun banUserFromStories(targetId: String, hours: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val conn = URL("$BASE_API_URL/admin/ban_story_user").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.outputStream.use { it.write(JSONObject().put("adminId", myUserId).put("targetUserId", targetId).put("hours", hours).toString().toByteArray()) }
+                
+                val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@StoryViewerActivity, obj.optString("message", "تم الحظر"), Toast.LENGTH_LONG).show()
+                    resumeStory()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { 
+                    Toast.makeText(this@StoryViewerActivity, "فشل الاتصال", Toast.LENGTH_SHORT).show()
+                    resumeStory()
+                }
+            }
+        }
     }
 
     private fun deleteStory(storyId: String) {
@@ -945,7 +1019,6 @@ class StoryViewerActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 حيوية تفاعلات الإيموجي بطريقة 2055 🌟
     private fun animateFloatingEmoji(emoji: String) {
         val tvEmoji = TextView(this).apply {
             text = emoji
@@ -958,7 +1031,6 @@ class StoryViewerActivity : AppCompatActivity() {
         }
         reactionAnimationLayer.addView(tvEmoji)
         
-        // أنيميشن طيران وتكبير فخم جداً
         val randomX = Random.nextInt(-300, 300).toFloat()
         tvEmoji.animate()
             .translationYBy(-(800f + Random.nextInt(300)))
@@ -1088,197 +1160,5 @@ class StoryViewerActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (isPaused) resumeStory()
-    }
-}
-
-// 🌟 قائمة المشاهدات بتصميم VIP (Glassmorphism) 🌟
-class StoryViewersBottomSheet : BottomSheetDialogFragment() {
-    var userIds: List<String> = listOf()
-    var myUserId: String = ""
-    var reactionsJson: String = "{}"
-    var onDismissAction: (() -> Unit)? = null
-
-    override fun onDismiss(dialog: android.content.DialogInterface) {
-        super.onDismiss(dialog)
-        onDismissAction?.invoke()
-    }
-
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
-        val context = requireContext()
-        val layout = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            // تصميم زجاجي عصري
-            background = GradientDrawable().apply {
-                colors = intArrayOf(Color.parseColor("#E60A0A0C"), Color.parseColor("#CC1A1A1D"))
-                cornerRadii = floatArrayOf(80f, 80f, 80f, 80f, 0f, 0f, 0f, 0f)
-                setStroke(2, Color.parseColor("#33FFFFFF"))
-            }
-            setPadding(0, 30, 0, 0)
-        }
-
-        // خط السحب (Handle) بالأعلى
-        val handle = View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(120, 12).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                bottomMargin = 40
-            }
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#55FFFFFF"))
-                cornerRadius = 10f
-            }
-        }
-        layout.addView(handle)
-
-        val title = TextView(context).apply {
-            text = "المشاهدات (${userIds.size})"
-            setTextColor(Color.WHITE)
-            textSize = 18f
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 40)
-        }
-        layout.addView(title)
-
-        val recyclerView = RecyclerView(context).apply {
-            layoutManager = LinearLayoutManager(context)
-            adapter = ViewersAdapter(userIds, reactionsJson)
-        }
-        layout.addView(recyclerView)
-        return layout
-    }
-
-    inner class ViewersAdapter(private val ids: List<String>, reactionsStr: String) : RecyclerView.Adapter<ViewersAdapter.ViewHolder>() {
-        
-        private val reactionsMap = JSONObject(reactionsStr)
-
-        inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-            val layoutAvatarContainer: FrameLayout = view.findViewById(R.id.layout_item_avatar_container)
-            val ivPfp: ImageView = view.findViewById(R.id.iv_item_pfp)
-            val tvName: TextView = view.findViewById(R.id.tv_item_name)
-            val tvUsername: TextView = view.findViewById(R.id.tv_item_username)
-            val btnFollow: MaterialButton = view.findViewById(R.id.btn_item_follow)
-            val tvReaction: TextView = view.findViewById(R.id.tv_item_reaction)
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-            val view = LayoutInflater.from(parent.context).inflate(R.layout.item_user_connection, parent, false)
-            return ViewHolder(view)
-        }
-
-        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-            val id = ids[position]
-            
-            // إضافة لمسة زجاجية لكل مستخدم بالقائمة
-            holder.itemView.background = GradientDrawable().apply {
-                setColor(Color.parseColor("#1AFFFFFF")) 
-                cornerRadius = 40f
-                setStroke(1, Color.parseColor("#33FFFFFF"))
-            }
-            (holder.itemView.layoutParams as? ViewGroup.MarginLayoutParams)?.apply {
-                setMargins(20, 10, 20, 10)
-            }
-
-            holder.tvName.text = "جاري التحميل..."
-            holder.tvUsername.text = "ID: $id"
-            holder.btnFollow.visibility = View.GONE
-            
-            val userReaction = reactionsMap.optString(id, "")
-            if (userReaction.isNotEmpty()) {
-                holder.tvReaction.text = userReaction
-                holder.tvReaction.visibility = View.VISIBLE
-            } else {
-                holder.tvReaction.visibility = View.GONE
-            }
-
-            var isFollowingLocal = false
-
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    val conn = URL("https://education.ashor.shop/auth/get_user?id=$id").openConnection() as HttpURLConnection
-                    if (conn.responseCode == 200) {
-                        val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                        if (obj.getBoolean("success")) {
-                            val name = obj.getString("name")
-                            val pfp = obj.optString("pfp", "")
-                            val hasActiveStory = obj.getBoolean("hasActiveStory")
-                            
-                            val followConn = URL("https://education.ashor.shop/social/check_follow?followerId=$myUserId&targetId=$id").openConnection() as HttpURLConnection
-                            if (followConn.responseCode == 200) {
-                                isFollowingLocal = JSONObject(BufferedReader(InputStreamReader(followConn.inputStream)).readText()).optBoolean("isFollowing", false)
-                            }
-
-                            withContext(Dispatchers.Main) {
-                                holder.tvName.text = name
-                                val b = Base64.decode(if (pfp.contains(",")) pfp.substringAfter(",") else pfp, Base64.DEFAULT)
-                                val bitmap = try { BitmapFactory.decodeByteArray(b, 0, b.size) } catch(e:Exception){null} ?: AvatarGenerator.generateAvatar(name, id)
-                                holder.ivPfp.setImageDrawable(RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true })
-
-                                if (hasActiveStory) {
-                                    holder.layoutAvatarContainer.background = GradientDrawable().apply {
-                                        shape = GradientDrawable.OVAL
-                                        setStroke(6, Color.parseColor("#2196F3"))
-                                        setColor(Color.TRANSPARENT)
-                                    }
-                                    holder.layoutAvatarContainer.setPadding(6, 6, 6, 6)
-                                } else {
-                                    holder.layoutAvatarContainer.background = null
-                                    holder.layoutAvatarContainer.setPadding(0, 0, 0, 0)
-                                }
-
-                                if (id != myUserId) {
-                                    holder.btnFollow.visibility = View.VISIBLE
-                                    updateFollowBtn(holder.btnFollow, isFollowingLocal)
-                                    holder.btnFollow.setOnClickListener { 
-                                        toggleFollow(id, holder.btnFollow, isFollowingLocal) { newState ->
-                                            isFollowingLocal = newState
-                                        } 
-                                    }
-                                }
-
-                                holder.itemView.setOnClickListener {
-                                    dismiss()
-                                    val intent = Intent(context, if (hasActiveStory) StoryViewerActivity::class.java else UserProfileActivity::class.java)
-                                    intent.putExtra("targetUserId", id)
-                                    context?.startActivity(intent)
-                                }
-                            }
-                        }
-                    }
-                } catch (e: Exception) {}
-            }
-        }
-        override fun getItemCount(): Int = ids.size
-
-        private fun updateFollowBtn(btn: MaterialButton, isFollowing: Boolean) {
-            if (isFollowing) {
-                btn.text = "متابَع ✔"
-                btn.setBackgroundColor(Color.parseColor("#33FFFFFF"))
-                btn.setTextColor(Color.WHITE)
-            } else {
-                btn.text = "متابعة"
-                btn.setBackgroundColor(Color.parseColor("#2196F3"))
-                btn.setTextColor(Color.WHITE)
-            }
-        }
-        
-        private fun toggleFollow(id: String, btn: MaterialButton, currentStatus: Boolean, callback: (Boolean) -> Unit) {
-            btn.isEnabled = false
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    val conn = URL("https://education.ashor.shop/social/follow").openConnection() as HttpURLConnection
-                    conn.requestMethod = "POST"
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    conn.doOutput = true
-                    conn.outputStream.use { it.write(JSONObject().put("followerId", myUserId).put("targetId", id).toString().toByteArray()) }
-                    if (conn.responseCode == 200) {
-                        val isNowFollowing = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText()).getBoolean("isFollowing")
-                        withContext(Dispatchers.Main) { 
-                            updateFollowBtn(btn, isNowFollowing)
-                            callback(isNowFollowing) 
-                            btn.isEnabled = true 
-                        }
-                    }
-                } catch (e: Exception) { withContext(Dispatchers.Main) { btn.isEnabled = true } }
-            }
-        }
     }
 }
