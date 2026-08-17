@@ -725,7 +725,7 @@ class StoryUploadActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 الإصلاح الأساسي لمشكلة نشر الصور: التفريق الدقيق بين الصورة الثابتة والفيديو 🌟
+    // 🌟 دالة الرفع المجهزة بحماية الحظر (Anti-Ban Exploit) 🌟
     private fun uploadStory() {
         layoutLoading.visibility = View.VISIBLE
 
@@ -748,9 +748,8 @@ class StoryUploadActivity : AppCompatActivity() {
                     }
                     mediaBase64 = encodedVideo
                     storyType = "video"
-                    textOverlay = finalCompositeBase64 // للملصقات فوق الفيديو
+                    textOverlay = finalCompositeBase64 
                 } else {
-                    // إذا كانت صورة ثابتة أو نص فقط
                     mediaBase64 = finalCompositeBase64
                     storyType = "image"
                 }
@@ -777,11 +776,19 @@ class StoryUploadActivity : AppCompatActivity() {
                     respReader.close()
                     val respJson = JSONObject(respStr)
                     
+                    // 🌟 هنا يتم معالجة الرد من السيرفر (سواء نجاح أو حظر) 🌟
                     if (respJson.optBoolean("success", false)) {
                         incrementDailyQuota(isVideo = hasSelectedVideo)
                         withContext(Dispatchers.Main) {
                             Toast.makeText(this@StoryUploadActivity, "تم النشر بنجاح 🚀", Toast.LENGTH_SHORT).show()
                             finish() 
+                        }
+                    } else if (respJson.optBoolean("banned", false)) {
+                        // 🌟 إذا رجع السيرفر رسالة تفيد بأن المستخدم محظور 🌟
+                        val msg = respJson.optString("message", "تم حظرك من نشر القصص 🚫")
+                        withContext(Dispatchers.Main) { 
+                            showCustomSnackbar(msg, "#D32F2F") // أحمر داكن للحظر
+                            restoreControls() 
                         }
                     } else {
                         withContext(Dispatchers.Main) { showCustomSnackbar("رفض السيرفر القصة 🚫", "#F44336"); restoreControls() }
@@ -790,7 +797,7 @@ class StoryUploadActivity : AppCompatActivity() {
                     withContext(Dispatchers.Main) { showCustomSnackbar("فشل النشر", "#F44336"); restoreControls() }
                 }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { showCustomSnackbar("خطأ بالاتصال", "#F44336"); restoreControls() }
+                withContext(Dispatchers.Main) { showCustomSnackbar("خطأ بالاتصال بالانترنت", "#F44336"); restoreControls() }
             }
         }
     }
@@ -803,7 +810,7 @@ class StoryUploadActivity : AppCompatActivity() {
 
     private fun showCustomSnackbar(message: String, colorHex: String) {
         val rootView = findViewById<View>(android.R.id.content)
-        val snackbar = Snackbar.make(rootView, "", Snackbar.LENGTH_SHORT)
+        val snackbar = Snackbar.make(rootView, "", Snackbar.LENGTH_LONG) // خليتها LONG حتى المستخدم يلحق يقرأ سبب الحظر
         val snackbarLayout = snackbar.view as Snackbar.SnackbarLayout
         snackbarLayout.setBackgroundColor(Color.TRANSPARENT)
         snackbarLayout.setPadding(0, 0, 0, 0)
@@ -814,10 +821,11 @@ class StoryUploadActivity : AppCompatActivity() {
             textSize = 14f
             setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
-            setPadding(30, 30, 30, 30)
+            setPadding(30, 40, 30, 40)
             background = GradientDrawable().apply {
                 setColor(Color.parseColor(colorHex))
                 cornerRadius = 40f
+                setStroke(3, Color.parseColor("#33FFFFFF")) // لمسة زجاجية بسيطة للرسالة
             }
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(40, 0, 40, 40)
