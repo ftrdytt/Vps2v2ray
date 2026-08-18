@@ -49,10 +49,10 @@ import kotlin.random.Random
 class StoryViewerActivity : AppCompatActivity() {
 
     companion object {
-        val globalStoryCache = LruCache<String, Any>(30)
+        val globalStoryCache = LruCache<String, Any>(40) // كبرنا الكاش لتقليل الـ Lag
         private const val PRELOAD_API_URL = "https://education.ashor.shop"
         private val preloadedUsers = mutableSetOf<String>()
-        private const val MAX_CACHED_VIDEO_FILES = 20
+        private const val MAX_CACHED_VIDEO_FILES = 30
 
         val storiesCache = mutableMapOf<String, String>() 
 
@@ -79,7 +79,7 @@ class StoryViewerActivity : AppCompatActivity() {
             }
         }
 
-        private fun preloadSingleStoryStatic(context: Context, story: JSONObject) {
+        private suspend fun preloadSingleStoryStatic(context: Context, story: JSONObject) {
             val storyId = story.optString("id")
             if (storyId.isEmpty() || globalStoryCache.get(storyId) != null) return
             try {
@@ -103,23 +103,28 @@ class StoryViewerActivity : AppCompatActivity() {
                 } else {
                     val b64 = story.optString("image", "")
                     if (b64.isNotEmpty()) {
-                        val clean = if (b64.contains(",")) b64.substringAfter(",") else b64
-                        val bytes = Base64.decode(clean.replace("\\s+".toRegex(), ""), Base64.DEFAULT)
-                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                        if (bmp != null) globalStoryCache.put(storyId, bmp)
+                        // 🌟 نقل الفك للخلفية لتجنب الـ Lag 🌟
+                        withContext(Dispatchers.Default) {
+                            val clean = if (b64.contains(",")) b64.substringAfter(",") else b64
+                            val bytes = Base64.decode(clean.replace("\\s+".toRegex(), ""), Base64.DEFAULT)
+                            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            if (bmp != null) globalStoryCache.put(storyId, bmp)
+                        }
                     }
                 }
             } catch (e: Exception) {}
         }
 
         fun pruneVideoDiskCache(context: Context) {
-            try {
-                val files = context.cacheDir.listFiles { f -> f.name.startsWith("vid_") && f.name.endsWith(".mp4") } ?: return
-                if (files.size <= MAX_CACHED_VIDEO_FILES) return
-                files.sortedBy { it.lastModified() }
-                    .take(files.size - MAX_CACHED_VIDEO_FILES)
-                    .forEach { it.delete() }
-            } catch (e: Exception) {}
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val files = context.cacheDir.listFiles { f -> f.name.startsWith("vid_") && f.name.endsWith(".mp4") } ?: return@launch
+                    if (files.size <= MAX_CACHED_VIDEO_FILES) return@launch
+                    files.sortedBy { it.lastModified() }
+                        .take(files.size - MAX_CACHED_VIDEO_FILES)
+                        .forEach { it.delete() }
+                } catch (e: Exception) {}
+            }
         }
     }
 
@@ -432,7 +437,11 @@ class StoryViewerActivity : AppCompatActivity() {
                     if (obj.getBoolean("success")) {
                         val name = obj.getString("name")
                         val pfpBase64 = obj.optString("pfp", "")
-                        val bitmap = getSafeBitmap(pfpBase64) ?: AvatarGenerator.generateAvatar(name, uId)
+                        
+                        // 🌟 نقل فك الصورة للخلفية لمنع اللاگ 🌟
+                        val bitmap = withContext(Dispatchers.Default) {
+                            getSafeBitmap(pfpBase64) ?: AvatarGenerator.generateAvatar(name, uId)
+                        }
 
                         withContext(Dispatchers.Main) {
                             tvName.text = name
@@ -522,6 +531,7 @@ class StoryViewerActivity : AppCompatActivity() {
 
         vvStoryVideo.stopPlayback()
         vvStoryVideo.visibility = View.GONE
+        ivStoryImage.visibility = View.GONE
 
         for (i in 0 until index) progressBarsList[i].progress = 10000
         for (i in index until storiesArray.length()) progressBarsList[i].progress = 0
@@ -559,9 +569,13 @@ class StoryViewerActivity : AppCompatActivity() {
             vvStoryVideo.visibility = View.VISIBLE
             
             if (textOrOverlay.isNotEmpty()) {
-                val overlayBitmap = getSafeBitmap(textOrOverlay)
-                ivStoryImage.setImageBitmap(overlayBitmap)
-                ivStoryImage.visibility = View.VISIBLE
+                lifecycleScope.launch(Dispatchers.Default) {
+                    val overlayBitmap = getSafeBitmap(textOrOverlay)
+                    withContext(Dispatchers.Main) {
+                        ivStoryImage.setImageBitmap(overlayBitmap)
+                        ivStoryImage.visibility = View.VISIBLE
+                    }
+                }
             } else {
                 ivStoryImage.visibility = View.GONE
             }
@@ -622,24 +636,39 @@ class StoryViewerActivity : AppCompatActivity() {
             progressLoading.visibility = View.GONE
             
             if (mediaBase64.isNotEmpty()) {
-                val bitmap = if (cachedContent is Bitmap) cachedContent else getSafeBitmap(mediaBase64)
-                if (bitmap != null) {
-                    if (cachedContent == null) storyMediaCache.put(storyId, bitmap) 
-                    ivStoryImage.setImageBitmap(bitmap)
+                if (cachedContent is Bitmap) {
+                    ivStoryImage.setImageBitmap(cachedContent)
                     ivStoryImage.visibility = View.VISIBLE
                     tvStoryText.visibility = View.GONE
+                    startStoryTimer(index, STORY_DURATION)
+                } else {
+                    // 🌟 Lazy Loading للصور، يتم الفك بالخلفية لعدم إيقاف الشاشة 🌟
+                    lifecycleScope.launch(Dispatchers.Default) {
+                        val bitmap = getSafeBitmap(mediaBase64)
+                        if (bitmap != null) {
+                            storyMediaCache.put(storyId, bitmap)
+                            withContext(Dispatchers.Main) {
+                                if (currentIndex == index) {
+                                    ivStoryImage.setImageBitmap(bitmap)
+                                    ivStoryImage.visibility = View.VISIBLE
+                                    tvStoryText.visibility = View.GONE
+                                    startStoryTimer(index, STORY_DURATION)
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
                 ivStoryImage.visibility = View.GONE
                 tvStoryText.text = textOrOverlay
                 tvStoryText.visibility = View.VISIBLE
                 storyContentContainer.setBackgroundColor(Color.parseColor("#${storyId.takeLast(6).padEnd(6, '0')}"))
+                startStoryTimer(index, STORY_DURATION)
             }
-            startStoryTimer(index, STORY_DURATION)
         }
 
         recordStoryView(storyId)
-        startDeepPreload(index)
+        startDeepPreload(index) // تشغيل التحميل المسبق الذكي
     }
 
     private fun playVideo(videoPath: String, index: Int) {
@@ -690,11 +719,12 @@ class StoryViewerActivity : AppCompatActivity() {
         }
     }
 
+    // 🌟 التحميل المسبق العميق (Lazy Loading) لضمان عدم وجود Lag 🌟
     private fun startDeepPreload(fromIndex: Int) {
         preloadJob?.cancel()
         preloadJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val maxAhead = 8
+                val maxAhead = 10 // نحمل لحد 10 قصص ليگدام
                 var loadedCount = 0
                 var i = fromIndex + 1
                 while (isActive && i < storiesArray.length() && loadedCount < maxAhead) {
@@ -1161,7 +1191,6 @@ class StoryViewerActivity : AppCompatActivity() {
     }
 }
 
-// 🌟 قائمة المشاهدات بتصميم VIP (Glassmorphism) 🌟
 class StoryViewersBottomSheet : BottomSheetDialogFragment() {
     var userIds: List<String> = listOf()
     var myUserId: String = ""
@@ -1177,7 +1206,6 @@ class StoryViewersBottomSheet : BottomSheetDialogFragment() {
         val context = requireContext()
         val layout = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            // تصميم زجاجي عصري
             background = GradientDrawable().apply {
                 colors = intArrayOf(Color.parseColor("#E60A0A0C"), Color.parseColor("#CC1A1A1D"))
                 cornerRadii = floatArrayOf(80f, 80f, 80f, 80f, 0f, 0f, 0f, 0f)
@@ -1186,7 +1214,6 @@ class StoryViewersBottomSheet : BottomSheetDialogFragment() {
             setPadding(0, 30, 0, 0)
         }
 
-        // خط السحب (Handle) بالأعلى
         val handle = View(context).apply {
             layoutParams = LinearLayout.LayoutParams(120, 12).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -1237,7 +1264,6 @@ class StoryViewersBottomSheet : BottomSheetDialogFragment() {
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val id = ids[position]
             
-            // إضافة لمسة زجاجية لكل مستخدم بالقائمة
             holder.itemView.background = GradientDrawable().apply {
                 setColor(Color.parseColor("#1AFFFFFF")) 
                 cornerRadius = 40f
