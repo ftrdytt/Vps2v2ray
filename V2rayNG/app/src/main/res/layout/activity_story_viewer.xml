@@ -6,6 +6,7 @@
     android:background="#000000"
     android:layoutDirection="rtl">
 
+    <!-- 🌟 حاوية العرض مع المسافات الآمنة 🌟 -->
     <FrameLayout
         android:id="@+id/story_content_container"
         android:layout_width="match_parent"
@@ -15,6 +16,7 @@
         android:layout_marginTop="75dp"
         android:layout_marginBottom="85dp">
 
+        <!-- الفيديو يتسنتر داخل المساحة المتاحة -->
         <VideoView
             android:id="@+id/vv_story_video"
             android:layout_width="match_parent"
@@ -22,6 +24,7 @@
             android:layout_gravity="center"
             android:visibility="gone" />
 
+        <!-- الصورة تتسنتر داخل المساحة المتاحة وتحافظ على أبعادها -->
         <ImageView
             android:id="@+id/iv_story_image"
             android:layout_width="match_parent"
