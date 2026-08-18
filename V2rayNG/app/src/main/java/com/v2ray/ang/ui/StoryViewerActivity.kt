@@ -1,851 +1,286 @@
-package com.v2ray.ang.ui
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    android:layoutDirection="rtl">
 
-import android.app.Activity.RESULT_OK
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
-import android.os.Build
-import android.os.Bundle
-import android.provider.MediaStore
-import android.text.Editable
-import android.text.InputType
-import android.text.TextWatcher
-import android.util.Base64
-import android.view.Gravity
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
-import android.widget.*
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
-import androidx.cardview.widget.CardView
-import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
-import androidx.fragment.app.Fragment
-import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.google.android.material.button.MaterialButton
-import com.google.android.material.snackbar.Snackbar
-import com.v2ray.ang.R
-import com.v2ray.ang.handler.AuthManager
-import com.v2ray.ang.handler.MmkvManager
-import com.v2ray.ang.util.AvatarGenerator 
-import kotlinx.coroutines.*
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.ByteArrayOutputStream
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
-import java.security.MessageDigest
-import kotlin.math.min
-import kotlin.math.roundToInt
+    <FrameLayout
+        android:id="@+id/story_content_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_marginTop="75dp"
+        android:layout_marginBottom="85dp">
 
-class ProfileFragment : Fragment() {
+        <VideoView
+            android:id="@+id/vv_story_video"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:visibility="gone" />
 
-    private val BASE_API_URL = "https://education.ashor.shop"
+        <ImageView
+            android:id="@+id/iv_story_image"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:scaleType="fitCenter"
+            android:visibility="gone"/>
 
-    private lateinit var ivAvatar: ImageView
-    private lateinit var etId: EditText
-    private lateinit var etName: EditText
-    private lateinit var etUsername: EditText
-    private lateinit var tvUsernameStatus: TextView 
-    private lateinit var etPass: EditText
-    private lateinit var btnSave: Button
-    
-    private var tvFollowersCount: TextView? = null
-    private var tvFollowingCount: TextView? = null
-    private var btnAddStory: ImageView? = null
-    private var layoutAvatarContainer: FrameLayout? = null
-    private var cvStoryRing: CardView? = null 
-    private var adminReportsButton: FrameLayout? = null 
-    
-    private var swipeRefreshLayout: SwipeRefreshLayout? = null
-    private var currentBase64Pfp: String = ""
-    private var myDeviceId: String = ""
-    private var activeDevicesList = JSONArray()
-    private var checkUserJob: Job? = null 
+        <TextView
+            android:id="@+id/tv_story_text"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:padding="24dp"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:shadowColor="#000000"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="5"
+            android:visibility="gone"/>
+    </FrameLayout>
 
-    private val pickImage = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK) {
-            val uri = result.data?.data ?: return@registerForActivityResult
-            try {
-                val bitmap = MediaStore.Images.Media.getBitmap(requireActivity().contentResolver, uri)
-                val maxImageSize = 400f
-                val ratio = min(1f, min(maxImageSize / bitmap.width, maxImageSize / bitmap.height))
-                val width = (ratio * bitmap.width).roundToInt()
-                val height = (ratio * bitmap.height).roundToInt()
-                
-                val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
-                val baos = ByteArrayOutputStream()
-                scaled.compress(Bitmap.CompressFormat.JPEG, 75, baos)
-                
-                currentBase64Pfp = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
-                updateProfilePicture(currentBase64Pfp, AuthManager.getName(requireContext()), AuthManager.getId(requireContext()), false)
-            } catch (e: Exception) {}
-        }
-    }
+    <View
+        android:id="@+id/view_touch_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
-    private fun getUniqueHardwareId(): String {
-        try {
-            val devInfo = Build.BOARD + Build.BRAND + Build.DEVICE + Build.DISPLAY +
-                    Build.HARDWARE + Build.MANUFACTURER + Build.MODEL + Build.PRODUCT +
-                    Build.USER + Build.ID + Build.BOOTLOADER
-            val md = MessageDigest.getInstance("MD5")
-            val hash = md.digest(devInfo.toByteArray())
-            val hexString = StringBuilder()
-            for (byte in hash) {
-                val hex = Integer.toHexString(0xFF and byte.toInt())
-                if (hex.length == 1) hexString.append('0')
-                hexString.append(hex)
-            }
-            return hexString.toString().take(15).uppercase()
-        } catch (e: Exception) {
-            return "UNKNOWN_HW_ID"
-        }
-    }
+    <FrameLayout
+        android:id="@+id/reaction_animation_layer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:elevation="10dp"
+        android:clipChildren="false"/>
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        return inflater.inflate(R.layout.fragment_profile, container, false)
-    }
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
+        android:background="@drawable/shadow_gradient_top"
+        app:layout_constraintTop_toTopOf="parent"/>
 
-    private fun showCustomSnackbar(message: String, colorHex: String, type: String = "info") {
-        view?.let { root ->
-            val snackbar = Snackbar.make(root, "", Snackbar.LENGTH_SHORT)
-            val snackbarLayout = snackbar.view as Snackbar.SnackbarLayout
-            snackbarLayout.setBackgroundColor(Color.TRANSPARENT)
-            snackbarLayout.setPadding(0, 0, 0, 0)
+    <LinearLayout
+        android:id="@+id/layout_progress_bars"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:orientation="horizontal"
+        android:layoutDirection="rtl" 
+        android:layout_marginTop="12dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        app:layout_constraintTop_toTopOf="parent"/>
 
-            val customLayout = LinearLayout(requireContext()).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                setPadding(40, 30, 40, 30)
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor(colorHex))
-                    cornerRadius = 60f 
-                }
-                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(50, 0, 50, 50) 
-                }
-            }
+    <LinearLayout
+        android:id="@+id/layout_top_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layoutDirection="rtl"
+        android:padding="16dp"
+        app:layout_constraintTop_toBottomOf="@id/layout_progress_bars">
 
-            val iconText = TextView(requireContext()).apply {
-                text = when (type) {
-                    "success" -> "✔"
-                    "error" -> "✖"
-                    "copy" -> "📄"
-                    else -> "ℹ"
-                }
-                setTextColor(Color.parseColor(colorHex))
-                textSize = 12f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    setColor(Color.WHITE)
-                    shape = GradientDrawable.OVAL
-                }
-                layoutParams = LinearLayout.LayoutParams(50, 50).apply { setMargins(0, 0, 20, 0) }
-            }
-            customLayout.addView(iconText)
+        <androidx.cardview.widget.CardView
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            app:cardCornerRadius="21dp"
+            app:cardBackgroundColor="#33FFFFFF"
+            app:cardElevation="0dp">
+            <ImageView
+                android:id="@+id/iv_story_avatar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"/>
+        </androidx.cardview.widget.CardView>
 
-            val textView = TextView(requireContext()).apply {
-                text = message
-                setTextColor(Color.WHITE)
-                textSize = 14f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-            }
-            customLayout.addView(textView)
-
-            snackbarLayout.addView(customLayout, 0)
-            snackbar.show()
-        }
-    }
-
-    private fun copyToClipboard(label: String, text: String) {
-        val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("Copied Data", text)
-        clipboard.setPrimaryClip(clip)
-        showCustomSnackbar("تم نسخ $label", "#FF9800", "copy") 
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-
-        myDeviceId = getUniqueHardwareId()
-        val userId = AuthManager.getId(requireContext())
-        val userRole = AuthManager.getRole(requireContext())
-
-        StoryViewerActivity.preloadUserStories(requireContext(), userId, userId)
-
-        val rootLayout = view as? ViewGroup
-        var scrollView: ScrollView? = null
-        rootLayout?.let {
-            for (i in 0 until it.childCount) {
-                val child = it.getChildAt(i)
-                if (child is ScrollView) {
-                    scrollView = child
-                    break
-                }
-            }
-        }
-
-        scrollView?.let { sv ->
-            val parent = sv.parent as ViewGroup
-            val index = parent.indexOfChild(sv)
-            parent.removeView(sv)
-
-            swipeRefreshLayout = SwipeRefreshLayout(requireContext()).apply {
-                layoutParams = sv.layoutParams
-                setProgressBackgroundColorSchemeColor(Color.parseColor("#1A1A1D"))
-                setColorSchemeColors(Color.parseColor("#FF9800"), Color.parseColor("#4CAF50"), Color.parseColor("#2196F3"))
-                addView(sv)
-                setOnRefreshListener {
-                    fetchUserDataFromServer(userId, isSwipeRefresh = true)
-                }
-            }
-            parent.addView(swipeRefreshLayout, index)
-        }
-
-        ivAvatar = view.findViewById(R.id.iv_profile_pic)
-        etId = view.findViewById(R.id.et_profile_id)
-        etName = view.findViewById(R.id.et_profile_name)
-        etUsername = view.findViewById(R.id.et_profile_username)
-        tvUsernameStatus = view.findViewById(R.id.tv_username_status)
-        etPass = view.findViewById(R.id.et_profile_pass)
-        val etDevice = view.findViewById<EditText>(R.id.et_profile_device)
-        btnSave = view.findViewById(R.id.btn_save_profile)
-        
-        tvFollowersCount = view.findViewById(R.id.tv_followers_count)
-        tvFollowingCount = view.findViewById(R.id.tv_following_count)
-        btnAddStory = view.findViewById(R.id.btn_add_story)
-        layoutAvatarContainer = view.findViewById(R.id.layout_avatar_container)
-        cvStoryRing = view.findViewById(R.id.cv_story_ring) 
-
-        if (userRole == "admin") {
-            etId.isEnabled = true
-            etId.setTextColor(Color.parseColor("#FF9800"))
-        } else {
-            etId.isEnabled = false
-        }
-        
-        view.findViewById<ImageView>(R.id.btn_change_avatar).setOnClickListener {
-            pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
-        }
-        
-        btnAddStory?.setOnClickListener {
-            startActivity(Intent(requireContext(), StoryUploadActivity::class.java))
-        }
-
-        view.findViewById<Button>(R.id.btn_copy_id).setOnClickListener { copyToClipboard("آيدي الحساب", etId.text.toString()) }
-        view.findViewById<Button>(R.id.btn_copy_device).setOnClickListener { copyToClipboard("آيدي الجهاز", myDeviceId) }
-        view.findViewById<Button>(R.id.btn_manage_devices).setOnClickListener { showDevicesDialog() }
-        
-        val btnLogout = view.findViewById<Button>(R.id.btn_logout)
-
-        etUsername.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                checkUsernameLive(s.toString().trim().replace("@", ""))
-            }
-            override fun afterTextChanged(s: Editable?) {}
-        })
-        
-        etId.setText(userId)
-        etDevice.setText(myDeviceId)
-        etName.setText(AuthManager.getName(requireContext()))
-        etPass.setText(AuthManager.getPass(requireContext()))
-        currentBase64Pfp = AuthManager.getPfp(requireContext())
-        
-        fetchUserDataFromServer(userId)
-
-        if (userRole == "admin") {
-            view.findViewById<ImageView>(R.id.btn_admin_dashboard)?.apply {
-                visibility = View.VISIBLE
-                setOnClickListener { startActivity(Intent(requireContext(), AdminDashboardActivity::class.java)) }
-            }
-            view.findViewById<ImageView>(R.id.btn_update_logs)?.apply {
-                visibility = View.VISIBLE
-                setOnClickListener { startActivity(Intent(requireContext(), UpdateLogsActivity::class.java)) }
-            }
-            setupAdminReportsButton(view) 
-        }
-
-        updateProfilePicture(currentBase64Pfp, AuthManager.getName(requireContext()), userId, false)
-
-        btnSave.setOnClickListener {
-            val newName = etName.text.toString().trim()
-            val newUsername = etUsername.text.toString().trim().replace("@", "")
-            val newPass = etPass.text.toString().trim()
-            val newId = etId.text.toString().trim() 
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginStart="12dp">
             
-            if (newName.isEmpty() || newPass.isEmpty() || newId.isEmpty()) {
-                showCustomSnackbar("يرجى ملء كافة الحقول الأساسية", "#F44336", "error")
-                return@setOnClickListener
-            }
+            <TextView
+                android:id="@+id/tv_story_username"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:shadowColor="#000000"
+                android:shadowRadius="4"/>
+
+            <TextView
+                android:id="@+id/tv_story_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#E0E0E0"
+                android:textSize="12sp"
+                android:shadowColor="#000000"
+                android:shadowRadius="4"/>
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_follow"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="12dp"
+            android:text="متابعة"
+            android:textSize="12sp"
+            app:cornerRadius="18dp"
+            app:backgroundTint="#2196F3"
+            android:visibility="gone"/>
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
+
+        <ImageView
+            android:id="@+id/btn_story_options"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:padding="6dp"
+            android:layout_marginEnd="8dp"
+            android:src="@android:drawable/ic_menu_more"
+            android:visibility="gone"
+            android:background="@drawable/bg_rounded_dark"
+            app:tint="#FFFFFF"/>
+
+        <ImageView
+            android:id="@+id/btn_close_story"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:padding="6dp"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:background="@drawable/bg_rounded_dark"
+            app:tint="#FFFFFF"/>
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="180dp"
+        android:background="@drawable/shadow_gradient_bottom"
+        app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <LinearLayout
+        android:id="@+id/layout_footer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layoutDirection="rtl"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="16dp"
+        android:layout_marginBottom="6dp"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
+            android:id="@+id/layout_story_views_container"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_rounded_dark"
+            android:paddingHorizontal="16dp"
+            android:layout_marginEnd="10dp">
             
-            if (newUsername.isNotEmpty()) {
-                if (newUsername.length !in 2..40) {
-                    showCustomSnackbar("المعرف يجب أن يكون بين 2 و 40 حرفاً/رقماً", "#F44336", "error")
-                    return@setOnClickListener
-                }
-                if (!newUsername.matches(Regex("^[a-zA-Z0-9_.]+$"))) {
-                    showCustomSnackbar("مسموح بالحروف الإنجليزية والأرقام فقط", "#F44336", "error")
-                    return@setOnClickListener
-                }
-            }
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@android:drawable/ic_menu_view"
+                app:tint="#FFFFFF" />
+
+            <TextView
+                android:id="@+id/tv_story_views"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:text="0"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_rounded_dark"
+            android:paddingHorizontal="14dp">
             
-            saveProfile(newName, newUsername, newPass, userRole, newId)
-        }
-
-        btnLogout.setOnClickListener {
-            AlertDialog.Builder(requireContext()).setTitle("تسجيل خروج").setMessage("هل أنت متأكد من الخروج التام؟ (سيتم مسح كافة الملفات من هذا الجهاز)")
-                .setPositiveButton("نعم") { _, _ ->
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        try {
-                            val conn = URL("$BASE_API_URL/auth/terminate_device").openConnection() as HttpURLConnection
-                            conn.requestMethod = "POST"
-                            conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                            conn.outputStream.use { it.write(JSONObject().put("id", userId).put("targetDeviceId", myDeviceId).toString().toByteArray(Charsets.UTF_8)) }
-                            conn.responseCode
-                        } catch (e: Exception) {}
-                    }
-                    performLogout()
-                }.setNegativeButton("إلغاء", null).show()
-        }
-    }
-
-    private fun setupAdminReportsButton(view: View) {
-        val rootLayout = view.findViewById<ViewGroup>(R.id.layout_avatar_container)?.parent as? ViewGroup ?: return
-        
-        adminReportsButton = FrameLayout(requireContext()).apply {
-            layoutParams = RelativeLayout.LayoutParams(140, 140).apply {
-                addRule(RelativeLayout.ALIGN_PARENT_TOP)
-                addRule(RelativeLayout.ALIGN_PARENT_START)
-                setMargins(40, 40, 0, 0)
-            }
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#1A1A1D"))
-                setStroke(2, Color.parseColor("#33FFFFFF"))
-            }
-
-            val icon = ImageView(requireContext()).apply {
-                setImageResource(android.R.drawable.ic_dialog_alert) 
-                setColorFilter(Color.parseColor("#FF5722")) 
-                layoutParams = FrameLayout.LayoutParams(70, 70).apply { gravity = Gravity.CENTER }
-            }
-            addView(icon)
-
-            val badge = TextView(requireContext()).apply {
-                id = View.generateViewId()
-                text = "0"
-                setTextColor(Color.WHITE)
-                textSize = 10f
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.RED) }
-                layoutParams = FrameLayout.LayoutParams(50, 50).apply { 
-                    gravity = Gravity.TOP or Gravity.END
-                    setMargins(0, -10, -10, 0)
-                }
-                visibility = View.GONE 
-            }
-            addView(badge)
-
-            setOnClickListener { showAdminReportsDashboard() }
-        }
-        rootLayout.addView(adminReportsButton)
-        
-        fetchReportsCount()
-    }
-
-    private fun fetchReportsCount() {
-        val myId = AuthManager.getId(requireContext())
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val conn = URL("$BASE_API_URL/admin/get_story_reports?adminId=$myId").openConnection() as HttpURLConnection
-                if (conn.responseCode == 200) {
-                    val resp = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                    if (resp.getBoolean("success")) {
-                        val reportsArr = resp.getJSONArray("reports")
-                        val count = reportsArr.length()
-                        withContext(Dispatchers.Main) {
-                            val badge = adminReportsButton?.getChildAt(1) as? TextView
-                            if (count > 0) {
-                                badge?.text = count.toString()
-                                badge?.visibility = View.VISIBLE
-                            } else {
-                                badge?.visibility = View.GONE
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {}
-        }
-    }
-
-    private fun showAdminReportsDashboard() {
-        val bottomSheet = BottomSheetDialog(requireContext())
-        val container = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0A0A0C"))
-            setPadding(0, 40, 0, 0)
-            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1500)
-        }
-
-        val title = TextView(requireContext()).apply {
-            text = "إدارة الإبلاغات 🚨"
-            setTextColor(Color.parseColor("#FF5722"))
-            textSize = 20f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 40)
-        }
-        container.addView(title)
-
-        val loadingText = TextView(requireContext()).apply {
-            text = "جاري جلب الإبلاغات..."
-            setTextColor(Color.GRAY)
-            gravity = Gravity.CENTER
-            setPadding(40, 40, 40, 40)
-        }
-        container.addView(loadingText)
-
-        val recyclerView = RecyclerView(requireContext()).apply { layoutManager = LinearLayoutManager(requireContext()) }
-        container.addView(recyclerView)
-        bottomSheet.setContentView(container)
-        bottomSheet.show()
-
-        val myId = AuthManager.getId(requireContext())
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val conn = URL("$BASE_API_URL/admin/get_story_reports?adminId=$myId").openConnection() as HttpURLConnection
-                if (conn.responseCode == 200) {
-                    val resp = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                    if (resp.getBoolean("success")) {
-                        val reportsArr = resp.getJSONArray("reports")
-                        withContext(Dispatchers.Main) {
-                            loadingText.visibility = View.GONE
-                            if (reportsArr.length() == 0) {
-                                loadingText.text = "لا توجد إبلاغات حالياً ✅"
-                                loadingText.visibility = View.VISIBLE
-                            } else {
-                                recyclerView.adapter = ReportsAdapter(reportsArr)
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { loadingText.text = "فشل الاتصال بالسيرفر ❌" }
-            }
-        }
-    }
-
-    // 🌟 التعديل هنا: شلنا الـ dialog.dismiss() حتى ما تنغلق نافذة الإبلاغات 🌟
-    inner class ReportsAdapter(private val reportsArr: JSONArray) : RecyclerView.Adapter<ReportsAdapter.VH>() {
-        inner class VH(val view: LinearLayout) : RecyclerView.ViewHolder(view)
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-            val ctx = parent.context
-            val layout = LinearLayout(ctx).apply {
-                orientation = LinearLayout.VERTICAL
-                background = GradientDrawable().apply { setColor(Color.parseColor("#1A1A1D")); cornerRadius = 30f; setStroke(2, Color.parseColor("#33FFFFFF")) }
-                layoutParams = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(40, 20, 40, 20) }
-                setPadding(40, 40, 40, 40)
-            }
-            return VH(layout)
-        }
-
-        override fun getItemCount(): Int = reportsArr.length()
-
-        override fun onBindViewHolder(holder: VH, position: Int) {
-            val r = reportsArr.getJSONObject(position)
-            holder.view.removeAllViews()
-
-            val infoText = TextView(holder.view.context).apply {
-                text = "🚩 إبلاغ من: ${r.getString("reporterName")}\n👤 المخالف: ${r.getString("reportedName")}"
-                setTextColor(Color.WHITE)
-                textSize = 14f
-                setPadding(0, 0, 0, 30)
-            }
-            holder.view.addView(infoText)
-
-            val buttonsLayout = LinearLayout(holder.view.context).apply { orientation = LinearLayout.HORIZONTAL }
+            <TextView
+                android:id="@+id/btn_react_heart"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="❤️"
+                android:textSize="26sp"
+                android:padding="2dp"/>
             
-            val btnView = MaterialButton(holder.view.context).apply {
-                text = "عرض القصة 👁️"
-                setBackgroundColor(Color.parseColor("#2196F3"))
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
-                setOnClickListener {
-                    val intent = Intent(requireContext(), StoryViewerActivity::class.java)
-                    intent.putExtra("targetUserId", r.getString("reportedUserId"))
-                    startActivity(intent)
-                    // النافذة مال الإبلاغات راح تبقى مفتوحة بالخلفية
-                }
-            }
+            <TextView
+                android:id="@+id/btn_react_fire"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔥"
+                android:textSize="26sp"
+                android:padding="2dp"
+                android:layout_marginStart="14dp"/>
             
-            val btnPunish = MaterialButton(holder.view.context).apply {
-                text = "إجراء 🔨"
-                setBackgroundColor(Color.parseColor("#F44336"))
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
-                setOnClickListener {
-                    showPunishOptions(r.getString("storyId"), r.getString("reportedUserId"))
-                }
-            }
+            <TextView
+                android:id="@+id/btn_react_laugh"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="😂"
+                android:textSize="26sp"
+                android:padding="2dp"
+                android:layout_marginStart="14dp"/>
+        </LinearLayout>
 
-            buttonsLayout.addView(btnView)
-            buttonsLayout.addView(btnPunish)
-            holder.view.addView(buttonsLayout)
-        }
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
 
-        private fun showPunishOptions(storyId: String, targetUserId: String) {
-            val options = arrayOf("حذف القصة فقط 🗑️", "حظر المستخدم من الاستوريات 🚫")
-            AlertDialog.Builder(requireContext())
-                .setTitle("اختر الإجراء المناسب")
-                .setItems(options) { _, which ->
-                    when (which) {
-                        0 -> deleteReportedStory(storyId)
-                        1 -> showBanDialog(targetUserId, storyId)
-                    }
-                }.show()
-        }
-
-        private fun deleteReportedStory(storyId: String) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    val conn = URL("$BASE_API_URL/story/delete").openConnection() as HttpURLConnection
-                    conn.requestMethod = "POST"
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    conn.doOutput = true
-                    conn.outputStream.use { it.write(JSONObject().put("storyId", storyId).put("userId", AuthManager.getId(requireContext())).toString().toByteArray()) }
-                    
-                    if (conn.responseCode == 200) {
-                        withContext(Dispatchers.Main) { 
-                            showCustomSnackbar("تم حذف القصة المخالفة بنجاح!", "#4CAF50", "success")
-                            fetchReportsCount() 
-                        }
-                    }
-                } catch (e: Exception) {}
-            }
-        }
-
-        private fun showBanDialog(targetId: String, storyId: String) {
-            val input = EditText(requireContext()).apply {
-                inputType = InputType.TYPE_CLASS_NUMBER
-                hint = "عدد ساعات الحظر (مثال: 24)"
-                setPadding(40, 40, 40, 40)
-            }
-            AlertDialog.Builder(requireContext())
-                .setTitle("حظر المستخدم 🚫")
-                .setView(input)
-                .setPositiveButton("حظر") { _, _ ->
-                    val hours = input.text.toString().trim()
-                    if (hours.isNotEmpty()) {
-                        banUserFromStories(targetId, hours)
-                        deleteReportedStory(storyId) 
-                    }
-                }.show()
-        }
-
-        private fun banUserFromStories(targetId: String, hours: String) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    val conn = URL("$BASE_API_URL/admin/ban_story_user").openConnection() as HttpURLConnection
-                    conn.requestMethod = "POST"
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    conn.doOutput = true
-                    conn.outputStream.use { it.write(JSONObject().put("adminId", AuthManager.getId(requireContext())).put("targetUserId", targetId).put("hours", hours).toString().toByteArray()) }
-                    
-                    val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                    withContext(Dispatchers.Main) {
-                        showCustomSnackbar(obj.optString("message", "تم حظر المستخدم"), "#F44336", "error")
-                    }
-                } catch (e: Exception) {}
-            }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        StoryViewerActivity.preloadUserStories(requireContext(), AuthManager.getId(requireContext()), AuthManager.getId(requireContext()))
-        if (AuthManager.getRole(requireContext()) == "admin") fetchReportsCount()
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        checkUserJob?.cancel()
-    }
-
-    private fun performLogout(kickedMessage: String? = null) {
-        lifecycleScope.launch(Dispatchers.Main) {
-            if (kickedMessage != null) {
-                Toast.makeText(requireContext(), kickedMessage, Toast.LENGTH_LONG).show()
-            }
+        <LinearLayout
+            android:id="@+id/btn_open_comments"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_rounded_dark"
+            android:paddingHorizontal="18dp">
             
-            MmkvManager.clearAllConfigs()
-            
-            AuthManager.logout(requireContext())
-            val intent = Intent(requireActivity(), LoginActivity::class.java).apply { 
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK 
-            }
-            startActivity(intent)
-            requireActivity().finish()
-        }
-    }
+            <TextView
+                android:id="@+id/tv_comments_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                text="0"
+                android:textSize="15sp"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:layout_marginEnd="8dp"/>
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:src="@android:drawable/ic_menu_send"
+                app:tint="#FFFFFF"/>
+        </LinearLayout>
+    </LinearLayout>
 
-    private fun saveProfile(name: String, username: String, pass: String, role: String, newId: String) {
-        btnSave.isEnabled = false
-        btnSave.text = "جاري الحفظ..."
-        val oldId = AuthManager.getId(requireContext())
-        
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val conn = URL("$BASE_API_URL/auth/update").openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.doOutput = true
-                val payload = JSONObject().apply {
-                    put("id", oldId)
-                    put("currentPassword", AuthManager.getPass(requireContext()))
-                    put("newName", name)
-                    put("password", pass)
-                    put("newPfp", currentBase64Pfp)
-                    put("username", username)
-                    put("newId", newId) 
-                }
-                conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-                
-                val stream = if (conn.responseCode == 200) conn.inputStream else conn.errorStream
-                val responseText = BufferedReader(InputStreamReader(stream)).readText()
-                val obj = JSONObject(responseText)
-                
-                if (obj.optBoolean("success", false)) {
-                    val savedId = obj.optString("newId", oldId)
-                    AuthManager.saveUser(requireContext(), savedId, name, pass, role, currentBase64Pfp)
-                    withContext(Dispatchers.Main) {
-                        etId.setText(savedId)
-                        showCustomSnackbar("تم حفظ التعديلات بنجاح!", "#4CAF50", "success") 
-                        updateProfilePicture(currentBase64Pfp, name, savedId, false)
-                        btnSave.isEnabled = true
-                        btnSave.text = "حفظ التعديلات السحابية"
-                    }
-                } else {
-                    val errorMsg = obj.optString("message", "فشل الحفظ")
-                    withContext(Dispatchers.Main) { 
-                        showCustomSnackbar(errorMsg, "#F44336", "error")
-                        btnSave.isEnabled = true
-                        btnSave.text = "حفظ التعديلات السحابية" 
-                    }
-                }
-            } catch (e: Exception) { 
-                withContext(Dispatchers.Main) { 
-                    showCustomSnackbar("خطأ في الاتصال بالإنترنت", "#F44336", "error")
-                    btnSave.isEnabled = true
-                    btnSave.text = "حفظ التعديلات السحابية" 
-                } 
-            }
-        }
-    }
+    <ProgressBar
+        android:id="@+id/pb_loading"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:indeterminateTint="#FF9800"
+        android:visibility="gone"/>
 
-    private fun checkUsernameLive(username: String) {
-        checkUserJob?.cancel()
-        if (!::tvUsernameStatus.isInitialized) return
-        if (username.isEmpty()) { tvUsernameStatus.visibility = View.GONE; return }
-        
-        if (username.length !in 2..40) {
-            tvUsernameStatus.visibility = View.VISIBLE
-            tvUsernameStatus.text = "❌ المعرف يجب أن يكون بين 2 و 40 حرفاً/رقماً"
-            tvUsernameStatus.setTextColor(Color.RED)
-            return
-        }
-        if (!username.matches(Regex("^[a-zA-Z0-9_.]+$"))) {
-            tvUsernameStatus.visibility = View.VISIBLE
-            tvUsernameStatus.text = "❌ مسموح بالحروف الإنجليزية والأرقام فقط"
-            tvUsernameStatus.setTextColor(Color.RED)
-            return
-        }
-
-        tvUsernameStatus.visibility = View.VISIBLE
-        tvUsernameStatus.text = "⏳ فحص المعرف..."
-        tvUsernameStatus.setTextColor(Color.parseColor("#FF9800"))
-
-        checkUserJob = lifecycleScope.launch(Dispatchers.IO) {
-            delay(500)
-            try {
-                val conn = URL("$BASE_API_URL/auth/check_username?username=$username&id=${AuthManager.getId(requireContext())}").openConnection() as HttpURLConnection
-                if (conn.responseCode == 200) {
-                    val available = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText()).getBoolean("available")
-                    withContext(Dispatchers.Main) {
-                        tvUsernameStatus.text = if (available) "✅ المعرف متاح" else "❌ المعرف محجوز"
-                        tvUsernameStatus.setTextColor(if (available) Color.GREEN else Color.RED)
-                    }
-                }
-            } catch (e: Exception) {}
-        }
-    }
-
-    private fun showDevicesDialog() {
-        val scroll = ScrollView(requireContext())
-        val layout = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL; setPadding(40,40,40,40); setBackgroundColor(Color.parseColor("#141417")) }
-        scroll.addView(layout)
-
-        val tvTitle = TextView(requireContext()).apply { text = "📱 الأجهزة النشطة لحسابك"; setTextColor(Color.parseColor("#9C27B0")); textSize = 18f; setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER; setPadding(0,0,0,30) }
-        layout.addView(tvTitle)
-
-        val dialog = AlertDialog.Builder(requireContext()).setView(scroll).setPositiveButton("إغلاق", null).show()
-
-        fun renderDevices() {
-            val childCount = layout.childCount
-            if (childCount > 1) layout.removeViews(1, childCount - 1)
-
-            if (activeDevicesList.length() == 0) {
-                layout.addView(TextView(requireContext()).apply { text = "لا توجد أجهزة مسجلة"; setTextColor(Color.WHITE); gravity = Gravity.CENTER })
-                return
-            }
-
-            for (i in 0 until activeDevicesList.length()) {
-                val devId = activeDevicesList.getString(i)
-                val isCurrent = (devId == myDeviceId)
-
-                val row = LinearLayout(requireContext()).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0,0,0,15) } }
-                val info = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
-                
-                info.addView(TextView(requireContext()).apply { text = if (isCurrent) "💻 جهازك الحالي" else "📱 جهاز مرتبط"; setTextColor(if(isCurrent) Color.parseColor("#4CAF50") else Color.WHITE); setTypeface(null, android.graphics.Typeface.BOLD) })
-                info.addView(TextView(requireContext()).apply { text = "ID: $devId"; setTextColor(Color.GRAY); textSize = 12f })
-                row.addView(info)
-
-                if (!isCurrent) {
-                    val btnTerminate = MaterialButton(requireContext()).apply {
-                        text = "طرد ❌"
-                        setBackgroundColor(Color.RED)
-                        textSize = 10f
-                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(10, 0, 0, 0) }
-                        setOnClickListener {
-                            lifecycleScope.launch(Dispatchers.IO) {
-                                try {
-                                    val conn = URL("$BASE_API_URL/auth/terminate_device").openConnection() as HttpURLConnection
-                                    conn.requestMethod = "POST"
-                                    conn.setRequestProperty("Content-Type", "application/json"); conn.doOutput = true
-                                    conn.outputStream.use { it.write(JSONObject().put("id", AuthManager.getId(requireContext())).put("targetDeviceId", devId).toString().toByteArray()) }
-                                    if (conn.responseCode == 200) {
-                                        val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                                        if (obj.getBoolean("success")) {
-                                            activeDevicesList = obj.getJSONArray("devices")
-                                            withContext(Dispatchers.Main) { renderDevices(); showCustomSnackbar("تم طرد الجهاز بنجاح!", "#4CAF50", "success") }
-                                        }
-                                    }
-                                } catch(e: Exception){} 
-                            }
-                        }
-                    }
-                    row.addView(btnTerminate)
-                }
-                layout.addView(row)
-            }
-        }
-        renderDevices()
-    }
-
-    private fun updateProfilePicture(base64Str: String, name: String, userId: String, hasActiveStory: Boolean) {
-        val bitmap = try {
-            val cleanStr = if (base64Str.contains(",")) base64Str.substringAfter(",") else base64Str
-            val b = Base64.decode(cleanStr.replace("\\s+".toRegex(), ""), Base64.DEFAULT)
-            BitmapFactory.decodeByteArray(b, 0, b.size)
-        } catch (e: Exception) { null } ?: AvatarGenerator.generateAvatar(name, userId)
-        
-        if (bitmap != null) {
-            val circularDrawable = RoundedBitmapDrawableFactory.create(resources, bitmap).apply { isCircular = true }
-            ivAvatar.setImageDrawable(circularDrawable)
-            
-            if (hasActiveStory) {
-                cvStoryRing?.setCardBackgroundColor(Color.parseColor("#2196F3"))
-
-                StoryViewerActivity.preloadUserStories(requireContext(), userId, AuthManager.getId(requireContext()))
-
-                ivAvatar.setOnClickListener {
-                    val options = arrayOf("شاهد الاستوري 👁️", "إضافة استوري جديد ➕")
-                    AlertDialog.Builder(requireContext())
-                        .setItems(options) { _, which ->
-                            if (which == 0) {
-                                val intent = Intent(requireContext(), Class.forName("com.v2ray.ang.ui.StoryViewerActivity"))
-                                intent.putExtra("targetUserId", userId)
-                                startActivity(intent)
-                            } else {
-                                startActivity(Intent(requireContext(), StoryUploadActivity::class.java))
-                            }
-                        }
-                        .show()
-                }
-            } else {
-                cvStoryRing?.setCardBackgroundColor(Color.parseColor("#0A0A0C"))
-                
-                ivAvatar.setOnClickListener {
-                    pickImage.launch(Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI))
-                }
-            }
-        }
-    }
-
-    private fun fetchUserDataFromServer(userId: String, isSwipeRefresh: Boolean = false) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val conn = URL("$BASE_API_URL/auth/get_user?id=$userId").openConnection() as HttpURLConnection
-                if (conn.responseCode == 200) {
-                    val obj = JSONObject(BufferedReader(InputStreamReader(conn.inputStream)).readText())
-                    if (obj.getBoolean("success")) {
-                        val serverDevices = obj.optJSONArray("devices") ?: JSONArray()
-                        
-                        var isDeviceAuthorized = false
-                        if (AuthManager.getRole(requireContext()) == "admin") {
-                            isDeviceAuthorized = true
-                        } else {
-                            for (i in 0 until serverDevices.length()) {
-                                if (serverDevices.getString(i) == myDeviceId) {
-                                    isDeviceAuthorized = true
-                                    break
-                                }
-                            }
-                        }
-                        
-                        if (!isDeviceAuthorized) {
-                            performLogout("تم إنهاء جلستك من جهاز آخر أو من الإدارة! 🚫")
-                            return@launch
-                        }
-
-                        val followers = obj.optInt("followersCount", 0)
-                        val following = obj.optInt("followingCount", 0)
-                        val hasActiveStory = obj.optBoolean("hasActiveStory", false)
-
-                        withContext(Dispatchers.Main) {
-                            etName.setText(obj.getString("name"))
-                            etPass.setText(obj.getString("password"))
-                            etUsername.setText(obj.optString("username", ""))
-                            
-                            tvFollowersCount?.text = "المتابعون\n$followers"
-                            tvFollowingCount?.text = "أتابع\n$following"
-                            
-                            activeDevicesList = serverDevices
-                            currentBase64Pfp = obj.optString("pfp", currentBase64Pfp)
-                            updateProfilePicture(currentBase64Pfp, obj.getString("name"), userId, hasActiveStory)
-                            if (isSwipeRefresh) showCustomSnackbar("تم تحديث البيانات بنجاح ✔", "#4CAF50", "success")
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                if (isSwipeRefresh) withContext(Dispatchers.Main) { showCustomSnackbar("فشل التحديث، تأكد من الإنترنت!", "#F44336", "error") }
-            } finally {
-                if (isSwipeRefresh) {
-                    withContext(Dispatchers.Main) { swipeRefreshLayout?.isRefreshing = false }
-                }
-            }
-        }
-    }
-}
+</androidx.constraintlayout.widget.ConstraintLayout>
