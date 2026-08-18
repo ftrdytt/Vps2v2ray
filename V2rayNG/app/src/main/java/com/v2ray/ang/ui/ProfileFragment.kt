@@ -66,7 +66,7 @@ class ProfileFragment : Fragment() {
     private var btnAddStory: ImageView? = null
     private var layoutAvatarContainer: FrameLayout? = null
     private var cvStoryRing: CardView? = null 
-    private var adminReportsButton: FrameLayout? = null // 🌟 زر الإبلاغات الخاص بالأدمن
+    private var adminReportsButton: FrameLayout? = null 
     
     private var swipeRefreshLayout: SwipeRefreshLayout? = null
     private var currentBase64Pfp: String = ""
@@ -275,7 +275,7 @@ class ProfileFragment : Fragment() {
                 visibility = View.VISIBLE
                 setOnClickListener { startActivity(Intent(requireContext(), UpdateLogsActivity::class.java)) }
             }
-            setupAdminReportsButton(view) // 🌟 تهيئة زر الإبلاغات للأدمن 🌟
+            setupAdminReportsButton(view) 
         }
 
         updateProfilePicture(currentBase64Pfp, AuthManager.getName(requireContext()), userId, false)
@@ -322,15 +322,11 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    // =================================================================================
-    // 🌟 نظام الإبلاغات السحري للأدمن (Admin Reports Dashboard) 🌟
-    // =================================================================================
     private fun setupAdminReportsButton(view: View) {
         val rootLayout = view.findViewById<ViewGroup>(R.id.layout_avatar_container)?.parent as? ViewGroup ?: return
         
         adminReportsButton = FrameLayout(requireContext()).apply {
             layoutParams = RelativeLayout.LayoutParams(140, 140).apply {
-                // وضع الزر في مكان أنيق بجانب صورة البروفايل
                 addRule(RelativeLayout.ALIGN_PARENT_TOP)
                 addRule(RelativeLayout.ALIGN_PARENT_START)
                 setMargins(40, 40, 0, 0)
@@ -342,13 +338,12 @@ class ProfileFragment : Fragment() {
             }
 
             val icon = ImageView(requireContext()).apply {
-                setImageResource(android.R.drawable.ic_dialog_alert) // رمز تنبيه
-                setColorFilter(Color.parseColor("#FF5722")) // برتقالي تحذيري
+                setImageResource(android.R.drawable.ic_dialog_alert) 
+                setColorFilter(Color.parseColor("#FF5722")) 
                 layoutParams = FrameLayout.LayoutParams(70, 70).apply { gravity = Gravity.CENTER }
             }
             addView(icon)
 
-            // العداد (Badge)
             val badge = TextView(requireContext()).apply {
                 id = View.generateViewId()
                 text = "0"
@@ -361,7 +356,7 @@ class ProfileFragment : Fragment() {
                     gravity = Gravity.TOP or Gravity.END
                     setMargins(0, -10, -10, 0)
                 }
-                visibility = View.GONE // يخفى إذا كان العدد 0
+                visibility = View.GONE 
             }
             addView(badge)
 
@@ -443,7 +438,7 @@ class ProfileFragment : Fragment() {
                                 loadingText.text = "لا توجد إبلاغات حالياً ✅"
                                 loadingText.visibility = View.VISIBLE
                             } else {
-                                recyclerView.adapter = ReportsAdapter(reportsArr, bottomSheet)
+                                recyclerView.adapter = ReportsAdapter(reportsArr)
                             }
                         }
                     }
@@ -454,7 +449,7 @@ class ProfileFragment : Fragment() {
         }
     }
 
-    inner class ReportsAdapter(private val reportsArr: JSONArray, private val dialog: BottomSheetDialog) : RecyclerView.Adapter<ReportsAdapter.VH>() {
+    inner class ReportsAdapter(private val reportsArr: JSONArray) : RecyclerView.Adapter<ReportsAdapter.VH>() {
         inner class VH(val view: LinearLayout) : RecyclerView.ViewHolder(view)
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -484,27 +479,23 @@ class ProfileFragment : Fragment() {
 
             val buttonsLayout = LinearLayout(holder.view.context).apply { orientation = LinearLayout.HORIZONTAL }
             
-            // زر عرض القصة
             val btnView = MaterialButton(holder.view.context).apply {
                 text = "عرض القصة 👁️"
                 setBackgroundColor(Color.parseColor("#2196F3"))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = 10 }
                 setOnClickListener {
-                    dialog.dismiss()
                     val intent = Intent(requireContext(), StoryViewerActivity::class.java)
                     intent.putExtra("targetUserId", r.getString("reportedUserId"))
                     startActivity(intent)
                 }
             }
             
-            // زر معاقبة المخالف
             val btnPunish = MaterialButton(holder.view.context).apply {
                 text = "إجراء 🔨"
                 setBackgroundColor(Color.parseColor("#F44336"))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 10 }
                 setOnClickListener {
                     showPunishOptions(r.getString("storyId"), r.getString("reportedUserId"))
-                    dialog.dismiss()
                 }
             }
 
@@ -537,7 +528,7 @@ class ProfileFragment : Fragment() {
                     if (conn.responseCode == 200) {
                         withContext(Dispatchers.Main) { 
                             showCustomSnackbar("تم حذف القصة المخالفة بنجاح!", "#4CAF50", "success")
-                            fetchReportsCount() // تحديث العداد
+                            fetchReportsCount() 
                         }
                     }
                 } catch (e: Exception) {}
@@ -557,7 +548,7 @@ class ProfileFragment : Fragment() {
                     val hours = input.text.toString().trim()
                     if (hours.isNotEmpty()) {
                         banUserFromStories(targetId, hours)
-                        deleteReportedStory(storyId) // نحذف القصة مع الحظر كإجراء احترازي
+                        deleteReportedStory(storyId) 
                     }
                 }.show()
         }
@@ -579,7 +570,6 @@ class ProfileFragment : Fragment() {
             }
         }
     }
-    // =================================================================================
 
     override fun onResume() {
         super.onResume()
