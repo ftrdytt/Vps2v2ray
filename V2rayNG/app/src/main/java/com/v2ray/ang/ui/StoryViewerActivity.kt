@@ -6,15 +6,15 @@
     android:background="#000000"
     android:layoutDirection="rtl">
 
+    <!-- حاوية العرض بدون إزاحات علوية وسفلية (للسماح بالملء الكامل للشاشة) -->
     <FrameLayout
         android:id="@+id/story_content_container"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
+        android:layout_height="match_parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        android:layout_marginTop="75dp"
-        android:layout_marginBottom="85dp">
+        app:layout_constraintBottom_toBottomOf="parent">
 
+        <!-- إرجاع الفيديو للوسط -->
         <VideoView
             android:id="@+id/vv_story_video"
             android:layout_width="match_parent"
@@ -22,6 +22,7 @@
             android:layout_gravity="center"
             android:visibility="gone" />
 
+        <!-- إرجاع الصورة للوسط (تعرض بالحجم الأصلي إذا كانت عرضية، وتمتد إذا طولية) -->
         <ImageView
             android:id="@+id/iv_story_image"
             android:layout_width="match_parent"
@@ -58,9 +59,10 @@
         android:elevation="10dp"
         android:clipChildren="false"/>
 
+    <!-- تظليل علوي لحماية ظهور الأزرار على الخلفيات الفاتحة -->
     <View
         android:layout_width="match_parent"
-        android:layout_height="120dp"
+        android:layout_height="140dp"
         android:background="@drawable/shadow_gradient_top"
         app:layout_constraintTop_toTopOf="parent"/>
 
@@ -161,6 +163,7 @@
             app:tint="#FFFFFF"/>
     </LinearLayout>
 
+    <!-- تظليل سفلي قوي لحماية ظهور أزرار التفاعل على الخلفيات الفاتحة -->
     <View
         android:layout_width="match_parent"
         android:layout_height="180dp"
@@ -259,7 +262,7 @@
                 android:id="@+id/tv_comments_count"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                text="0"
+                android:text="0"
                 android:textSize="15sp"
                 android:textColor="#FFFFFF"
                 android:textStyle="bold"
