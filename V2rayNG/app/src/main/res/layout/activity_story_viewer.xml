@@ -4,12 +4,16 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000"
+    android:fitsSystemWindows="true" 
     android:layoutDirection="rtl">
 
+    <!-- حاوية الاستوري (تم تصغيرها وإنزالها لترك فراغ أسود حولها) -->
     <FrameLayout
         android:id="@+id/story_content_container"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="16dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent">
 
@@ -20,12 +24,13 @@
             android:layout_gravity="center"
             android:visibility="gone" />
 
+        <!-- تم تغيير scaleType إلى fitCenter لتوسيط الصور العرضية -->
         <ImageView
             android:id="@+id/iv_story_image"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_gravity="center"
-            android:scaleType="centerCrop"
+            android:scaleType="fitCenter"
             android:visibility="gone"/>
 
         <TextView
@@ -62,6 +67,7 @@
         android:background="@drawable/shadow_gradient_top"
         app:layout_constraintTop_toTopOf="parent"/>
 
+    <!-- شريط التقدم العلوي -->
     <LinearLayout
         android:id="@+id/layout_progress_bars"
         android:layout_width="match_parent"
@@ -73,6 +79,7 @@
         android:layout_marginEnd="8dp"
         app:layout_constraintTop_toTopOf="parent"/>
 
+    <!-- معلومات الناشر (الصورة، الاسم، الوقت) -->
     <LinearLayout
         android:id="@+id/layout_top_bar"
         android:layout_width="match_parent"
@@ -146,7 +153,8 @@
             android:layout_marginEnd="8dp"
             android:src="@android:drawable/ic_menu_more"
             android:visibility="gone"
-            android:background="@drawable/bg_rounded_dark"
+            android:background="@drawable/bg_glass_reactions"
+            android:elevation="4dp"
             app:tint="#FFFFFF"/>
 
         <ImageView
@@ -155,7 +163,8 @@
             android:layout_height="36dp"
             android:padding="6dp"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
-            android:background="@drawable/bg_rounded_dark"
+            android:background="@drawable/bg_glass_reactions"
+            android:elevation="4dp"
             app:tint="#FFFFFF"/>
     </LinearLayout>
 
@@ -165,6 +174,7 @@
         android:background="@drawable/shadow_gradient_bottom"
         app:layout_constraintBottom_toBottomOf="parent"/>
 
+    <!-- الفوتر: التفاعلات والمشاهدات (تم تحويله لتصميم زجاجي عائم 2070) -->
     <LinearLayout
         android:id="@+id/layout_footer"
         android:layout_width="match_parent"
@@ -174,16 +184,18 @@
         android:gravity="center_vertical"
         android:paddingHorizontal="12dp"
         android:paddingVertical="16dp"
-        android:layout_marginBottom="6dp"
+        android:layout_marginBottom="16dp" 
         app:layout_constraintBottom_toBottomOf="parent">
 
+        <!-- عدد المشاهدات -->
         <LinearLayout
             android:id="@+id/layout_story_views_container"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:background="@drawable/bg_rounded_dark"
+            android:background="@drawable/bg_glass_reactions"
+            android:elevation="8dp"
             android:paddingHorizontal="16dp"
             android:layout_marginEnd="10dp">
             
@@ -204,12 +216,14 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <!-- التفاعلات (ايموجي) -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:background="@drawable/bg_rounded_dark"
+            android:background="@drawable/bg_glass_reactions"
+            android:elevation="8dp"
             android:paddingHorizontal="14dp">
             
             <TextView
@@ -218,7 +232,8 @@
                 android:layout_height="wrap_content"
                 android:text="❤️"
                 android:textSize="26sp"
-                android:padding="2dp"/>
+                android:padding="2dp"
+                android:background="?attr/selectableItemBackgroundBorderless"/>
             
             <TextView
                 android:id="@+id/btn_react_fire"
@@ -227,7 +242,8 @@
                 android:text="🔥"
                 android:textSize="26sp"
                 android:padding="2dp"
-                android:layout_marginStart="14dp"/>
+                android:layout_marginStart="14dp"
+                android:background="?attr/selectableItemBackgroundBorderless"/>
             
             <TextView
                 android:id="@+id/btn_react_laugh"
@@ -236,7 +252,8 @@
                 android:text="😂"
                 android:textSize="26sp"
                 android:padding="2dp"
-                android:layout_marginStart="14dp"/>
+                android:layout_marginStart="14dp"
+                android:background="?attr/selectableItemBackgroundBorderless"/>
         </LinearLayout>
 
         <View
@@ -244,13 +261,15 @@
             android:layout_height="0dp"
             android:layout_weight="1"/>
 
+        <!-- زر التعليقات -->
         <LinearLayout
             android:id="@+id/btn_open_comments"
             android:layout_width="wrap_content"
             android:layout_height="48dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:background="@drawable/bg_rounded_dark"
+            android:background="@drawable/bg_glass_reactions"
+            android:elevation="8dp"
             android:paddingHorizontal="18dp">
             
             <TextView
