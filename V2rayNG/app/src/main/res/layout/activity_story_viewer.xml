@@ -7,17 +7,14 @@
     android:fitsSystemWindows="true" 
     android:layoutDirection="rtl">
 
-    <!-- حاوية الاستوري: مفصولة من الأعلى لترك فراغ أسود تحت علامة الشحن، ومفصولة من الأسفل لترك فراغ للتفاعلات -->
+    <!-- حاوية الاستوري رجعت تملي الشاشة بالكامل بدون أي فراغات -->
     <FrameLayout
         android:id="@+id/story_content_container"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="56dp"
-        android:layout_marginBottom="16dp"
+        android:layout_height="match_parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toTopOf="@+id/layout_footer">
+        app:layout_constraintBottom_toBottomOf="parent">
 
-        <!-- الفيديوهات الطويلة تملأ الحاوية، والعريضة تتوسط الشاشة -->
         <VideoView
             android:id="@+id/vv_story_video"
             android:layout_width="match_parent"
@@ -25,6 +22,7 @@
             android:layout_gravity="center"
             android:visibility="gone" />
 
+        <!-- تم استخدام fitCenter: العريض يتوسط، والطويل يملي الشاشة بالكامل -->
         <ImageView
             android:id="@+id/iv_story_image"
             android:layout_width="match_parent"
@@ -61,26 +59,25 @@
         android:elevation="10dp"
         android:clipChildren="false"/>
 
-    <!-- التظليل العلوي مربوط بحاوية الاستوري حتى يغطي أعلى الفيديو الطويل فقط -->
+    <!-- الظل العلوي لبروز الاسم -->
     <View
         android:layout_width="match_parent"
         android:layout_height="140dp"
         android:background="@drawable/shadow_gradient_top"
-        app:layout_constraintTop_toTopOf="@+id/story_content_container"/>
+        app:layout_constraintTop_toTopOf="parent"/>
 
-    <!-- شريط التقدم: طايف فوق الاستوري (الآن مربوط بـ story_content_container) -->
+    <!-- شريط التقدم: تم ضبط المسافة العلوية لتطابق الفيس بوك أسفل علامة الشحن -->
     <LinearLayout
         android:id="@+id/layout_progress_bars"
         android:layout_width="match_parent"
         android:layout_height="3dp"
         android:orientation="horizontal"
         android:layoutDirection="rtl" 
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="8dp"
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
-        app:layout_constraintTop_toTopOf="@+id/story_content_container"/>
+        app:layout_constraintTop_toTopOf="parent"/>
 
-    <!-- معلومات الناشر: طايفة فوق الاستوري -->
     <LinearLayout
         android:id="@+id/layout_top_bar"
         android:layout_width="match_parent"
@@ -167,14 +164,14 @@
             app:tint="#FFFFFF"/>
     </LinearLayout>
 
-    <!-- التظليل السفلي يغطي أسفل الفيديو الطويل فقط -->
+    <!-- الظل السفلي لبروز الأزرار -->
     <View
         android:layout_width="match_parent"
         android:layout_height="180dp"
         android:background="@drawable/shadow_gradient_bottom"
-        app:layout_constraintBottom_toBottomOf="@+id/story_content_container"/>
+        app:layout_constraintBottom_toBottomOf="parent"/>
 
-    <!-- الفوتر: شريط التفاعلات نازل بالمنطقة السودة تحت الفيديو -->
+    <!-- الفوتر: تم إنزاله للأسفل قليلاً -->
     <LinearLayout
         android:id="@+id/layout_footer"
         android:layout_width="match_parent"
@@ -183,11 +180,10 @@
         android:layoutDirection="rtl"
         android:gravity="center_vertical"
         android:paddingHorizontal="12dp"
-        android:paddingVertical="16dp"
-        android:layout_marginBottom="24dp" 
+        android:paddingVertical="12dp"
+        android:layout_marginBottom="8dp"
         app:layout_constraintBottom_toBottomOf="parent">
 
-        <!-- عدد المشاهدات -->
         <LinearLayout
             android:id="@+id/layout_story_views_container"
             android:layout_width="wrap_content"
@@ -215,7 +211,6 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- التفاعلات (ايموجي) -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="48dp"
@@ -230,8 +225,7 @@
                 android:layout_height="wrap_content"
                 android:text="❤️"
                 android:textSize="26sp"
-                android:padding="2dp"
-                android:background="?attr/selectableItemBackgroundBorderless"/>
+                android:padding="2dp"/>
             
             <TextView
                 android:id="@+id/btn_react_fire"
@@ -240,8 +234,7 @@
                 android:text="🔥"
                 android:textSize="26sp"
                 android:padding="2dp"
-                android:layout_marginStart="14dp"
-                android:background="?attr/selectableItemBackgroundBorderless"/>
+                android:layout_marginStart="14dp"/>
             
             <TextView
                 android:id="@+id/btn_react_laugh"
@@ -250,8 +243,7 @@
                 android:text="😂"
                 android:textSize="26sp"
                 android:padding="2dp"
-                android:layout_marginStart="14dp"
-                android:background="?attr/selectableItemBackgroundBorderless"/>
+                android:layout_marginStart="14dp"/>
         </LinearLayout>
 
         <View
@@ -259,7 +251,6 @@
             android:layout_height="0dp"
             android:layout_weight="1"/>
 
-        <!-- زر التعليقات -->
         <LinearLayout
             android:id="@+id/btn_open_comments"
             android:layout_width="wrap_content"
