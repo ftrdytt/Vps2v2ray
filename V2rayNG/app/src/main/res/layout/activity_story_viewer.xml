@@ -7,7 +7,7 @@
     android:fitsSystemWindows="true" 
     android:layoutDirection="rtl">
 
-    <!-- حاوية الاستوري رجعت تملي الشاشة بالكامل بدون أي فراغات -->
+    <!-- حاوية الاستوري تملي الشاشة بالكامل -->
     <FrameLayout
         android:id="@+id/story_content_container"
         android:layout_width="match_parent"
@@ -15,14 +15,15 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent">
 
+        <!-- هنا التعديل: الارتفاع صار wrap_content حتى يتوسط الفيديو العريض إجبارياً -->
         <VideoView
             android:id="@+id/vv_story_video"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:visibility="gone" />
 
-        <!-- تم استخدام fitCenter: العريض يتوسط، والطويل يملي الشاشة بالكامل -->
+        <!-- الصور العريضة تتوسط، والطويلة تملي الشاشة -->
         <ImageView
             android:id="@+id/iv_story_image"
             android:layout_width="match_parent"
@@ -66,7 +67,7 @@
         android:background="@drawable/shadow_gradient_top"
         app:layout_constraintTop_toTopOf="parent"/>
 
-    <!-- شريط التقدم: تم ضبط المسافة العلوية لتطابق الفيس بوك أسفل علامة الشحن -->
+    <!-- شريط التقدم -->
     <LinearLayout
         android:id="@+id/layout_progress_bars"
         android:layout_width="match_parent"
@@ -171,7 +172,7 @@
         android:background="@drawable/shadow_gradient_bottom"
         app:layout_constraintBottom_toBottomOf="parent"/>
 
-    <!-- الفوتر: تم إنزاله للأسفل قليلاً -->
+    <!-- الفوتر -->
     <LinearLayout
         android:id="@+id/layout_footer"
         android:layout_width="match_parent"
