@@ -27,7 +27,7 @@
             android:layout_width="match_parent"
             android:layout_height="120dp"
             android:layout_gravity="top"
-            android:background="#33000000" />
+            android:background="#4D000000" /> <!-- تم تغميق الظل قليلاً لزيادة وضوح الأزرار -->
 
         <!-- حاوية الرسم والملصقات والنصوص (تكون فوق الفيديو دائماً) -->
         <FrameLayout
@@ -37,7 +37,7 @@
             android:clipChildren="false" />
     </FrameLayout>
 
-    <!-- 🌟 الأزرار العلوية والجانبية (أدوات التعديل العائمة) 🌟 -->
+    <!-- 🌟 الأزرار العلوية والجانبية (أدوات التعديل العائمة بستايل زجاجي) 🌟 -->
     <RelativeLayout
         android:id="@+id/tools_overlay_layout"
         android:layout_width="match_parent"
@@ -49,10 +49,10 @@
             android:layout_height="45dp"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
             app:tint="#FFFFFF"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_glass_reactions"
             android:layout_marginTop="40dp"
             android:layout_marginStart="15dp"
-            android:padding="5dp"/>
+            android:padding="10dp"/>
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -62,12 +62,11 @@
             android:layout_marginTop="100dp"
             android:layout_marginEnd="15dp">
 
-            <androidx.cardview.widget.CardView
+            <!-- زر إضافة نص (زجاجي) -->
+            <FrameLayout
                 android:layout_width="45dp"
                 android:layout_height="45dp"
-                app:cardCornerRadius="22.5dp"
-                app:cardBackgroundColor="#66000000"
-                app:cardElevation="0dp"
+                android:background="@drawable/bg_glass_reactions"
                 android:layout_marginBottom="15dp">
                 
                 <ImageView
@@ -78,14 +77,13 @@
                     app:tint="#FFFFFF"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:padding="10dp"/>
-            </androidx.cardview.widget.CardView>
+            </FrameLayout>
 
-            <androidx.cardview.widget.CardView
+            <!-- زر إضافة موسيقى (زجاجي) -->
+            <FrameLayout
                 android:layout_width="45dp"
                 android:layout_height="45dp"
-                app:cardCornerRadius="22.5dp"
-                app:cardBackgroundColor="#66000000"
-                app:cardElevation="0dp">
+                android:background="@drawable/bg_glass_reactions">
                 
                 <ImageView
                     android:id="@+id/btn_add_music"
@@ -95,7 +93,7 @@
                     app:tint="#FFFFFF"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:padding="10dp"/>
-            </androidx.cardview.widget.CardView>
+            </FrameLayout>
         </LinearLayout>
 
         <!-- 🌟 زر النشر الفخم 🌟 -->
@@ -113,11 +111,12 @@
             android:textStyle="bold"
             app:cornerRadius="25dp"
             app:backgroundTint="#FFFFFF"
-            app:icon="@android:drawable/ic_media_play"
+            app:icon="@android:drawable/ic_menu_send" 
             app:iconTint="#000000"
             app:iconGravity="textEnd"
             android:paddingStart="20dp"
-            android:paddingEnd="15dp"/>
+            android:paddingEnd="15dp"
+            android:elevation="8dp"/>
     </RelativeLayout>
 
     <!-- 🌟 شاشة الأدمن المنبثقة لإضافة موسيقى للسيرفر 🌟 -->
@@ -125,7 +124,7 @@
         android:id="@+id/admin_music_upload_layout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#DD000000"
+        android:background="#D9000000"
         android:clickable="true"
         android:focusable="true"
         android:visibility="gone">
@@ -134,8 +133,9 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:layout_margin="20dp"
-            app:cardCornerRadius="20dp"
-            app:cardBackgroundColor="#1A1A1D">
+            app:cardCornerRadius="24dp"
+            app:cardBackgroundColor="#1A1A1D"
+            app:cardElevation="20dp">
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -157,7 +157,7 @@
                     android:hint="اسم الأغنية أو الترند"
                     android:textColorHint="#88FFFFFF"
                     android:textColor="#FFFFFF"
-                    android:background="#252529"
+                    android:background="@drawable/bg_glass_reactions"
                     android:paddingStart="15dp"
                     android:paddingEnd="15dp"
                     android:layout_marginBottom="15dp"/>
@@ -169,16 +169,18 @@
                         android:id="@+id/btn_admin_pick_cover"
                         android:layout_width="0dp"
                         android:layout_weight="1"
-                        android:layout_height="wrap_content"
+                        android:layout_height="50dp"
                         android:text="صورة الأغنية"
+                        app:cornerRadius="15dp"
                         app:backgroundTint="#33FFFFFF"
                         android:layout_marginEnd="10dp"/>
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_admin_pick_audio"
                         android:layout_width="0dp"
                         android:layout_weight="1"
-                        android:layout_height="wrap_content"
+                        android:layout_height="50dp"
                         android:text="الملف الصوتي"
+                        app:cornerRadius="15dp"
                         app:backgroundTint="#33FFFFFF"/>
                 </LinearLayout>
                 <com.google.android.material.button.MaterialButton
@@ -186,6 +188,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="55dp"
                     android:text="رفع الموسيقى للسيرفر"
+                    app:cornerRadius="15dp"
                     app:backgroundTint="#2196F3"
                     android:layout_marginTop="20dp"/>
                 <com.google.android.material.button.MaterialButton
@@ -205,7 +208,7 @@
         android:id="@+id/text_editor_layout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#CC000000"
+        android:background="#E6000000"
         android:visibility="gone"
         android:clickable="true"
         android:focusable="true">
@@ -213,12 +216,13 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btn_done_text"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="40dp"
             android:layout_gravity="top|end"
             android:layout_marginTop="40dp"
             android:layout_marginEnd="15dp"
             android:text="تم"
             android:textColor="#FFFFFF"
+            android:textStyle="bold"
             app:backgroundTint="#33FFFFFF"
             app:cornerRadius="20dp"/>
 
@@ -226,8 +230,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="top|center_horizontal"
-            android:layout_marginTop="45dp"
+            android:layout_marginTop="40dp"
             android:orientation="horizontal"
+            android:background="@drawable/bg_glass_reactions"
+            android:paddingHorizontal="10dp"
             android:gravity="center">
             
             <ImageView
@@ -236,8 +242,8 @@
                 android:layout_height="40dp"
                 android:src="@android:drawable/ic_menu_sort_by_size"
                 app:tint="#FFFFFF"
-                android:padding="5dp"
-                android:layout_marginEnd="20dp"
+                android:padding="8dp"
+                android:layout_marginEnd="10dp"
                 android:background="?attr/selectableItemBackgroundBorderless"/>
                 
             <TextView
@@ -248,8 +254,8 @@
                 android:textColor="#FFFFFF"
                 android:gravity="center"
                 android:textStyle="bold"
-                android:paddingStart="15dp"
-                android:paddingEnd="15dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:background="?attr/selectableItemBackgroundBorderless"/>
         </LinearLayout>
 
