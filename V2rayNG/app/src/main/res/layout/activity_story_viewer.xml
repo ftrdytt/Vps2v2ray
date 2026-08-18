@@ -7,16 +7,17 @@
     android:fitsSystemWindows="true" 
     android:layoutDirection="rtl">
 
-    <!-- حاوية الاستوري (تم تصغيرها وإنزالها لترك فراغ أسود حولها) -->
+    <!-- حاوية الاستوري: مفصولة من الأعلى لترك فراغ أسود تحت علامة الشحن، ومفصولة من الأسفل لترك فراغ للتفاعلات -->
     <FrameLayout
         android:id="@+id/story_content_container"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="56dp"
         android:layout_marginBottom="16dp"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent">
+        app:layout_constraintBottom_toTopOf="@+id/layout_footer">
 
+        <!-- الفيديوهات الطويلة تملأ الحاوية، والعريضة تتوسط الشاشة -->
         <VideoView
             android:id="@+id/vv_story_video"
             android:layout_width="match_parent"
@@ -24,7 +25,6 @@
             android:layout_gravity="center"
             android:visibility="gone" />
 
-        <!-- تم تغيير scaleType إلى fitCenter لتوسيط الصور العرضية -->
         <ImageView
             android:id="@+id/iv_story_image"
             android:layout_width="match_parent"
@@ -61,13 +61,14 @@
         android:elevation="10dp"
         android:clipChildren="false"/>
 
+    <!-- التظليل العلوي مربوط بحاوية الاستوري حتى يغطي أعلى الفيديو الطويل فقط -->
     <View
         android:layout_width="match_parent"
         android:layout_height="140dp"
         android:background="@drawable/shadow_gradient_top"
-        app:layout_constraintTop_toTopOf="parent"/>
+        app:layout_constraintTop_toTopOf="@+id/story_content_container"/>
 
-    <!-- شريط التقدم العلوي -->
+    <!-- شريط التقدم: طايف فوق الاستوري (الآن مربوط بـ story_content_container) -->
     <LinearLayout
         android:id="@+id/layout_progress_bars"
         android:layout_width="match_parent"
@@ -77,9 +78,9 @@
         android:layout_marginTop="12dp"
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
-        app:layout_constraintTop_toTopOf="parent"/>
+        app:layout_constraintTop_toTopOf="@+id/story_content_container"/>
 
-    <!-- معلومات الناشر (الصورة، الاسم، الوقت) -->
+    <!-- معلومات الناشر: طايفة فوق الاستوري -->
     <LinearLayout
         android:id="@+id/layout_top_bar"
         android:layout_width="match_parent"
@@ -153,8 +154,7 @@
             android:layout_marginEnd="8dp"
             android:src="@android:drawable/ic_menu_more"
             android:visibility="gone"
-            android:background="@drawable/bg_glass_reactions"
-            android:elevation="4dp"
+            android:background="@drawable/bg_rounded_dark"
             app:tint="#FFFFFF"/>
 
         <ImageView
@@ -163,18 +163,18 @@
             android:layout_height="36dp"
             android:padding="6dp"
             android:src="@android:drawable/ic_menu_close_clear_cancel"
-            android:background="@drawable/bg_glass_reactions"
-            android:elevation="4dp"
+            android:background="@drawable/bg_rounded_dark"
             app:tint="#FFFFFF"/>
     </LinearLayout>
 
+    <!-- التظليل السفلي يغطي أسفل الفيديو الطويل فقط -->
     <View
         android:layout_width="match_parent"
         android:layout_height="180dp"
         android:background="@drawable/shadow_gradient_bottom"
-        app:layout_constraintBottom_toBottomOf="parent"/>
+        app:layout_constraintBottom_toBottomOf="@+id/story_content_container"/>
 
-    <!-- الفوتر: التفاعلات والمشاهدات (تم تحويله لتصميم زجاجي عائم 2070) -->
+    <!-- الفوتر: شريط التفاعلات نازل بالمنطقة السودة تحت الفيديو -->
     <LinearLayout
         android:id="@+id/layout_footer"
         android:layout_width="match_parent"
@@ -184,7 +184,7 @@
         android:gravity="center_vertical"
         android:paddingHorizontal="12dp"
         android:paddingVertical="16dp"
-        android:layout_marginBottom="16dp" 
+        android:layout_marginBottom="24dp" 
         app:layout_constraintBottom_toBottomOf="parent">
 
         <!-- عدد المشاهدات -->
@@ -194,8 +194,7 @@
             android:layout_height="48dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:background="@drawable/bg_glass_reactions"
-            android:elevation="8dp"
+            android:background="@drawable/bg_rounded_dark"
             android:paddingHorizontal="16dp"
             android:layout_marginEnd="10dp">
             
@@ -222,8 +221,7 @@
             android:layout_height="48dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:background="@drawable/bg_glass_reactions"
-            android:elevation="8dp"
+            android:background="@drawable/bg_rounded_dark"
             android:paddingHorizontal="14dp">
             
             <TextView
@@ -268,8 +266,7 @@
             android:layout_height="48dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:background="@drawable/bg_glass_reactions"
-            android:elevation="8dp"
+            android:background="@drawable/bg_rounded_dark"
             android:paddingHorizontal="18dp">
             
             <TextView
