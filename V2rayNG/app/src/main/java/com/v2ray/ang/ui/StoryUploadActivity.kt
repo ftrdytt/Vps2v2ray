@@ -50,7 +50,6 @@ import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 class StoryUploadActivity : AppCompatActivity() {
 
@@ -60,6 +59,11 @@ class StoryUploadActivity : AppCompatActivity() {
     private var hasSelectedVideo = false
     private var selectedVideoUri: Uri? = null
     private var selectedMusicId: String? = null
+
+    // 🌟 المتغيرات الجديدة الخاصة بقيود الحساب (افتراضية تتحدث من السيرفر) 🌟
+    private var maxVideosPerDay = 2
+    private var maxImagesPerDay = 25
+    private var maxVideoDurationMs = 30000L // 30 ثانية افتراضياً (بالملي ثانية)
 
     private lateinit var storyCaptureFrame: FrameLayout
     private lateinit var ivVideoPreview: ImageView 
@@ -153,6 +157,9 @@ class StoryUploadActivity : AppCompatActivity() {
         btnToggleTextBg = findViewById(R.id.btn_toggle_text_bg)
         etAdminMusicTitle = findViewById(R.id.et_admin_music_title)
 
+        // 🌟 استدعاء دالة جلب الصلاحيات عند فتح الشاشة 🌟
+        fetchUserLimits()
+
         if (savedInstanceState == null) openGallery()
 
         findViewById<ImageView>(R.id.btn_close).setOnClickListener { finish() }
@@ -178,6 +185,41 @@ class StoryUploadActivity : AppCompatActivity() {
 
         setupTextEditorTools()
         setupAdminMusicTools()
+    }
+
+    // 🌟 الدالة الجديدة لجلب صلاحيات المستخدم من السيرفر 🌟
+    private fun fetchUserLimits() {
+        val role = AuthManager.getRole(this)
+        if (role == "admin") {
+            // الأدمن غير مقيد
+            maxVideosPerDay = 99999
+            maxImagesPerDay = 99999
+            maxVideoDurationMs = 60 * 60 * 1000L // 60 دقيقة
+            return
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val userId = AuthManager.getId(this@StoryUploadActivity)
+                val url = URL("$BASE_API_URL/user/get_limits?id=$userId")
+                val conn = url.openConnection() as HttpURLConnection
+                if (conn.responseCode == 200) {
+                    val resp = BufferedReader(InputStreamReader(conn.inputStream)).readText()
+                    val json = JSONObject(resp)
+                    
+                    // قراءة القيم التي حددها الأدمن
+                    maxVideosPerDay = json.optInt("max_videos", 2)
+                    maxImagesPerDay = json.optInt("max_images", 25)
+                    
+                    val durationMin = json.optInt("max_duration_min", 0)
+                    if (durationMin > 0) {
+                        maxVideoDurationMs = durationMin * 60 * 1000L // تحويل الدقائق إلى ملي ثانية
+                    }
+                }
+            } catch (e: Exception) {
+                // إذا فشل الاتصال، ستبقى القيود الافتراضية كما هي
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -248,8 +290,14 @@ class StoryUploadActivity : AppCompatActivity() {
             retriever.setDataSource(this, uri)
             val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
 
-            if (durationMs > 30500L) { 
-                showCustomSnackbar("عذراً، يجب أن لا تتجاوز مدة الفيديو 30 ثانية 🚫", "#F44336")
+            // 🌟 استخدام المتغير الديناميكي لمدة الفيديو المسموحة (مع سماحية 1 ثانية) 🌟
+            val tolerance = 1000L 
+            if (durationMs > maxVideoDurationMs + tolerance) { 
+                val minutes = maxVideoDurationMs / 60000
+                val seconds = (maxVideoDurationMs / 1000) % 60
+                val limitText = if (minutes >= 1) "$minutes دقيقة" else "$seconds ثانية"
+                
+                showCustomSnackbar("عذراً، يجب أن لا تتجاوز مدة الفيديو $limitText 🚫", "#F44336")
                 return
             }
 
@@ -681,13 +729,21 @@ class StoryUploadActivity : AppCompatActivity() {
         return java.security.MessageDigest.getInstance("MD5").digest((devInfo + androidId).toByteArray()).joinToString("") { "%02x".format(it) }.take(16).uppercase()
     }
 
+    // 🌟 فحص حصة المستخدم بناءً على القيود القادمة من السيرفر 🌟
     private fun checkDailyQuota(isVideo: Boolean): Boolean {
         if (AuthManager.getRole(this) == "admin") return true
 
         val prefs = getSharedPreferences("StoryQuotaPrefs", Context.MODE_PRIVATE)
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        if (isVideo && prefs.getInt("vid_$today", 0) >= 2) { showCustomSnackbar("استهلكت الحد اليومي للفيديوهات 🚫", "#F44336"); return false }
-        if (!isVideo && prefs.getInt("img_$today", 0) >= 25) { showCustomSnackbar("استهلكت الحد اليومي للصور 🚫", "#F44336"); return false }
+        
+        if (isVideo && prefs.getInt("vid_$today", 0) >= maxVideosPerDay) { 
+            showCustomSnackbar("استهلكت الحد اليومي للفيديوهات ($maxVideosPerDay) 🚫", "#F44336")
+            return false 
+        }
+        if (!isVideo && prefs.getInt("img_$today", 0) >= maxImagesPerDay) { 
+            showCustomSnackbar("استهلكت الحد اليومي للصور ($maxImagesPerDay) 🚫", "#F44336")
+            return false 
+        }
         return true
     }
 
@@ -725,7 +781,6 @@ class StoryUploadActivity : AppCompatActivity() {
         }
     }
 
-    // 🌟 دالة الرفع المجهزة بحماية الحظر (Anti-Ban Exploit) 🌟
     private fun uploadStory() {
         layoutLoading.visibility = View.VISIBLE
 
@@ -776,7 +831,6 @@ class StoryUploadActivity : AppCompatActivity() {
                     respReader.close()
                     val respJson = JSONObject(respStr)
                     
-                    // 🌟 هنا يتم معالجة الرد من السيرفر (سواء نجاح أو حظر) 🌟
                     if (respJson.optBoolean("success", false)) {
                         incrementDailyQuota(isVideo = hasSelectedVideo)
                         withContext(Dispatchers.Main) {
@@ -784,10 +838,9 @@ class StoryUploadActivity : AppCompatActivity() {
                             finish() 
                         }
                     } else if (respJson.optBoolean("banned", false)) {
-                        // 🌟 إذا رجع السيرفر رسالة تفيد بأن المستخدم محظور 🌟
                         val msg = respJson.optString("message", "تم حظرك من نشر القصص 🚫")
                         withContext(Dispatchers.Main) { 
-                            showCustomSnackbar(msg, "#D32F2F") // أحمر داكن للحظر
+                            showCustomSnackbar(msg, "#D32F2F") 
                             restoreControls() 
                         }
                     } else {
@@ -810,7 +863,7 @@ class StoryUploadActivity : AppCompatActivity() {
 
     private fun showCustomSnackbar(message: String, colorHex: String) {
         val rootView = findViewById<View>(android.R.id.content)
-        val snackbar = Snackbar.make(rootView, "", Snackbar.LENGTH_LONG) // خليتها LONG حتى المستخدم يلحق يقرأ سبب الحظر
+        val snackbar = Snackbar.make(rootView, "", Snackbar.LENGTH_LONG)
         val snackbarLayout = snackbar.view as Snackbar.SnackbarLayout
         snackbarLayout.setBackgroundColor(Color.TRANSPARENT)
         snackbarLayout.setPadding(0, 0, 0, 0)
@@ -825,7 +878,7 @@ class StoryUploadActivity : AppCompatActivity() {
             background = GradientDrawable().apply {
                 setColor(Color.parseColor(colorHex))
                 cornerRadius = 40f
-                setStroke(3, Color.parseColor("#33FFFFFF")) // لمسة زجاجية بسيطة للرسالة
+                setStroke(3, Color.parseColor("#33FFFFFF"))
             }
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(40, 0, 40, 40)
