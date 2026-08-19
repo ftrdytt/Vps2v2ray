@@ -7,30 +7,38 @@
     android:fitsSystemWindows="true" 
     android:layoutDirection="rtl">
 
-    <!-- حاوية الاستوري تملي الشاشة بالكامل -->
+    <!-- حاويتك الأصلية بمسافاتك الأصلية -->
     <FrameLayout
         android:id="@+id/story_content_container"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="16dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent">
 
-        <!-- هنا التعديل: الارتفاع صار wrap_content حتى يتوسط الفيديو العريض إجبارياً -->
-        <VideoView
-            android:id="@+id/vv_story_video"
+        <!-- 🌟 الحل النهائي: RelativeLayout يجبر الفيديو والصورة يصيرون بالسنتر 🌟 -->
+        <RelativeLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:visibility="gone" />
+            android:layout_height="match_parent">
 
-        <!-- الصور العريضة تتوسط، والطويلة تملي الشاشة -->
-        <ImageView
-            android:id="@+id/iv_story_image"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_gravity="center"
-            android:scaleType="fitCenter"
-            android:visibility="gone"/>
+            <!-- الفيديو صار wrap_content ومجبر يتوسط -->
+            <VideoView
+                android:id="@+id/vv_story_video"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_centerInParent="true"
+                android:visibility="gone" />
+
+            <!-- الصورة العريضة تتوسط، والطويلة تملي الشاشة -->
+            <ImageView
+                android:id="@+id/iv_story_image"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitCenter"
+                android:layout_centerInParent="true"
+                android:visibility="gone"/>
+        </RelativeLayout>
 
         <TextView
             android:id="@+id/tv_story_text"
@@ -60,25 +68,25 @@
         android:elevation="10dp"
         android:clipChildren="false"/>
 
-    <!-- الظل العلوي لبروز الاسم -->
     <View
         android:layout_width="match_parent"
         android:layout_height="140dp"
         android:background="@drawable/shadow_gradient_top"
         app:layout_constraintTop_toTopOf="parent"/>
 
-    <!-- شريط التقدم -->
+    <!-- شريط التقدم العلوي الأصلي مالتك -->
     <LinearLayout
         android:id="@+id/layout_progress_bars"
         android:layout_width="match_parent"
         android:layout_height="3dp"
         android:orientation="horizontal"
         android:layoutDirection="rtl" 
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="12dp"
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
         app:layout_constraintTop_toTopOf="parent"/>
 
+    <!-- معلومات الناشر الأصلية مالتك -->
     <LinearLayout
         android:id="@+id/layout_top_bar"
         android:layout_width="match_parent"
@@ -165,14 +173,13 @@
             app:tint="#FFFFFF"/>
     </LinearLayout>
 
-    <!-- الظل السفلي لبروز الأزرار -->
     <View
         android:layout_width="match_parent"
         android:layout_height="180dp"
         android:background="@drawable/shadow_gradient_bottom"
         app:layout_constraintBottom_toBottomOf="parent"/>
 
-    <!-- الفوتر -->
+    <!-- الفوتر الأصلي مالتك (بدون أي تغيير) -->
     <LinearLayout
         android:id="@+id/layout_footer"
         android:layout_width="match_parent"
@@ -181,8 +188,8 @@
         android:layoutDirection="rtl"
         android:gravity="center_vertical"
         android:paddingHorizontal="12dp"
-        android:paddingVertical="12dp"
-        android:layout_marginBottom="8dp"
+        android:paddingVertical="16dp"
+        android:layout_marginBottom="6dp"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <LinearLayout
