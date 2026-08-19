@@ -1,4 +1,3 @@
-
 package com.v2ray.ang.ui
 
 import android.animation.ValueAnimator
@@ -684,12 +683,16 @@ class StoryViewerActivity : AppCompatActivity() {
             if (videoW > 0 && videoH > 0) {
                 storyContentContainer.post {
                     val containerW = storyContentContainer.width
-                    if (containerW > 0) {
-                        val scale = containerW.toFloat() / videoW
-                        val newW = containerW
+                    val containerH = storyContentContainer.height
+                    if (containerW > 0 && containerH > 0) {
+                        // 🌟 نفس منطق فيسبوك/تيليكرام/انستا/واتساب: نحتوي الفيديو بالكامل (Fit) وموسّط بالنص.
+                        // الفيديوات الطويلة اللي نسبتها قريبة من نسبة الشاشة تملأ الشاشة كلها تلقائياً بدون قص،
+                        // وأي نسبة ثانية (أفقي/مربع) توضع بالنص مع فراغ أسود من فوق وتحت (Letterbox) 🌟
+                        val scale = minOf(containerW.toFloat() / videoW, containerH.toFloat() / videoH)
+                        val newW = (videoW * scale).toInt()
                         val newH = (videoH * scale).toInt()
                         vvStoryVideo.layoutParams = FrameLayout.LayoutParams(newW, newH).apply {
-                            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                            gravity = Gravity.CENTER
                         }
                     }
                 }
