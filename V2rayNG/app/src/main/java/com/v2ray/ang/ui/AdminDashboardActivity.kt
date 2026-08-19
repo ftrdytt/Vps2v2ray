@@ -21,7 +21,6 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
-import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.snackbar.Snackbar
@@ -107,36 +106,102 @@ class AdminDashboardActivity : AppCompatActivity() {
         layoutStatsContainer.removeAllViews()
         setupStatsTab(layoutStatsContainer)
 
-        val tabAllUsers = findViewById<TextView>(R.id.tab_all_users)
-        val tabActive = findViewById<TextView>(R.id.tab_active_now)
-        val tabStats = findViewById<TextView>(R.id.tab_stats)
-        val layoutAll = findViewById<View>(R.id.layout_all_users_container)
+        val tabAllUsers = findViewById<Button>(R.id.tab_all_users)
+        val tabActive = findViewById<Button>(R.id.tab_active_now)
+        val tabStats = findViewById<Button>(R.id.tab_stats)
+        val tabPermissions = findViewById<Button>(R.id.tab_permissions) // الزر الجديد
 
+        val layoutAll = findViewById<View>(R.id.layout_all_users_container)
+        val layoutPermissions = findViewById<View>(R.id.layout_permissions_container) // القسم الجديد
+
+        // 🌟 برمجة الأزرار لتبديل الأقسام 🌟
         tabAllUsers.setOnClickListener {
-            layoutAll.visibility = View.VISIBLE; layoutActive.visibility = View.GONE; layoutStatsContainer.visibility = View.GONE
+            layoutAll.visibility = View.VISIBLE; layoutActive.visibility = View.GONE; layoutStatsContainer.visibility = View.GONE; layoutPermissions.visibility = View.GONE
             tabAllUsers.setBackgroundColor(Color.parseColor("#FF9800")); tabAllUsers.setTextColor(Color.WHITE)
             tabActive.setBackgroundColor(Color.parseColor("#252529")); tabActive.setTextColor(Color.parseColor("#80FFFFFF"))
             tabStats.setBackgroundColor(Color.parseColor("#252529")); tabStats.setTextColor(Color.parseColor("#80FFFFFF"))
+            tabPermissions.setBackgroundColor(Color.parseColor("#252529")); tabPermissions.setTextColor(Color.parseColor("#80FFFFFF"))
             searchInput.visibility = View.VISIBLE
             fetchAllUsers()
         }
         
         tabActive.setOnClickListener {
-            layoutAll.visibility = View.GONE; layoutActive.visibility = View.VISIBLE; layoutStatsContainer.visibility = View.GONE
+            layoutAll.visibility = View.GONE; layoutActive.visibility = View.VISIBLE; layoutStatsContainer.visibility = View.GONE; layoutPermissions.visibility = View.GONE
             tabActive.setBackgroundColor(Color.parseColor("#FF9800")); tabActive.setTextColor(Color.WHITE)
             tabAllUsers.setBackgroundColor(Color.parseColor("#252529")); tabAllUsers.setTextColor(Color.parseColor("#80FFFFFF"))
             tabStats.setBackgroundColor(Color.parseColor("#252529")); tabStats.setTextColor(Color.parseColor("#80FFFFFF"))
+            tabPermissions.setBackgroundColor(Color.parseColor("#252529")); tabPermissions.setTextColor(Color.parseColor("#80FFFFFF"))
             searchInput.visibility = View.VISIBLE 
             fetchActiveUsers()
         }
 
         tabStats.setOnClickListener {
-            layoutAll.visibility = View.GONE; layoutActive.visibility = View.GONE; layoutStatsContainer.visibility = View.VISIBLE
+            layoutAll.visibility = View.GONE; layoutActive.visibility = View.GONE; layoutStatsContainer.visibility = View.VISIBLE; layoutPermissions.visibility = View.GONE
             tabStats.setBackgroundColor(Color.parseColor("#FF9800")); tabStats.setTextColor(Color.WHITE)
             tabAllUsers.setBackgroundColor(Color.parseColor("#252529")); tabAllUsers.setTextColor(Color.parseColor("#80FFFFFF"))
             tabActive.setBackgroundColor(Color.parseColor("#252529")); tabActive.setTextColor(Color.parseColor("#80FFFFFF"))
+            tabPermissions.setBackgroundColor(Color.parseColor("#252529")); tabPermissions.setTextColor(Color.parseColor("#80FFFFFF"))
             searchInput.visibility = View.GONE
             if (allUsersCache.isEmpty()) fetchAllUsers() 
+        }
+
+        // 🌟 برمجة تاب الصلاحيات الجديد 🌟
+        tabPermissions.setOnClickListener {
+            layoutAll.visibility = View.GONE; layoutActive.visibility = View.GONE; layoutStatsContainer.visibility = View.GONE; layoutPermissions.visibility = View.VISIBLE
+            tabPermissions.setBackgroundColor(Color.parseColor("#FF9800")); tabPermissions.setTextColor(Color.WHITE)
+            tabAllUsers.setBackgroundColor(Color.parseColor("#252529")); tabAllUsers.setTextColor(Color.parseColor("#80FFFFFF"))
+            tabActive.setBackgroundColor(Color.parseColor("#252529")); tabActive.setTextColor(Color.parseColor("#80FFFFFF"))
+            tabStats.setBackgroundColor(Color.parseColor("#252529")); tabStats.setTextColor(Color.parseColor("#80FFFFFF"))
+            searchInput.visibility = View.GONE
+        }
+
+        // 🌟 برمجة زر حفظ صلاحيات الاستوري 🌟
+        val etUserId = findViewById<EditText>(R.id.et_admin_user_id)
+        val etVideoLimit = findViewById<EditText>(R.id.et_admin_video_limit)
+        val etVideoDuration = findViewById<EditText>(R.id.et_admin_video_duration)
+        val etImageLimit = findViewById<EditText>(R.id.et_admin_image_limit)
+        val btnSaveLimits = findViewById<Button>(R.id.btn_admin_save_limits)
+
+        btnSaveLimits?.setOnClickListener {
+            val userId = etUserId.text.toString().trim()
+            val videoLimit = etVideoLimit.text.toString().trim()
+            val videoDurationMinutes = etVideoDuration.text.toString().trim()
+            val imageLimit = etImageLimit.text.toString().trim()
+
+            if (userId.isEmpty() || videoLimit.isEmpty() || videoDurationMinutes.isEmpty() || imageLimit.isEmpty()) {
+                showCustomSnackbar("يرجى ملء جميع الحقول!", "#F44336")
+                return@setOnClickListener
+            }
+
+            // الإرسال للسيرفر عبر API
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val conn = URL("$BASE_API_URL/admin/set_limits").openConnection() as HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.doOutput = true
+                    
+                    val payload = JSONObject().apply {
+                        put("id", userId)
+                        put("max_videos", videoLimit.toInt())
+                        put("max_duration_min", videoDurationMinutes.toInt())
+                        put("max_images", imageLimit.toInt())
+                    }
+
+                    conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+
+                    if (conn.responseCode == 200) {
+                        withContext(Dispatchers.Main) { 
+                            showCustomSnackbar("تم حفظ الصلاحيات بنجاح! ✅", "#4CAF50")
+                            etUserId.text.clear(); etVideoLimit.text.clear(); etVideoDuration.text.clear(); etImageLimit.text.clear()
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) { showCustomSnackbar("خطأ في حفظ البيانات", "#F44336") }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) { showCustomSnackbar("خطأ في الاتصال بالإنترنت", "#F44336") }
+                }
+            }
         }
 
         fetchAllUsers()
@@ -414,27 +479,25 @@ class AdminDashboardActivity : AppCompatActivity() {
         AlertDialog.Builder(this).setView(dialogView).setPositiveButton("رجوع", null).show()
     }
 
-    // 🌟 تم تحديث هذه الدالة لإضافة التفاعلات والدائرة الزرقاء الخاصة بالقصص 🌟
     private fun addUserCard(container: LinearLayout, id: String, name: String, pass: String, pfp: String, isBanned: Boolean, username: String, devicesArray: JSONArray?, isAdmin: Boolean, hasActiveStory: Boolean, followersCount: Int, followingCount: Int) {
         val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#1A1A1D")); setPadding(30, 30, 30, 30); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, 20) } }
 
         val topLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         
-        // حاوية الصورة لرسم إطار القصة (الدائرة الزرقاء)
         val avatarWrapper = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(140, 140).apply { setMargins(0, 0, 30, 0) }
             if (hasActiveStory) {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setStroke(6, Color.parseColor("#1877F2")) // لون فيسبوك الأزرق
+                    setStroke(6, Color.parseColor("#1877F2"))
                 }
-                setPadding(8, 8, 8, 8) // مسافة بين الإطار والصورة
+                setPadding(8, 8, 8, 8)
             }
         }
         
         val avatarCard = CardView(this).apply {
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            radius = 100f // لجعلها دائرية بالكامل
+            radius = 100f
             setCardBackgroundColor(Color.TRANSPARENT)
             cardElevation = 0f
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) clipToOutline = true
@@ -455,7 +518,6 @@ class AdminDashboardActivity : AppCompatActivity() {
             infoLayout.addView(TextView(this).apply { text = "المعرف: @$username"; setTextColor(Color.parseColor("#2196F3")); textSize = 14f; setTypeface(null, android.graphics.Typeface.BOLD) })
         }
         
-        // إضافة عداد السوشيال ميديا (المتابعون - يتابع)
         val statsLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 5, 0, 5) }
         statsLayout.addView(TextView(this).apply { 
             text = "المتابعون: $followersCount | يتابع: $followingCount"
@@ -492,7 +554,6 @@ class AdminDashboardActivity : AppCompatActivity() {
 
         topLayout.addView(avatarWrapper); topLayout.addView(infoLayout); card.addView(topLayout)
 
-        // 🌟 جعل الصورة والاسم ينقلان المسؤول إلى صفحة ملف المستخدم 🌟
         val clickToProfile = View.OnClickListener {
             val intent = Intent(this@AdminDashboardActivity, UserProfileActivity::class.java)
             intent.putExtra("targetUserId", id)
